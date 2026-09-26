@@ -20,6 +20,7 @@ from motion_backend import MotionBackendStatus, normalize_backend
 from test_ui_buttons import build, paint, find
 from test_config_atomic import _payload, GOOD
 import json
+import re
 import tempfile
 
 
@@ -32,6 +33,25 @@ def main():
         encoding="utf-8")
     assert "NS_NVOFA_COST='1'" in confidence, \
         "the confidence experiment reads cost files and must request the channel"
+
+    # NS_NVOFA_GRID: the driver's output grid, and the resolution of the
+    # motion field. 4 is what shipped (NVOFA then hands back one vector per
+    # 4x4 block and the expand shader stretches it bilinearly - the reason a
+    # moving edge deforms where CPU DIS keeps it sharp, ROADMAP "NVOFA:
+    # разбор пары логов"). 1 asks the driver for the pixel-level field DIS
+    # gives, for more GPU. The switch must default to 4, accept only the three
+    # grids the driver documents, and never force one the driver did not
+    # offer - a silently different grid would make the A/B measurement a lie.
+    body = re.search(r"static unsigned NvofaGridRequested\(\)\s*\{(.*?)\n\}",
+                     native, re.S)
+    assert body, "NvofaGridRequested is gone - re-check the grid switch"
+    body = body.group(1)
+    assert "NS_NVOFA_GRID" in body, "the grid switch reads the wrong variable"
+    assert "return 4;" in body, "the grid switch no longer defaults to 4"
+    for value in ("1", "2", "4"):
+        assert f"value == {value}" in body, f"grid={value} is not accepted"
+    assert "f.grid = grids.front()" in native, \
+        "a grid the driver does not offer must fall back, not be forced"
 
     assert all(normalize_backend(v) == "nvofa" for v in [None, {}, [], 1, "gpu", "NVofa", "NVOFA", "CPU"])
     assert normalize_backend("cpu") == "cpu"

@@ -7,6 +7,27 @@ static bool NvofaRequested()
     return GetEnvironmentVariableA("NS_MOTION_BACKEND", value, sizeof(value)) && strcmp(value, "nvofa") == 0;
 }
 
+// NS_NVOFA_GRID=1|2|4 picks the driver's output vector grid. 4 (the default)
+// is what shipped: the driver offers 1, 2 and 4, and 4 was taken "for the
+// price", because the grid is the resolution of the motion field. It is also
+// the reason a moving edge deforms smoothly where CPU DIS keeps it sharp -
+// grid=4 puts one vector on a 4x4 block (a 320x180 field is 3600 vectors,
+// stretched bilinearly over the whole field), while DIS hands back one vector
+// per cell of the field itself. grid=1 asks for the same pixel-level field
+// DIS gives, for more GPU time.
+//
+// A switch and NOT a new default: the cost of grid=1 is unmeasured on the
+// bench, and a quality claim nobody measured is how "it looks worse than
+// before" reports start. Raise it, measure FPS and the picture, then decide.
+// Same convention as NS_ARCH_SPOOF and NS_DRED.
+static unsigned NvofaGridRequested()
+{
+    char buf[8] = {};
+    if (GetEnvironmentVariableA("NS_NVOFA_GRID", buf, sizeof(buf)) == 0) return 4;
+    const unsigned value = strtoul(buf, nullptr, 10);
+    return (value == 1 || value == 2 || value == 4) ? value : 4;
+}
+
 static struct NvofaState {
     HMODULE library = nullptr;
     NV_OF_D3D12_API_FUNCTION_LIST api{};
@@ -136,7 +157,19 @@ static bool EnsureNvofa(UINT width, UINT height)
     if (grids.empty() || minw.empty() || minh.empty() || maxw.empty() || maxh.empty() ||
         width < minw[0] || height < minh[0] || width > maxw[0] || height > maxh[0])
         return NvofaError("unsupported input dimensions", NV_OF_ERR_UNSUPPORTED_FEATURE);
-    f.grid = std::find(grids.begin(), grids.end(), 4u) != grids.end() ? 4u : grids.front();
+    // The driver is authoritative about which grids it offers: the switch can
+    // only pick from that list, never force one. A refused grid falls back to
+    // the driver's own preference rather than failing the backend - and says
+    // so, because a silent fallback would make the A/B measurement a lie.
+    const unsigned wanted = NvofaGridRequested();
+    if (std::find(grids.begin(), grids.end(), wanted) != grids.end())
+        f.grid = wanted;
+    else
+    {
+        f.grid = grids.front();
+        Log("[nvofa] grid=%u requested but not offered by the driver; using %u",
+            wanted, f.grid);
+    }
     if (f.grid != 1 && f.grid != 2 && f.grid != 4)
         return NvofaError("unsupported output grid", NV_OF_ERR_UNSUPPORTED_FEATURE);
     if (!NvofaSupportsFormat(NV_OF_BUFFER_USAGE_INPUT, DXGI_FORMAT_R8_UNORM) ||
