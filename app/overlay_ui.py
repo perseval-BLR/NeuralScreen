@@ -310,9 +310,23 @@ def status_readings(state: dict, stats: dict, s: dict) -> list[str]:
     # run it" are menu state. Reading a rate out of `state` finds nothing and
     # reading `nr` out of `stats` finds nothing - both silently, which is how
     # this was wrong the first time.
-    if not bool(state.get("gpu_ok", True)):
+    #
+    # `nr` and `gpu_ok` were the exception that proved the rule bad: they came
+    # from `state` alone, and that snapshot is rebuilt only while the panel is
+    # open. A switch that does not go through the panel - Num1, or the dead
+    # worker that turns NR off - left the snapshot stale, the readings went
+    # empty, and the on-screen counter simply did not appear (#131). The HUD
+    # now carries both, so they are read live first; `state` stays as the
+    # fallback for callers that have no HUD (offscreen renders and the tests).
+    nr_on = stats.get("nr")
+    if nr_on is None:
+        nr_on = state.get("nr", True)
+    gpu_ok = stats.get("gpu_ok")
+    if gpu_ok is None:
+        gpu_ok = state.get("gpu_ok", True)
+    if not bool(gpu_ok):
         return []
-    paused = not bool(state.get("nr", True))
+    paused = not bool(nr_on)
     out: list[str] = []
     fps = stats.get("fps")
     nr_text = f"{fps:.1f}" if isinstance(fps, (int, float)) else "\u2014"

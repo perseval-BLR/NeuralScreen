@@ -9,6 +9,13 @@ pair `FG 167 (55.1)` is not two numbers side by side, it is the output rate
 with the rate it is built on, and a second copy of that rule would drift
 from the first. So the rule is tested once, here, for both.
 
+The rule reads "is the pass on" and "can this card run it" from the HUD
+first (#131): the panel snapshot is rebuilt only while the panel is open,
+so a switch made outside it left the counter invisible. The last check is
+therefore a wiring check - the HUD is only useful if main actually puts
+those two keys into it, and a test that only exercises status_readings
+would stay green with the feed deleted.
+
 Then the corner: a badge must land INSIDE the corner it names, with the
 same margin on every side, and two badges that want the same corner must
 stack rather than overlap - a recording that hid the counter would be the
@@ -22,6 +29,7 @@ Run:  runtime\python.exe tests\test_fps_overlay.py
 """
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -63,6 +71,30 @@ READINGS = (
      "the card cannot run the pass: no rate to report"),
 )
 
+#: The same rule, with the live HUD in `stats` and a STALE snapshot in
+#: `state` - the state #131 was reported in. The panel snapshot is rebuilt
+#: only while the panel is open, so a switch made outside it (Num1) or a
+#: worker that died left `state["nr"]` saying "off" while the pipeline was
+#: running. The readings must follow the HUD.
+LIVE_WINS = (
+    ({"nr": False},
+     {"nr": True, "gpu_ok": True, "fps": 96.2},
+     ["NR 96.2"],
+     "Num1 turned NR on with the panel closed: the counter must appear"),
+    ({"nr": False},
+     {"nr": True, "gpu_ok": True, "fps": 61.4, "display_fps": 187.0},
+     ["FG 187 (61.4)"],
+     "the same, with Frame Generation running: the pair"),
+    ({"nr": True},
+     {"nr": False, "gpu_ok": True, "fps": 0.0, "display_fps": 141.0},
+     ["FG 141"],
+     "Num1 turned NR off: the snapshot still says on, FG is the only rate"),
+    ({"nr": False, "gpu_ok": True},
+     {"nr": True, "gpu_ok": False, "fps": 55.1},
+     [],
+     "a verdict of 'this card cannot run it' outranks a stale snapshot"),
+)
+
 SCREEN = (1920, 1080)
 
 
@@ -77,6 +109,11 @@ def main() -> int:
 
         for state, want, why in READINGS:
             got = ui.status_readings(dict(state), dict(state), S)
+            if got != want:
+                failures.append(f"{why}: got {got}, want {want}")
+
+        for state, stats, want, why in LIVE_WINS:
+            got = ui.status_readings(dict(state), dict(stats), S)
             if got != want:
                 failures.append(f"{why}: got {got}, want {want}")
 
@@ -165,6 +202,26 @@ def main() -> int:
         if got != want:
             failures.append(
                 f"fps_overlay {value!r} loaded as {got!r}, want {want!r}")
+
+    # The wiring: status_readings can only prefer the live value if the live
+    # value is there. Every `set_hud({...})` in main.py must carry both keys -
+    # the frame loop has one, and a second call site added later without them
+    # would silently bring the stale-snapshot bug back for the branch it
+    # serves. The regex is anchored on the call so a mention in a comment
+    # cannot satisfy it (the lesson from test_gpu_alert_path).
+    main_src = (BASE / "main.py").read_text(encoding="utf-8")
+    feeds = re.findall(r"st\.display\.set_hud\(\{(.*?)\n\s*\}\)", main_src, re.S)
+    if not feeds:
+        failures.append("no set_hud({...}) call found in main.py - re-check "
+                        "the wiring check")
+    for body in feeds:
+        for key in ("nr", "gpu_ok"):
+            if f'"{key}":' not in body:
+                failures.append(
+                    f"a set_hud({{...}}) call does not carry {key!r}: the "
+                    f"counter would fall back to the panel snapshot and go "
+                    f"blank after a switch made outside the panel (#131)")
+    print(f"    set_hud calls checked for the live nr/gpu_ok feed: {len(feeds)}")
 
     for f in failures:
         print("FAIL:", f)

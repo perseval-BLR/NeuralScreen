@@ -1364,6 +1364,13 @@ def main() -> int:
                 "rec_indicator": bool(st.cfg.get("rec_indicator", True)),
                 # Which corner the counter sits in, or "off" (#109).
                 "fps_overlay": str(st.cfg.get("fps_overlay", "off")),
+                # The live switch positions, carried with every frame so the
+                # on-screen badge and the panel read the state the pipeline is
+                # really in. They used to be read from the menu snapshot, which
+                # is rebuilt only while the panel is open - so Num1, or the dead
+                # worker that turns NR off, left the counter invisible (#131).
+                "nr": not st.paused,
+                "gpu_ok": st.gpu_ok,
             })
 
             st.frame_index += 1
