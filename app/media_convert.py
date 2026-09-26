@@ -442,7 +442,7 @@ class _Engine:
             tail = "\n".join(self.logs[-12:]) or "(no worker output)"
             raise ConversionError("worker", f"the worker exited:\n{tail}")
         send_frame(self.worker, index, rgba, motion, reset, index,
-                   shm=self.shm, want_pixels=True, skip_static=False,
+                   shm=self.shm, want_pixels=True,
                    motion_small=self.motion_small)
         return self.reader.recv(index, timeout=FRAME_TIMEOUT_S)
 

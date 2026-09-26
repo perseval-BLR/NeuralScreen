@@ -60,7 +60,7 @@ def _state(width: int, height: int, lang: str) -> dict:
         "screen_size": f"{width}x{height}", "theme": "light",
         "gpu_text": LONG_GPU, "gpu_ok": True,
         "hdr": False, "spout": False, "rec_indicator": True,
-        "skip_static": True, "windows": [], "window_current": "",
+        "windows": [], "window_current": "",
         "recording": False, "recording_status": "published",
         "recording_details": "MP4 \u00b7 av1_nvenc \u00b7 30 fps \u00b7 AAC",
         "recording_path": LONG_PATH,

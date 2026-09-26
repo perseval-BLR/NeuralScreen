@@ -293,7 +293,7 @@ a maintainer's GPU, paths or experimental switches cannot leak into a release.
 | `frame_limit_mode`, `frame_limit_custom` | active-pipeline cap: 30, 60, custom 15–240, or unlimited |
 | `frame_generation`, `frame_multiplier` | opt-in FG and ×2/×3/×4 requested multiplier; refusal turns it back off |
 | `recording_dir`, `screenshot_dir`, `screenshot_mode`, `screenshot_format` | persistent media destinations; screenshots use Save As or a quiet unique name, PNG or JPEG |
-| `spout`, `hdr`, `skip_static` | explicit opt-in output/capture optimisations; all default off |
+| `spout`, `hdr` | explicit opt-in output/capture optimisations; both default off |
 | `split` | 0–1, share of the frame left unprocessed for the before/after wipe; 0 — off |
 | `theme` | `light` / `dark` |
 | `open_menu_on_start` | open the menu on launch; `false` — a short alert instead |

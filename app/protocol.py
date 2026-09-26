@@ -313,7 +313,6 @@ FRAME_FLAG_PREPARED = 0x1000
 FRAME_MAGIC = 0x314D5246  # 'FMR1'
 OUT_MAGIC = 0x3154554F    # 'OUT1'
 OUT_STATUS_OK = 0x1
-OUT_STATUS_SKIPPED = 0x2
 # A FRAME_FLAG_WORKER_SCENE frame's reply: the worker's scene score rides in
 # bits 16-31 (x65535), and SCENE_CUT says the frame was reset on it.
 OUT_STATUS_SCENE = 0x4
@@ -341,7 +340,6 @@ class FrameReply:
     """One OUT1 reply, including work that intentionally did not run."""
 
     pixels: np.ndarray | None
-    skipped: bool
     ngx_result: int
     # The worker's scene score for a FRAME_FLAG_WORKER_SCENE frame that
     # captured something; None otherwise. scene_cut: it reset on it.
@@ -360,7 +358,6 @@ FRAME_FLAG_SHM = 0x1         # a bit in the reserved field of the frame header
 FRAME_FLAG_WANT_PIXELS = 0x2  # return the pixels even in window mode (for a screenshot)
 FRAME_FLAG_MOTION_SMALL = 0x4  # motion field at flow resolution, upscaled by the worker
 FRAME_FLAG_SPLIT = 0x20        # before/after wipe; position in the high 16 bits of reserved
-FRAME_FLAG_SKIP_STATIC = 0x40  # no new frame - let the worker idle instead of re-running NGX
 # Answer once the frame is on the GPU queue rather than once it is presented:
 # the loop's own work (the HUD, commands, the next capture request) then runs
 # while the GPU finishes the frame. The worker honours it only where it is
@@ -531,7 +528,7 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
                shm: "SharedFrameBuffer | None" = None,
                want_pixels: bool = False, motion_small: bool = False,
                no_color: bool = False, bypass: bool = False,
-               split: float = 0.0, skip_static: bool = False,
+               split: float = 0.0,
                frame_generation: bool | None = None, frame_multiplier: int = 2,
                prepared: bool = False, early_reply: bool = False,
                worker_scene: bool = False) -> None:
@@ -548,16 +545,11 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
     overlay (window, HUD) stays alive while the effect is off.
     split (0..1): the share of the frame on the left the worker leaves
     unprocessed - the before/after wipe. 0 means off.
-    skip_static: the capture has no new frame (Desktop Duplication timeout,
-    an idle window) - the worker answers with an empty result and does NOT
-    re-run the network on the stale picture. A screenshot/recording request
-    (want_pixels) wins over it.
     """
     flags = (FRAME_FLAG_WANT_PIXELS if want_pixels else 0) | \
             (FRAME_FLAG_MOTION_SMALL if motion_small else 0) | \
             (FRAME_FLAG_NO_COLOR if no_color else 0) | \
-            (FRAME_FLAG_BYPASS if bypass else 0) | \
-            (FRAME_FLAG_SKIP_STATIC if skip_static else 0)
+            (FRAME_FLAG_BYPASS if bypass else 0)
     if prepared:
         flags |= FRAME_FLAG_PREPARED
     if early_reply:
@@ -809,7 +801,6 @@ class WorkerReader:
         self._worker = worker
         self._width = width
         self._height = height
-        self.last_skipped = False
         self.last_ngx_result = 0
         self.last_scene: float | None = None
         self.last_scene_cut = False
@@ -928,7 +919,6 @@ class WorkerReader:
                     if not (status & OUT_STATUS_OK):
                         raise RuntimeError(
                             f"worker answered with an error for frame {out_index}: status={status}")
-                    skipped = bool(status & OUT_STATUS_SKIPPED)
                     scene = ((status >> 16) / 65535.0
                              if status & OUT_STATUS_SCENE else None)
                     scene_cut = bool(status & OUT_STATUS_SCENE_CUT)
@@ -948,11 +938,11 @@ class WorkerReader:
                             f"NGX evaluation failed on frame {out_index}: 0x{ngx_result:08X}")
                     if byte_count == 0:
                         # No pixels through the pipe: WNDO mode (the worker
-                        # showed the frame in its own window) or a skipped
-                        # frame (0x00000000). Either way there is nothing
-                        # to show - the pipeline waits for the next one.
+                        # showed the frame in its own window). There is
+                        # nothing to show - the pipeline waits for the next
+                        # one.
                         self._queue.put((out_index, FrameReply(
-                            None, skipped, ngx_result, scene, scene_cut)))
+                            None, ngx_result, scene, scene_cut)))
                         continue
                     if byte_count == OUT_BYTES_IN_SHM:
                         # The pixels are in the OUTS section. The copy is made
@@ -969,10 +959,10 @@ class WorkerReader:
                             # it, but keep the protocol paired - main treats
                             # None as "frame not ready" and moves on.
                             self._queue.put((out_index, FrameReply(
-                                None, skipped, ngx_result, scene, scene_cut)))
+                                None, ngx_result, scene, scene_cut)))
                             continue
                         self._queue.put((out_index, FrameReply(
-                            frame, skipped, ngx_result, scene, scene_cut)))
+                            frame, ngx_result, scene, scene_cut)))
                         continue
                     if byte_count != self._width * self._height * 4:
                         raise RuntimeError(
@@ -980,7 +970,7 @@ class WorkerReader:
                     data = _read_exact(self._worker.stdout, byte_count)
                     frame = np.frombuffer(data, dtype=np.uint8).reshape(self._height, self._width, 4)
                     self._queue.put((out_index, FrameReply(
-                        frame, skipped, ngx_result, scene, scene_cut)))
+                        frame, ngx_result, scene, scene_cut)))
                 else:
                     raise RuntimeError(f"invalid magic in the worker reply: 0x{magic:08X}")
         except Exception as exc:
@@ -1151,14 +1141,12 @@ class WorkerReader:
                 raise self._death(payload)
             if got_index == index:
                 if isinstance(payload, FrameReply):
-                    self.last_skipped = payload.skipped
                     self.last_ngx_result = payload.ngx_result
                     self.last_scene = payload.scene
                     self.last_scene_cut = payload.scene_cut
                     return payload.pixels
                 # Compatibility for tests and third-party callers that place
                 # legacy payloads into the private queue.
-                self.last_skipped = False
                 self.last_ngx_result = 0
                 self.last_scene = None
                 self.last_scene_cut = False

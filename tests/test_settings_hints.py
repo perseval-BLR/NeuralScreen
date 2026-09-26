@@ -51,7 +51,7 @@ STATE = {
     "monitors": ["0: 3840x2160", "1: 1920x1080"],
     "monitor": "0: 3840x2160",
     "gpus": ["0: RTX 5070 Ti", "1: RTX 2060"], "gpu": "0: RTX 5070 Ti",
-    "hdr": False, "spout": False, "rec_indicator": True, "skip_static": True,
+    "hdr": False, "spout": False, "rec_indicator": True,
     "windows": ["1A2B3C: Notepad"], "window_current": "1A2B3C: Notepad",
     # Frame Generation ON with the runtime refusing the pick: this is the one
     # state that adds the "this card caps at x2" hint to the FG row (issue

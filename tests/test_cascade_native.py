@@ -65,7 +65,7 @@ def run(work_w: int, work_h: int, boost: bool = True) -> tuple[list, object]:
         frame[..., 3] = 255
         motion = np.zeros((work_h, work_w, 2), np.float16)
         send_frame(worker, 0, frame, motion, True, 0, shm=None,
-                   want_pixels=True, skip_static=False)
+                   want_pixels=True)
         pixels = reader.recv(0, timeout=120.0)
         return list(logs), pixels
     finally:

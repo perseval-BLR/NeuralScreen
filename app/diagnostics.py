@@ -583,7 +583,7 @@ _SETTINGS_KEYS = (
     "intensity", "local_tone", "local_structure", "skin_structure",
     "work_scale", "nr_small", "motion_backend", "flow_preset",
     "frame_generation", "frame_multiplier", "frame_limit_mode",
-    "frame_limit_custom", "skip_static", "hdr", "spout",
+    "frame_limit_custom", "hdr", "spout",
     "monitor", "gpu", "gpu_no_nr", "theme", "lang",
     "nr_dll",
     # Everything below shipped AFTER this list was written, and every one of

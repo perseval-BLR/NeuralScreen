@@ -40,7 +40,6 @@
   "convert_audio": true,
   "spout": false,
   "hdr": false,
-  "skip_static": false,
   "gpu": 0,
   "gpu_no_nr": [],
   "menu_scale": 1.0,

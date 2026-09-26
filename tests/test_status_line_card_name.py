@@ -60,7 +60,7 @@ def _state(width: int, height: int, lang: str, card: str) -> dict:
         "screen_size": f"{width}x{height}", "theme": "light",
         "gpu_text": card, "gpu_ok": True,
         "hdr": False, "spout": False, "rec_indicator": True,
-        "skip_static": True, "windows": [], "window_current": "",
+        "windows": [], "window_current": "",
         "monitors": [], "monitor": "", "gpus": [], "gpu": "",
         "version": "1.15.0", "channel": "@perseval_BLR",
         "autostart": True, "open_on_start": True,
@@ -154,7 +154,7 @@ def main() -> int:
                 menu.page = "main"
                 menu.layout(w, h)
                 stats = {"fps": 98.8, "display_fps": 167.3,
-                         "skipped_static": 12, "resolution": f"{w}x{h}",
+                         "resolution": f"{w}x{h}",
                          "frames": 19704}
 
                 drawn = []
@@ -285,8 +285,7 @@ def main() -> int:
         menu.visible = True
         menu.page = "main"
         menu.layout(w, h)
-        stats = {"fps": 0.0, "display_fps": 287.7, "skipped_static": 0,
-                 "resolution": f"{w}x{h}", "frames": 92372}
+        stats = {"fps": 0.0, "display_fps": 287.7, "resolution": f"{w}x{h}", "frames": 92372}
         placed = _watch(menu, stats, w, h)
         alone += 1
         labels = [label for label, _x, _y in
@@ -315,7 +314,7 @@ def main() -> int:
         menu.visible = True
         menu.page = "main"
         menu.layout(1920, 1080)
-        stats = {"fps": 98.8, "display_fps": 167.3, "skipped_static": 9,
+        stats = {"fps": 98.8, "display_fps": 167.3,
                  "resolution": "3840x2160", "frames": 197045678}
 
         placed = _watch(menu, stats, 1920, 1080)

@@ -75,7 +75,7 @@ def real_state():
         "profile": "Natural", "params": {}, "nr_small": True,
         "nr_direct": False, "work_scale": 0.65, "theme": "dark",
         "lang": "en", "frame_generation": False, "frame_multiplier": 2,
-        "skip_static": True, "boost": False, "spout": False, "hdr": False,
+        "boost": False, "spout": False, "hdr": False,
         "screenshot_dir": "C:/Shots", "recording_dir": "C:/Rec",
         "screenshot_mode": "ask", "screenshot_format": "png",
         "monitor": "0", "frame_limit_mode": "unlimited",
@@ -191,7 +191,6 @@ class _FakeWorker:
 class _FakeReader:
     """A reader that never has a frame, so no pixel path is exercised."""
 
-    last_skipped = False
     last_ngx_result = 0
 
     def recv(self, index, timeout=None):
@@ -340,7 +339,7 @@ def main() -> int:
                 "motion_backend": "nvofa", "frame_generation": False,
                 "frame_multiplier": 2, "recording": False,
                 "recording_dir": "C:/Rec", "autostart": True,
-                "open_on_start": True, "skip_static": True, "boost": False,
+                "open_on_start": True, "boost": False,
                 "spout": False, "hdr": False, "gpu": "0",
                 "gpu_text": "RTX 5070 Ti", "gpus": ["0"], "langs": ["en", "ru"],
                 "convert_dest": "folder", "convert_dir": "C:/Converted",

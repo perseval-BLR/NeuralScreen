@@ -264,8 +264,6 @@ class NativeSelfTestRunner:
         failure = _failure_from_logs(self.logs)
         if failure is not None:
             return StageOutcome(failure)
-        if bool(getattr(self.reader, "last_skipped", False)):
-            return StageOutcome(StageStatus.SKIP)
         if pixels is None:
             return StageOutcome(StageStatus.UNKNOWN)
         output = np.ascontiguousarray(pixels, dtype=np.uint8)

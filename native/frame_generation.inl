@@ -77,7 +77,6 @@ static bool FgStepDown(unsigned refused)
     Log("[fg] %ux refused 0x%08X; stepping down to %ux",
         g_fg_count + 1, refused, g_fg_count);
     g_fg_count_limit = g_fg_count - 1;
-    g_force_next_frame = true;
     return true;
 }
 
@@ -743,7 +742,6 @@ static void ConfigureFgFrame(uint32_t flags)
     g_fg_ui_enabled = enabled;
     g_fg_count = count;
     g_fg.failed = false;
-    g_force_next_frame = true;
     Log("[fg] UI: %s, %ux%s", enabled ? "on" : "off", count + 1,
         count < requested ? " (capped by the runtime ceiling)" : "");
 }

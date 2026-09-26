@@ -58,10 +58,9 @@ class _Worker:
 
 
 class _Reader:
-    def __init__(self, pixels=None, *, skipped=False, error=None,
+    def __init__(self, pixels=None, *, error=None,
                  ack=(1, 1, CREATE_CATEGORY_NONE)):
         self.pixels = pixels
-        self.last_skipped = skipped
         self.last_ngx_result = 1
         self.error = error
         self.ack = ack
@@ -118,7 +117,7 @@ class RuntimeAdapterTests(unittest.TestCase):
         self.assertEqual([call.args[4] for call in sender.call_args_list],
                          [True, False, False])
 
-    def test_passthrough_and_skip_never_pass(self):
+    def test_passthrough_never_passes(self):
         create, evaluate = self.request()
         runner, patches, *_ = self.runner(
             ["[video] NR feature unavailable (0xBAD00001) - SAFE PASSTHROUGH"],
@@ -139,10 +138,10 @@ class RuntimeAdapterTests(unittest.TestCase):
         pixels = np.zeros((evaluate.frame.height, evaluate.frame.width, 4), np.uint8)
         runner, patches, *_ = self.runner(
             ["[pure] direct feature 18 ready: 640x360"],
-            _Reader(pixels, skipped=True))
+            _Reader(pixels))
         with patches[0], patches[1]:
             self.assertEqual(runner.create(create).status, StageStatus.SUCCESS)
-            self.assertEqual(runner.evaluate(evaluate).status, StageStatus.SKIP)
+            self.assertEqual(runner.evaluate(evaluate).status, StageStatus.SUCCESS)
             runner.close()
 
     def test_device_loss_and_timeout_are_explicit(self):

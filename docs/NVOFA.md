@@ -47,8 +47,8 @@ this change does not remove it.
 
 The driver also performs preprocessing/postprocessing, and expansion uses the
 graphics queue: this does not make motion estimation free. Static images can
-cost more than CPU DIS's cheap static check; the existing "skip static frames"
-setting still applies. No game-provided depth or motion vectors are available.
+cost more than CPU DIS's cheap static check. No game-provided depth or motion
+vectors are available.
 
 The driver produces an 8-bit cost texture, retained on the GPU. Higher cost
 means a less reliable match; it is not a calibrated probability. This PR does

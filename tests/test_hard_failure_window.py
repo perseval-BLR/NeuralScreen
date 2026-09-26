@@ -4,7 +4,7 @@ After MAX_CONSECUTIVE_RESTARTS the auto-revive decision asks
 main._hard_failure(st.worker_logs), which scans only logs[-40:]. The
 worker prints "NR feature unavailable (0xBAD00001) - SAFE PASSTHROUGH"
 once, on frame 0 of a worker that then keeps running - so any 40 further
-diagnostics (the always-logged [present]/[cap]/[video]/[skip] set added
+diagnostics (the always-logged [present]/[cap]/[video] set added
 by d8d063d) push the verdict out of the window. The app then treats a
 permanently broken card as transient and keeps retrying it - the exact
 restart-storm the classifier exists to prevent.

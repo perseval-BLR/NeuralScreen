@@ -393,7 +393,6 @@ def _log_environment(cfg: dict) -> None:
                   f"FG {'on' if cfg.get('frame_generation') else 'off'}"
                   f" x{int(cfg.get('frame_multiplier', 2))} | "
                   f"motion {cfg.get('motion_backend', 'cpu')} | "
-                  f"skip_static {'on' if cfg.get('skip_static') else 'off'} | "
                   f"spout {'on' if cfg.get('spout') else 'off'}")
         except Exception:
             pass
@@ -816,7 +815,6 @@ def bring_up(st) -> None:
     # (time.monotonic()). 0.0 means "not open", so the close always logs.
     st.menu_opened_at = 0.0
     st.shot_rgba = None  # frozen before Save As, never a dialog-contaminated worker slot
-    st.skipped_static_frames = 0  # explicit OUT1 status, not inferred from empty pixels
     st.recorder: VideoRecorder | None = None  # recording (Num0), MP4 AV1 NVENC
     st.recording_finalizer: VideoRecorder | None = None
     st.recording_finalize_deadline = 0.0

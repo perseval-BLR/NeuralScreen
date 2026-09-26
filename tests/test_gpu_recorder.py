@@ -317,7 +317,7 @@ def record_through_worker(folder: Path, *, seconds: float, ending: str,
         # One frame before the recording: the worker's first frame runs the
         # warm-up, which is not what is being measured.
         send_frame(worker, 0, pattern(0, w, h), motion, True, 0,
-                   shm=None, want_pixels=True, skip_static=False)
+                   shm=None, want_pixels=True)
         reader.recv(0, timeout=60.0)
         rec = GpuRecorder(worker, reader, str(folder / f"{ending}.mp4"),
                           fps=30, audio=True)
@@ -325,7 +325,7 @@ def record_through_worker(folder: Path, *, seconds: float, ending: str,
         i = 1
         while time.perf_counter() - t0 < seconds:
             send_frame(worker, i, pattern(i, w, h), motion, False, i,
-                       shm=None, want_pixels=True, skip_static=False)
+                       shm=None, want_pixels=True)
             reader.recv(i, timeout=30.0)
             sent += 1
             i += 1

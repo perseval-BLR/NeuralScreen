@@ -7,12 +7,11 @@ network skips evaluations (0x00000000) - the exact pattern from issue #11
 (kortul, 4060 Laptop). Only the 0xBAD00000 family (NVSDK_NGX_FAILED) is
 a real error.
 
-Checked: the explicit SKIPPED status is visible to the caller; ngx_result=0
-alone does not pretend that work was skipped; a real failure (0xBAD00001)
-raises; a missing OK bit raises; a normal frame passes through; and the
-worker's scene score (FRAME_FLAG_WORKER_SCENE frames) reaches the caller -
-the value in the high 16 bits and the cut bit - while a reply without it
-reports none.
+Checked: ngx_result=0 passes pixels through and reports real work; a real
+failure (0xBAD00001) raises; a missing OK bit raises; a normal frame passes
+through; and the worker's scene score (FRAME_FLAG_WORKER_SCENE frames)
+reaches the caller - the value in the high 16 bits and the cut bit - while
+a reply without it reports none.
 """
 import os
 import queue
@@ -28,7 +27,7 @@ sys.path.insert(0, BASE)
 sys.path.insert(0, os.path.join(BASE, "app"))  # the modules live in app/
 from main import (CREATE_ACK_FMT, CREATE_ACK_MAGIC,
                   CREATE_CATEGORY_UNSUPPORTED, OUT_FMT, OUT_MAGIC,
-                  OUT_STATUS_OK, OUT_STATUS_SKIPPED, WorkerReader)  # noqa: E402
+                  OUT_STATUS_OK, WorkerReader)  # noqa: E402
 from protocol import OUT_STATUS_SCENE, OUT_STATUS_SCENE_CUT  # noqa: E402
 
 
@@ -74,26 +73,17 @@ def main() -> int:
         # 1. A normal frame: result 1, pixels inline.
         fake.send_out(1, 1, 4, 1, payload=b"\xAB" * 4)
         got = reader.recv(1, 5.0)
-        if not isinstance(got, np.ndarray) or got.tobytes() != b"\xAB" * 4 \
-                or reader.last_skipped:
-            failures.append(f"normal frame: expected 4 bytes and skipped=False, got {got!r}")
+        if not isinstance(got, np.ndarray) or got.tobytes() != b"\xAB" * 4:
+            failures.append(f"normal frame: expected 4 bytes, got {got!r}")
 
-        # 2. A skipped frame is explicit in the status; no pixels is not
-        #    enough because WNDO replies are empty too.
-        fake.send_out(2, OUT_STATUS_OK | OUT_STATUS_SKIPPED, 0, 1)
-        got = reader.recv(2, 5.0)
-        if got is not None or not reader.last_skipped:
-            failures.append(
-                f"skipped frame: expected None and skipped=True, got {got!r}")
-
-        # 3. ngx_result=0 is not a skip marker. If pixels exist, pass them
+        # 2. ngx_result=0 is not an error marker. If pixels exist, pass them
         #    through and report real work.
         fake.send_out(3, OUT_STATUS_OK, 4, 0x00000000, payload=b"\xCD" * 4)
         got = reader.recv(3, 5.0)
         if not isinstance(got, np.ndarray) or got.tobytes() != b"\xCD" * 4 \
-                or reader.last_skipped or reader.last_ngx_result != 0:
+                or reader.last_ngx_result != 0:
             failures.append(
-                f"zero-result with pixels: expected bytes and skipped=False, got {got!r}")
+                f"zero-result with pixels: expected bytes, got {got!r}")
 
         # 3b. The worker's scene score: 0.31 in the high 16 bits, and the cut
         #     it caused. Then a plain reply, which must not keep the old score.
@@ -146,8 +136,8 @@ def main() -> int:
     if failures:
         print(f"FAIL: {len(failures)} - {failures}")
         return 1
-    print("OK: OUT1 distinguishes OK, SKIPPED and NGX failure, and carries the "
-          "worker's scene score")
+    print("OK: OUT1 passes normal frames and zero-result frames, raises on a "
+          "real NGX failure, and carries the worker's scene score")
     return 0
 
 

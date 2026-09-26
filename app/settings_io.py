@@ -865,7 +865,7 @@ _BOOL_KEYS = (
     "fullscreen", "worker_present", "motion_on_gpu", "capture_in_worker",
     "pixels_in_shm", "nr_small", "nr_direct", "frame_generation",
     "record_audio", "rec_indicator", "gpu_record", "convert_audio", "spout",
-    "hdr", "skip_static", "open_menu_on_start",
+    "hdr", "open_menu_on_start",
 )
 
 
@@ -1077,10 +1077,6 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         # the picker can mark them after a restart too; cleared per adapter
         # as soon as one of them works (issue #33).
         "gpu_no_nr": _index_list(cfg.get("gpu_no_nr")),
-        # Skip static frames: no new frame from the capture - the network
-        # idles instead of re-running on the same picture. A per-frame flag,
-        # so it survives a restart through the config alone.
-        "skip_static": bool(cfg.get("skip_static", False)),
         "frame_generation": bool(cfg.get("frame_generation", False)),
         "frame_multiplier": min(4, max(2, int(cfg.get("frame_multiplier", 2)))),
         "frame_limit_mode": (str(cfg.get("frame_limit_mode", "unlimited"))
@@ -1370,30 +1366,6 @@ def _fg_active_multiplier(st) -> int | None:
 
 
 
-def _worker_idle(st) -> bool:
-    """Is the network idling on an unchanged screen right now?
-
-    The worker announces a stretch ONCE - "[skip] no new frame" - and
-    announces its end when the screen moves again. So the state is the
-    LATEST of those two markers, not the presence of the first one in the
-    last few lines: the menu used to look at worker_logs[-3:], and one
-    unrelated line was enough to push the single announcement out and turn
-    the readout back into a frame rate while nothing was being processed
-    (audit).
-
-    The window is bounded because this runs on every frame the menu is open:
-    during a stretch the worker is otherwise quiet, so 200 lines is a long
-    way past the marker, and a scan of the whole 2000-line buffer sixty
-    times a second is not worth the difference.
-    """
-    for line in reversed(st.worker_logs[-200:]):
-        if "[skip] no new frame" in line:
-            return True
-        if "[skip] the screen changed" in line:
-            return False
-    return False
-
-
 def _window_menu_state(windows: list[tuple[int, str]],
                        current_hwnd: int | None) -> tuple[list[dict], dict | None]:
     """Build the window-picker payload without mixing identity into labels.
@@ -1596,7 +1568,6 @@ def menu_payload(st) -> dict:
         "spout": bool(st.cfg.get("spout", False)),
         "hdr": bool(st.cfg.get("hdr", False)),
         "motion_backend": st.cfg.get("motion_backend", "nvofa"),
-        "skip_static": bool(st.cfg.get("skip_static", False)),
         "frame_generation": bool(st.cfg.get("frame_generation", False)),
         "frame_multiplier": min(4, max(2, int(st.cfg.get("frame_multiplier", 2)))),
         # The step the presenter is REALLY running, when the runtime refused
@@ -1609,11 +1580,6 @@ def menu_payload(st) -> dict:
                              in FRAME_LIMIT_MODES else "unlimited"),
         "frame_limit_custom": frame_limit_fps(
             dict(st.cfg, frame_limit_mode="custom")),
-        # Is the network idling on an unchanged screen right now? The
-        # worker says so in its log; without this the menu shows a
-        # healthy FPS while nothing is being processed, and the skip
-        # reads as "it does not work" (user, 12.09).
-        "idle": _worker_idle(st),
         # What the presenter actually shows while FG interpolates; the
         # HUD pairs it with the network rate as "42 / 84 fps".
         "display_fps": _fg_displayed_fps(st),

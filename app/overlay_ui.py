@@ -441,9 +441,6 @@ class OverlayMenu:
             # then draws as off while the action behind it fires normally.
             "hdr": False,
             "motion_backend": "nvofa",
-            # Skip static frames (processing section): no new capture frame -
-            # the network idles instead of re-running.
-            "skip_static": True,
             # NR is on while the worker is not evaluating: the picture is raw.
             # Listed HERE for the reason two keys above spell out - set_state
             # drops an unknown key in silence, and the drawer then reads a
@@ -461,8 +458,6 @@ class OverlayMenu:
             # The current monitor's DXGI devicename - carried so a log or a
             # future control can name the exact display the capture is on.
             "monitor_devicename": "",
-            # True while the network is idling on an unchanged screen.
-            "idle": False,
             "gpu": "0",
             "gpus": [],
             "autostart": False,
@@ -1748,17 +1743,6 @@ class OverlayMenu:
                 cy += self._u(LABEL_H) + self._u(4)
 
             section(s["sec_behaviour"], "app")
-            # The static-frame skip is OFF and its switch is not drawn. The
-            # feature is suspected in the window-mode trouble and is on its
-            # way out (user, 13.09); the flag still works from config.json
-            # until it goes, so it can be measured rather than argued about.
-            # Nothing else here is hidden - do not grow the habit.
-            _skip_hidden = True
-            if not _skip_hidden:
-                toggle("skip_static",
-                       s.get("skip_static", "Skip static frames"),
-                       bool(self.state.get("skip_static", False)),
-                       hint=s.get("skip_static_hint", ""))
             toggle("open_on_start", s["open_on_start"],
                    bool(self.state.get("open_on_start")))
             toggle("autostart", s.get("autostart", "Autostart with Windows"),
@@ -3434,8 +3418,6 @@ class OverlayMenu:
             return str(s.get("nr_not_running",
                              "NR is on but nothing is processed - restart "
                              "the worker or pick another source")), True
-        if bool(self.state.get("idle")):
-            return str(s.get("idle_short", "idle")), False
         return str(s.get("status_on", "processing")), False
 
     def _draw_stats(self, surface, s: dict) -> None:

@@ -182,14 +182,14 @@ from protocol import (  # noqa: F401
     CREATE_CATEGORY_NONE, CREATE_CATEGORY_UNSUPPORTED,
     DDA_ACK_FMT, DDA_ACK_MAGIC, DDA_FMT, DDA_MAGIC, FRAME_FLAG_BYPASS,
     FRAME_FLAG_MOTION_SMALL, FRAME_FLAG_NO_COLOR, FRAME_FLAG_SHM,
-    FRAME_FLAG_SKIP_STATIC, FRAME_FLAG_SPLIT, FRAME_FLAG_WANT_PIXELS,
+    FRAME_FLAG_SPLIT, FRAME_FLAG_WANT_PIXELS,
     FRAME_FMT, FRAME_MAGIC,
     GRAY_ACK_FMT, GRAY_ACK_MAGIC, GRAY_FMT, GRAY_MAGIC, HEADER_FMT,
     MOTION_ACK_FMT, MOTION_ACK_MAGIC, MOTION_FMT, MOTION_MAGIC,
     OUTS_ACK_FMT, OUTS_ACK_MAGIC, OUTS_FMT, OUTS_MAGIC, OUT_BYTES_IN_SHM,
     AUDIO_RING_FMT, REC_DONE_FMT, REC_START_ACK_FMT, REC_START_FMT,
     REC_STOP_FMT,
-    FrameReply, OUT_FMT, OUT_MAGIC, OUT_STATUS_OK, OUT_STATUS_SKIPPED, RACK_FMT,
+    FrameReply, OUT_FMT, OUT_MAGIC, OUT_STATUS_OK, RACK_FMT,
     RESIZE_ACK_MAGIC, RESIZE_FLAG_NR_SMALL,
     RESIZE_FMT, RESIZE_MAGIC, SHM_ACK_FMT, SHM_ACK_MAGIC, SHM_FMT,
     SHM_MAGIC, VIDEO_MAGIC, WGC_ACK_FMT, WGC_ACK_MAGIC, WGC_FMT,
@@ -435,7 +435,6 @@ class _Pipeline:
         # the first Screenshot click.
         "shot_requested_at",
         "shot_dialog_started_at",
-        "skipped_static_frames",
         "perf",
         "present_attempted",
         "present_mode",
@@ -997,7 +996,6 @@ def main() -> int:
                            no_color=bool(st.dda_mode),
                            bypass=bypass,
                            split=st.split_pos,
-                           skip_static=bool(st.cfg.get("skip_static", False)),
                            frame_generation=bool(st.cfg.get("frame_generation", False)),
                            frame_multiplier=int(st.cfg.get("frame_multiplier", 2)),
                            prepared=bool(st.gray_active) and not worker_scene,
@@ -1173,9 +1171,6 @@ def main() -> int:
                 st.work_frame = None
                 continue
             _perf("recv", t0)
-            frame_skipped = bool(getattr(st.reader, "last_skipped", False))
-            if frame_skipped:
-                st.skipped_static_frames += 1
             # A frame arrived - the failure chain is broken. Without the reset
             # the counter accumulated across the whole session and three
             # unrelated failures (even an hour apart) turned NR off.
@@ -1184,8 +1179,8 @@ def main() -> int:
             # Did the worker actually EVALUATE this frame? `last_ngx_result` is
             # 0 when no evaluation happened - the state where the menu says NR ON
             # while the picture goes out raw. Kept as a short streak so one odd
-            # frame (a skipped slot, a stall reset) is not reported as a fault.
-            if not st.paused and not frame_skipped:
+            # frame (a stall reset, a bypass) is not reported as a fault.
+            if not st.paused:
                 ngx = int(getattr(st.reader, "last_ngx_result", 0) or 0)
                 if ngx == 0:
                     st.nr_idle_streak += 1
@@ -1340,7 +1335,7 @@ def main() -> int:
                 st.display.alert(UI_STRINGS[st.lang]["nr_on"])
             _perf("show", t0)
             completed_at = time.perf_counter()
-            if not bypass and not frame_skipped:
+            if not bypass:
                 nr_rate.record(completed_at)
             last_fps = nr_rate.rate(completed_at)
             st.display.set_hud({
@@ -1356,7 +1351,6 @@ def main() -> int:
                 # And which multiplier is really running (issue #100): the
                 # user's pick and the live step can differ after a step-down.
                 "fg_multiplier_active": settings_io._fg_active_multiplier(st),
-                "skipped_static": st.skipped_static_frames,
                 "status": status,
                 "resolution": f"{st.width}x{st.height}",
                 "profile": st.cfg["profile"],
@@ -1418,7 +1412,7 @@ def main() -> int:
                          else guide.scene_score if guide is not None else None)
                 scene = f" | scene {score:.3f}" if score is not None else ""
                 print(f"[main] {status} | NR {last_fps:5.1f} fps | "
-                      f"skipped {st.skipped_static_frames} | frames {st.frame_index} | "
+                      f"frames {st.frame_index} | "
                       f"work {st.work_w}x{st.work_h}{scene}")
                 last_log = log_now
 

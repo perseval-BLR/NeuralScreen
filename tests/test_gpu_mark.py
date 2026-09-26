@@ -120,7 +120,7 @@ def main() -> int:
 
         # 4. The mark survives a round trip through the config payload.
         payload = settings_io._menu_layout_payload(
-            {"profile": "Natural", "gpu": 0, "spout": False, "skip_static": True,
+            {"profile": "Natural", "gpu": 0, "spout": False,
              "rec_indicator": True, "screenshot_dir": "", "presets": {},
              "gpu_no_nr": [2]},
             {"intensity": 1.0, "local_tone": 1.0, "local_structure": 1.0,

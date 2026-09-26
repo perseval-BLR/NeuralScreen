@@ -82,7 +82,7 @@ def main() -> int:
 
     # And the reverse: a prefix nobody emits is dead paperwork, EXCEPT the
     # ones that come from elsewhere in the program rather than the worker.
-    FROM_ELSEWHERE = {"[nvofa]", "[fg]", "[spout]", "[skip]"}
+    FROM_ELSEWHERE = {"[nvofa]", "[fg]", "[spout]"}
     for tag in sorted(allow - set(seen) - FROM_ELSEWHERE):
         failures.append(f"_LOG_ALWAYS lets through {tag}, which nothing emits")
 

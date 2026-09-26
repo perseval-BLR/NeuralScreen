@@ -2,10 +2,10 @@
 
 The release zip takes config.json from git HEAD, and autocheck's leak
 check is what catches "a maintainer committed a personal value". The
-list stopped growing: skip_static, gpu, screenshot_dir, rec_indicator
+list stopped growing: gpu, screenshot_dir, rec_indicator
 and monitor are written by _menu_layout_payload but never compared.
 config.json HEAD today happens to hold defaults, so the gap is for the
-NEXT change - committing a personal skip_static=false or a
+NEXT change - committing a personal screenshot_dir or a
 screenshot_dir would ship silently.
 
 Expected: leak keys ⊇ the keys _menu_layout_payload can write.
@@ -43,7 +43,7 @@ def main() -> int:
     # 2. The keys the payload can write (what a personal config may carry).
     payload = settings_io._menu_layout_payload(
         {"profile": "Natural", "gpu": 0, "spout": False,
-         "skip_static": True, "rec_indicator": True, "screenshot_dir": ""},
+         "rec_indicator": True, "screenshot_dir": ""},
         {"intensity": 1.0, "local_tone": 1.0, "local_structure": 1.0,
          "skin_structure": -1.0},
         0, "en", 0.65, 0.0, True, False,
@@ -51,7 +51,7 @@ def main() -> int:
                        "state": {"theme": "light"}, "offset": [0, 0]})())
 
     # Keys that are legitimately defaulted in HEAD and may differ per user.
-    personal = {"skip_static", "gpu", "screenshot_dir", "rec_indicator",
+    personal = {"gpu", "screenshot_dir", "rec_indicator",
                 "monitor", "spout"}
     missing = sorted(personal - leak_keys - set())
     if missing:

@@ -58,7 +58,7 @@ from winapi import window_frame_rect
 #: Always let through: the pipeline diagnostics. NS_PHASE=1 adds the
 #: per-frame profiler lines ([phase]/[pw]) on top of these.
 _LOG_ALWAYS = ("[host]", "[pure]", "[arch]", "[cap]", "[dda]", "[present]",
-               "[spout]", "[wgc]", "[video]", "[skip]", "[hdr]", "[nvofa]", "[fg]",
+               "[spout]", "[wgc]", "[video]", "[hdr]", "[nvofa]", "[fg]",
                # Added in 2.0.1. These nine prefixes were emitted by the
                # worker and dropped HERE - not by the worker, which filters
                # nothing. Nine of them, and they are not decoration:

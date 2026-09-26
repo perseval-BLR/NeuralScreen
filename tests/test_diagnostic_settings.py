@@ -52,7 +52,7 @@ SAMPLE = {
     "intensity": 1.0, "local_tone": 0.5, "local_structure": 1.0,
     "skin_structure": -1.0, "work_scale": 0.65, "nr_small": False,
     "motion_backend": "nvofa", "frame_generation": True, "frame_multiplier": 3,
-    "frame_limit_mode": "off", "skip_static": False, "hdr": False, "spout": False,
+    "frame_limit_mode": "off", "hdr": False, "spout": False,
     "monitor": 0, "theme": "dark", "lang": "ru",
     # Must not travel:
     "hotkeys": {"toggle": "Num1", "record": "Num0"},
@@ -117,8 +117,7 @@ def main() -> int:
     if "[env] switches:" not in startup:
         failures.append("the header names no switches: a report cannot tell "
                         "whether FG was on when the session started")
-    for switch in ("frame_generation", "frame_multiplier", "motion_backend",
-                   "skip_static"):
+    for switch in ("frame_generation", "frame_multiplier", "motion_backend"):
         if switch not in startup.split("[env] switches:")[-1][:600]:
             failures.append(f"the switches line does not name {switch}")
 

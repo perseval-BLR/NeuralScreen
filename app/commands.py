@@ -821,13 +821,6 @@ def apply_menu_action(st, action: tuple) -> None:
             max(settings_io.FRAME_LIMIT_CUSTOM_MIN, value))
         settings_io.save_menu_layout(st)
         print(f"[main] custom frame limit: {st.cfg['frame_limit_custom']} fps")
-    elif kind == "toggle" and action[1] == "skip_static":
-        # A per-frame flag in the header, not a worker setting: no restart,
-        # the next frame already carries the new state.
-        st.cfg["skip_static"] = not bool(st.cfg.get("skip_static", True))
-        settings_io.save_menu_layout(st)
-        print(f"[main] skip static frames: "
-              f"{'on' if st.cfg['skip_static'] else 'off'}")
     elif kind == "toggle" and action[1] == "spout":
         # The Spout2 bridge: the worker reads NS_SPOUT only at startup,
         # so the toggle goes through a worker restart (pipeline.apply_spout

@@ -21,7 +21,7 @@ FAILS = []
 # ``NR ... fps`` instead of presenting it as an ambiguous display FPS.
 NR_FRAME_MARKER = "NR ON | NR "
 NR_STATS_RE = re.compile(
-    r"NR ON \| NR\s+([\d.]+) fps \| skipped \d+ \| frames (\d+)"
+    r"NR ON \| NR\s+([\d.]+) fps \| frames (\d+)"
 )
 
 NATIVE = ROOT / "native"
@@ -135,11 +135,11 @@ def personal_config_keys():
 
     The archive's config.json comes from git HEAD, and this is what catches
     "a maintainer committed a personal value". It used to be a hand-written
-    tuple, and it stopped growing: skip_static, gpu, screenshot_dir,
-    rec_indicator and monitor were all written by _menu_layout_payload and
-    none of them was ever compared. Adding those five would have restarted
-    the same clock, so the set is asked of the payload itself - a key the
-    menu learns to save is covered the day it is added.
+    tuple, and it stopped growing: gpu, screenshot_dir, rec_indicator and
+    monitor were all written by _menu_layout_payload and none of them was
+    ever compared. Adding those would have restarted the same clock, so the
+    set is asked of the payload itself - a key the menu learns to save is
+    covered the day it is added.
 
     "hotkeys" is included by hand because it is saved on its own path, not
     through the menu payload.
@@ -152,7 +152,7 @@ def personal_config_keys():
         sys.path.insert(0, str(ROOT / "app"))  # the modules live in app/
     import settings_io
     payload = settings_io._menu_layout_payload(
-        {"profile": "Natural", "gpu": 0, "spout": False, "skip_static": True,
+        {"profile": "Natural", "gpu": 0, "spout": False,
          "rec_indicator": True, "screenshot_dir": "", "presets": {}},
         {"intensity": 1.0, "local_tone": 1.0, "local_structure": 1.0,
          "skin_structure": -1.0},

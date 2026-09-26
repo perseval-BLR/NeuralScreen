@@ -1753,7 +1753,6 @@ static constexpr uint32_t FRAME_FLAG_PREPARED = 0x1000u;
 static constexpr uint32_t FRAME_MAGIC = 0x314D5246u; // "FRM1"
 static constexpr uint32_t OUT_MAGIC   = 0x3154554Fu; // "OUT1"
 static constexpr uint32_t OUT_STATUS_OK = 0x1u;
-static constexpr uint32_t OUT_STATUS_SKIPPED = 0x2u;
 // FRAME_FLAG_WORKER_SCENE frames: this reply carries the worker's scene
 // score in bits 16-31 (x65535), and SCENE_CUT says the frame was reset on it.
 static constexpr uint32_t OUT_STATUS_SCENE = 0x4u;
@@ -1819,11 +1818,6 @@ static constexpr uint32_t FRAME_FLAG_BYPASS = 0x10u;
 // in the header, and resizing it for a single number would break the protocol
 // on both sides.
 static constexpr uint32_t FRAME_FLAG_SPLIT = 0x20u;
-// bit 6: skip static frames - the capture has no new frame (DDA
-// WAIT_TIMEOUT, WGC empty pool), so the network is NOT re-run on the stale
-// texture. An empty OUT1 is the "nothing changed" answer; WANT_PIXELS wins
-// over this bit (a screenshot or a recording wants the picture either way).
-static constexpr uint32_t FRAME_FLAG_SKIP_STATIC = 0x40u;
 // bit 13: answer as soon as the frame is on the GPU queue, not once it has
 // been presented. The client's own per-frame work - the HUD, the commands, the
 // next capture request - then runs while the GPU finishes this frame instead
@@ -2216,25 +2210,12 @@ static bool g_video_profile_set = false;
 static VideoPerPassCmd g_per_pass = {};
 static bool g_per_pass_set = false;
 static uint32_t g_last_eval_result = 0;
-// Static-frame skipping (FRAME_FLAG_SKIP_STATIC): how many frames were skipped
-// since the last change, and whether the "idle" line was already written for
-// this stretch (one line per idle stretch, not per frame).
-//
-// Skipping must have no visual price, so a frame whose OUTPUT would change is
-// never skipped even on a frozen screen: a bypass toggle (NR on/off), a wipe
-// move, a fresh feature (RNSZ), a re-opened present window. The last output
-// state is kept to spot those transitions.
-static uint32_t g_skip_static_count = 0;
-static bool     g_skip_static_logged = false;
 static bool     g_last_out_bypass = false;
 // Which source the last frame presented: the neural result or the raw capture.
 // FG's history is only valid inside one source, so the change of this flag is
 // what resets the presenter - the bypass flag itself is true on every frame of
 // the mode and resetting on it made the runtime interpolate nothing.
 static bool     g_fg_source_bypass = false;
-static bool     g_last_out_split_on = false;
-static uint32_t g_last_out_split_x = 0;
-static bool     g_force_next_frame = false;   // render one frame even if unchanged
 static bool g_live_force = false;   // --live: treat the stream as unbounded even with frame_count > 0
 
 // Shared input frame (SHMI). Read-only view of the client's named section:
@@ -3183,7 +3164,6 @@ static bool RebuildPresentIfStale()
     ClosePresent();
     if (!OpenPresent(w, h, flags))
     { Log("[present] could not rebuild after the mode change"); return false; }
-    g_force_next_frame = true;
     return true;
 }
 
@@ -7094,7 +7074,6 @@ static int RunVideo()
                 }
                 v.residual = v.nr_small && !g_nr_direct;
                 v.residual_strength = v.residual ? ResidualStrengthRequested() : 1.0f;
-                g_force_next_frame = true;   // show it on the next frame
                 VideoResizeAck ok = { RESIZE_ACK_MAGIC, 1u,
                                       static_cast<uint32_t>(NVSDK_NGX_Result_Success),
                                       0u, fh.pts };
@@ -7187,7 +7166,6 @@ static int RunVideo()
             warmup_done = (h.feature == nullptr);   // only warm a real NR feature
             VideoResizeAck ack = { RESIZE_ACK_MAGIC, 1u, static_cast<uint32_t>(rr), 0u, fh.pts };
             if (!WriteExact(g_wire, &ack, sizeof(ack))) return 10;
-            g_force_next_frame = true;   // the new setting must be shown on the next frame
             // Not always ready: CreateFeature may have failed four lines up
             // and said SAFE PASSTHROUGH, and this line then contradicted it
             // in the same breath. It also names the composite now - the
@@ -7254,7 +7232,6 @@ static int RunVideo()
             }
             else
                 ok = OpenPresent(wc.width, wc.height, wc.flags) ? 1u : 0u;
-            if (ok) g_force_next_frame = true;   // a fresh window gets a picture at once
             VideoWindowAck ack = { WINDOW_ACK_MAGIC, ok, 0u, 0u, wc.pts };
             if (!WriteExact(g_wire, &ack, sizeof(ack))) return 10;
             continue;
@@ -7358,7 +7335,6 @@ static int RunVideo()
             uint32_t ok = 0;
             if (hwnd == nullptr) { CloseWgc(); ok = 1; }
             else ok = OpenWgc(hwnd) ? 1u : 0u;
-            if (ok) g_force_next_frame = true;   // the new source shows at once
             // The size the capture really produces - physical pixels, which is
             // what the client has to size its textures for.
             VideoWgcAck ack = { WGC_ACK_MAGIC, ok, ok ? g_dda_w : 0u,
@@ -7429,7 +7405,6 @@ static int RunVideo()
                 ack.audio = started.audio ? 1u : 0u;
                 // The first frame goes into the file at once, even on a
                 // screen that is not changing.
-                if (ok) g_force_next_frame = true;
             }
             else
                 Log("[grec] RECS: the file name is not valid UTF-8");
@@ -7608,72 +7583,6 @@ static int RunVideo()
                 PhaseReport((fh.reserved & FRAME_FLAG_BYPASS) != 0 || h.feature == nullptr);
                 continue;
             }
-            if (!got)
-            {
-                // No new frame: the desktop did not change (DDA timeout) or the
-                // window did not redraw (WGC empty pool). Re-running the network
-                // on the stale texture is pure waste - an idle desktop used to be
-                // a full load. The client asks for the skip in bit 6 and does not
-                // need pixels this frame; an empty OUT1 is the "nothing changed"
-                // answer. WANT_PIXELS wins: a screenshot or a recording wants the
-                // picture even when it did not change. So does anything that
-                // changes what the picture WOULD show - see g_last_out_*.
-                const bool want_bypass = (fh.reserved & FRAME_FLAG_BYPASS) != 0 ||
-                                         h.feature == nullptr;
-                const bool split_on = (fh.reserved & FRAME_FLAG_SPLIT) != 0;
-                const UINT split_cw = v.upscale ? v.full_w : v.w;
-                const uint32_t split_x = split_on
-                    ? SplitXFromFlags(fh.reserved, split_cw) : 0u;
-                const bool out_changed = want_bypass != g_last_out_bypass ||
-                                         split_on != g_last_out_split_on ||
-                                         (split_on && split_x != g_last_out_split_x) ||
-                                         g_force_next_frame;
-                const bool skip = (fh.reserved & FRAME_FLAG_SKIP_STATIC) != 0 &&
-                                  (fh.reserved & FRAME_FLAG_WANT_PIXELS) == 0 &&
-                                  !out_changed;
-                if (skip)
-                {
-                    ++g_skip_static_count;
-                    // Announce a STRETCH, not a frame. In one-window mode the
-                    // capture is event-driven and a window that is almost
-                    // still alternates skip/process frame after frame: a
-                    // user's log had the pair of lines repeating every 10-17
-                    // ms, "1 frames skipped" each time. That noise is also
-                    // what the menu reads to say "idle", so the word flipped
-                    // sixty times a second in front of whoever had it open.
-                    // Eight frames is a seventh of a second - far below any
-                    // real idle stretch, far above this churn.
-                    if (!g_skip_static_logged && g_skip_static_count >= 8)
-                    {
-                        g_skip_static_logged = true;
-                        Log("[skip] no new frame - the network is idle until the screen changes");
-                    }
-                    // The picture itself does not change, but in one-window mode
-                    // the frame it sits in can still move - keep the overlay on it.
-                    FollowCapturedWindow();
-                    ReassertPresentTopmost();
-                    FollowPanelDesktop();
-                    VideoResultHeader idle = { OUT_MAGIC, fh.index,
-                        OUT_STATUS_OK | OUT_STATUS_SKIPPED, 0u,
-                        g_last_eval_result, fh.pts };
-                    if (!WriteExact(g_wire, &idle, sizeof(idle))) return 10;
-                    ProfileFrameResult(v, fh, false, "idle");
-                    if (phase_on) ++g_ph_idle;
-                    PhaseReport(want_bypass);
-                    continue;
-                }
-            }
-            else if (g_skip_static_count != 0)
-            {
-                // Only if the stretch was announced: an unannounced one was
-                // too short to be worth two lines, and a "resumes" with no
-                // "idle" before it reads as an event that never happened.
-                if (g_skip_static_logged)
-                    Log("[skip] the screen changed - %u frames skipped, "
-                        "the network resumes", g_skip_static_count);
-                g_skip_static_count = 0;
-                g_skip_static_logged = false;
-            }
             // Boost is in too (PR #59 left nr_small out). Nothing in the
             // argument needs it excluded: ScaleColorInto and ResidualCompose
             // only record into h.list - neither submits - so the reduced
@@ -7684,13 +7593,9 @@ static int RunVideo()
             defer_tail = !g_hdr_capture && warmup_done && h.feature != nullptr &&
                 PresentModeActive(v) &&
                 (fh.reserved & (FRAME_FLAG_BYPASS | FRAME_FLAG_SPLIT | FRAME_FLAG_WANT_PIXELS)) == 0;
-            // This frame is being processed: remember what it will show, so the
-            // next unchanged frame can tell whether anything differs.
+            // This frame is being processed: remember what it will show, so a
+            // stop or a closing recording frame knows which source it is.
             g_last_out_bypass = (fh.reserved & FRAME_FLAG_BYPASS) != 0 || h.feature == nullptr;
-            g_last_out_split_on = (fh.reserved & FRAME_FLAG_SPLIT) != 0;
-            g_last_out_split_x = g_last_out_split_on
-                ? SplitXFromFlags(fh.reserved, v.upscale ? v.full_w : v.w) : 0u;
-            g_force_next_frame = false;
             const double t_up = PhaseNow();
             const bool try_nvofa = NvofaRequested() && !g_nvofa.failed && g_gray_mapped;
             const bool nvofa_used = try_nvofa && RunNvofa(v, fh.reset != 0, defer_tail ? &upload_done : nullptr);

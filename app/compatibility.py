@@ -278,7 +278,7 @@ class EvaluateRequest:
 class StageStatus(str, Enum):
     SUCCESS = "success"
     UNSUPPORTED = "unsupported"
-    SKIP = "skip"
+    SKIP = "skip"  # kept: the compatibility verdict uses it
     NOT_RUN = "not_run"
     UNKNOWN = "unknown"
     ERROR = "error"

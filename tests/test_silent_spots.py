@@ -63,7 +63,6 @@ def main() -> int:
         "[pure] direct feature 18 ready: 1664x936 preset=0 result=0x00000001",
         "[video] NR feature unavailable (0xBAD00001) - SAFE PASSTHROUGH",
         "[video] DDA1 OK (2560x1440)",
-        "[skip] no new frame - the network is idle until the screen changes",
         "[cap] shared texture 2560x1440 ready",
         "[dda] DuplicateOutput failed 0x887A0004",
     ]
@@ -221,10 +220,9 @@ def main() -> int:
         ({"nr": True, "gpu_ok": False}, en["gpu_no_nr"], True),
         ({"nr": True, "gpu_ok": True}, en["status_on"], False),
         ({"nr": False, "gpu_ok": False}, en["status_off"], False),
-        ({"nr": True, "gpu_ok": True, "idle": True}, en["idle_short"], False),
     )
     for state, want, want_failed in cases:
-        menu.set_state(dict({"idle": False}, **state))
+        menu.set_state(dict(**state))
         text, failed = menu.status_text(en)
         if text != want or failed != want_failed:
             failures.append(f"status line for {state}: expected "

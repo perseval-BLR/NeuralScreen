@@ -136,8 +136,8 @@ on it, red when it is not.
 
 Everything else is behind the sliders icon: monitor/GPU, a 30/60/custom/off
 frame limiter, HDR, media folders, file conversion, Spout2, the recording
-indicator, an on-screen frame counter, minimise/close to tray, static frame
-skipping, key assignments, keyboard navigation, theme and **12** languages,
+indicator, an on-screen frame counter, minimise/close to tray, key
+assignments, keyboard navigation, theme and **12** languages,
 and **Scale** above Quit, which sizes the panel.
 
 ## Swapping a runtime
