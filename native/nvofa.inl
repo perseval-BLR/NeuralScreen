@@ -233,20 +233,37 @@ static bool EnsureNvofa(UINT width, UINT height)
     return true;
 }
 
-static void DumpNvofa(VideoState &v); // opt-in regression readback, defined below
+static void DumpNvofa(VideoState &v, bool with_flow = true); // opt-in regression readback, defined below
 
-static bool RunNvofa(VideoState &v, bool reset, UINT64 *submitted)
+// `still`: the capture brought nothing new this frame - the window did not
+// redraw, the desktop answered WAIT_TIMEOUT, or only the pointer moved. NR
+// still runs on that frame, and so did optical flow: on two identical gray
+// frames, with the temporal hint carrying the last real flow forward, NVOFA
+// is free to answer non-zero vectors (2-4.6 px measured on a static photo in
+// #141's video), and NR warps its history by them - "jelly" on a picture that
+// is not moving, worst in fullscreen where the vectors are scaled most. The
+// CPU path answers zero for an unchanged frame (guides.py); so does this one.
+// Optical flow is not run at all: the inputs keep the last FRESH frame, so the
+// next real frame is measured against it.
+static bool RunNvofa(VideoState &v, bool reset, UINT64 *submitted, bool still = false)
 {
     auto &f = g_nvofa;
     if (submitted) *submitted = 0;
     if (!g_gray_mapped || !g_gray_uav || !EnsureNvofa(g_gray_w, g_gray_h)) return false;
-    // Fault injection for the real fallback test; absent in ordinary launches.
-    char fail_at[16] = {};
-    if (GetEnvironmentVariableA("NS_NVOFA_TEST_FAIL_AT", fail_at, sizeof(fail_at)) &&
-        f.sequence == strtoul(fail_at, nullptr, 10))
-        return NvofaError("injected execute failure", NV_OF_ERR_GENERIC);
-    if (!BeginCommands()) return NvofaError("begin input copy", NV_OF_ERR_GENERIC);
     auto barrier = [](ID3D12Resource *r, D3D12_RESOURCE_STATES a, D3D12_RESOURCE_STATES b) { auto t=Transition(r,a,b);h.list->ResourceBarrier(1,&t); };
+    // Fault injection for the real fallback test; absent in ordinary launches.
+    // Before the still-frame skip, which advances the sequence too: a target
+    // that fell on a still frame would otherwise never fire.
+    {
+        char fail_at[16] = {};
+        if (GetEnvironmentVariableA("NS_NVOFA_TEST_FAIL_AT", fail_at, sizeof(fail_at)) &&
+            f.sequence == strtoul(fail_at, nullptr, 10))
+            return NvofaError("injected execute failure", NV_OF_ERR_GENERIC);
+    }
+    still = still && f.valid && !reset;
+    if (still) goto expand;
+    {
+    if (!BeginCommands()) return NvofaError("begin input copy", NV_OF_ERR_GENERIC);
     barrier(g_gray_uav, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
     for (unsigned i = 0; i < 2; ++i) if (i == f.current || !f.valid || reset) {
         barrier(f.inputs[i].get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -276,6 +293,8 @@ static bool RunNvofa(VideoState &v, bool reset, UINT64 *submitted)
         FailGpuWork("nvofa-queue-wait", "queue-wait-error", queue_wait);
         return NvofaError("wait for optical flow", NV_OF_ERR_GENERIC);
     }
+    }
+expand:
     if (!BeginCommands())
         return NvofaError("wait for optical flow", NV_OF_ERR_GENERIC);
     barrier(f.flow.get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -287,21 +306,22 @@ static bool RunNvofa(VideoState &v, bool reset, UINT64 *submitted)
     h.dev->CreateUnorderedAccessView(v.mv.tex,nullptr,&ud,cpu);
     ID3D12DescriptorHeap *heaps[]={f.heap.get()};h.list->SetDescriptorHeaps(1,heaps);
     h.list->SetComputeRootSignature(f.root.get());h.list->SetPipelineState(f.expand.get());
-    UINT constants[]={v.w,v.hgt,f.width,f.height,f.grid,UINT(reset || !f.valid)};
+    UINT constants[]={v.w,v.hgt,f.width,f.height,f.grid,UINT(reset || !f.valid || still)};
     h.list->SetComputeRoot32BitConstants(0,6,constants,0);h.list->SetComputeRootDescriptorTable(1,f.heap->GetGPUDescriptorHandleForHeapStart());
     h.list->Dispatch((v.w+7)/8,(v.hgt+7)/8,1);
     barrier(v.mv.tex,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     barrier(f.flow.get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_COMMON);
     const UINT64 done=EndCommands();if(!done)return NvofaError("submit expansion", NV_OF_ERR_GENERIC);
-    v.inputs_ready=true;f.valid=true;f.current=1-f.current;
+    v.inputs_ready=true;
+    if (!still) { f.valid=true; f.current=1-f.current; }
     if (submitted) *submitted=done;
     else if (!WaitFenceValue(h.fence, done, 30000, "nvofa-expansion"))
         return NvofaError("expansion fence", NV_OF_ERR_GENERIC);
-    DumpNvofa(v); ++f.sequence;
+    DumpNvofa(v, !still); ++f.sequence;
     return true;
 }
 
-static void DumpNvofa(VideoState &v)
+static void DumpNvofa(VideoState &v, bool with_flow)
 {
     char folder[MAX_PATH]={}; if(!GetEnvironmentVariableA("NS_NVOFA_DUMP",folder,MAX_PATH)) return;
     auto &f=g_nvofa;
@@ -309,6 +329,7 @@ static void DumpNvofa(VideoState &v)
         // Cost output is opt-in. A plain quality dump still needs flow and
         // expanded motion, and must not dereference the absent cost texture.
         if (!pair.first) continue;
+        if (!with_flow && pair.first != v.mv.tex) continue;   // no flow was measured
         auto desc=pair.first->GetDesc();D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp{};UINT rows;UINT64 rowbytes,bytes;
         h.dev->GetCopyableFootprints(&desc,0,1,0,&fp,&rows,&rowbytes,&bytes);
         D3D12_HEAP_PROPERTIES hp{};hp.Type=D3D12_HEAP_TYPE_READBACK;

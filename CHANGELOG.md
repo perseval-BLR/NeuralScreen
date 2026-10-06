@@ -141,6 +141,17 @@ Scope and honesty notes:
   brings no resize, so the picture stayed frozen or black until FG was turned
   off and on. It now marks the chain for the same rebuild and says it once.
 
+* **No "jelly" on a still picture with NVOFA motion (#141, #95).** NR runs on
+  every frame, also when the capture brought nothing new - a window that did
+  not redraw, a desktop that did not change. For those frames the CPU motion
+  path answers zero; NVOFA ran optical flow on two identical frames with the
+  last real flow as its hint and could answer large vectors anyway - up to 22
+  px measured here on an unchanged window - which NR warped its history by.
+  On a static photo that reads as the picture jiggling in patches, more in
+  fullscreen. A frame without new content now gets zero motion and no optical
+  flow, and the next real frame is measured against the last fresh one.
+  `Motion: CPU` was the workaround; it is no longer needed for this.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

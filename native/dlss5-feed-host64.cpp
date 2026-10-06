@@ -7831,7 +7831,8 @@ static int RunVideo()
             g_last_out_bypass = (fh.reserved & FRAME_FLAG_BYPASS) != 0 || h.feature == nullptr;
             const double t_up = PhaseNow();
             const bool try_nvofa = NvofaRequested() && !g_nvofa.failed && g_gray_mapped;
-            const bool nvofa_used = try_nvofa && RunNvofa(v, fh.reset != 0, defer_tail ? &upload_done : nullptr);
+            const bool nvofa_used = try_nvofa && RunNvofa(v, fh.reset != 0, defer_tail ? &upload_done : nullptr,
+                                                          !source_fresh);
             if (try_nvofa && !nvofa_used) fh.reset = 1; // do not reuse history after backend failure
             const bool up_ok = nvofa_used || UploadMotionOnly(v, mv_ptr,
                                   (fh.reserved & FRAME_FLAG_MOTION_SMALL) != 0 && g_motion_w != 0,
