@@ -717,6 +717,15 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
         if (g_fg_retry) { g_fg_retry = false; CloseFgResources(); return false; }
         g_fg.failed = true; CloseFgResources(); return false;
     }
+    // The picture window is hidden (its target is minimised): nothing
+    // presented into it reaches the screen, and a flip chain's hidden
+    // presents are dropped silently - DXGI_STATUS_OCCLUDED never comes. A
+    // slot queued every kFgHoldMs only stood the presenter in the
+    // compositor's waitable (2 s timeouts) and in a copy wait on a chain
+    // DWM was not retiring (H4). Hold instead: export and answer, queue
+    // nothing; the first frame after the window is back presents again.
+    if (g_present_revealed && !g_present_shown && !g_present_reshow)
+        return FgHold(v, bypass);
     const auto now = std::chrono::steady_clock::now();
     // A frame that is not new is held - unless something else changed the
     // picture (a reset: the NR switch, the wipe, a stream reset), there is no
