@@ -865,6 +865,18 @@ def main() -> int:
             if not st.running:
                 break
 
+            # The worker this iteration negotiates with and feeds. Several
+            # steps below can REBUILD the pipeline in the middle of it - the
+            # window and monitor followers, the window mode giving up, a menu
+            # action - and everything after such a step was meant for the
+            # worker that was there before: its frame went to the new one
+            # before any channel of it was negotiated (a dxcam grab of the
+            # whole monitor sent as the colour of a one-window pipeline, the
+            # veil dropped by a frame that was not the new pipeline's). A
+            # rebuild therefore ends the iteration, and the next one starts
+            # the new worker the way every fresh worker is started.
+            iteration_reader = st.reader
+
             # NR OFF reaches this path only while a recording, screenshot or
             # Frame Generation explicitly needs raw frames.  The neural pass
             # remains bypassed, but the frame producer stays paired with recv.
@@ -930,6 +942,8 @@ def main() -> int:
                 except Exception as exc:
                     _stand_down(st, "following the monitor", exc)
                     continue
+            if st.reader is not iteration_reader:
+                continue
             if st.want_dda and not st.dda_mode and not st.dda_attempted:
                 if st.window_hwnd is not None:
                     # The channel module opens channels; deciding that the
@@ -940,7 +954,7 @@ def main() -> int:
                             pipeline.switch_window(st, 0)
                         except Exception as exc:
                             _stand_down(st, "leaving the window mode", exc)
-                            continue
+                        continue
                 else:
                     channels.enable_dda(st)
             if st.want_motion_small and not st.motion_small and not st.motion_attempted:
@@ -997,6 +1011,10 @@ def main() -> int:
                                                commands.apply_menu_action, st, action)
                 if not st.display.menu.dragging:
                     st.display.menu.set_state(settings_io.menu_payload(st))
+            # A menu action rebuilt the pipeline (a monitor, a window, Spout,
+            # HDR, a GPU...) or left it failed: nothing below is for it yet.
+            if st.reader is not iteration_reader or st.worker_failed:
+                continue
 
             # --- Grab ahead: while NGX computes frame N we grab N+1 -------
             # work_frame == None happens on the first frame, after a worker
