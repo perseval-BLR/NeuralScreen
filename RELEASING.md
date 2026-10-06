@@ -87,6 +87,8 @@ Version drift is caught in three independent places:
 
 * the builder, `assert_version_coherence`:
   `version drift: builder, APP_VERSION and launcher.rc disagree; expected {...}, got {...}` - exit code 2, nothing is written;
+  and `assert_launcher_version`, which reads the same four values out of the
+  built `NeuralScreen.exe` (a stale exe is `NeuralScreen.exe version resource differs from the release; ...`);
 * the verifier: `version source differs from manifest version: <path>`,
   `tagged version values differ from manifest: <path>`, and
   `requested tag 'vX.Y.Z' does not match builder vY.W.Z`;
@@ -125,7 +127,11 @@ newer than the worker, and all three binaries are `REQUIRED_RUNTIME_ARTIFACTS`
 and `generated` (not tracked) package members, so the builder refuses with
 `required runtime artifact is missing: <path>` if they are absent.
 `native\launcher.rc` changed in step 1, so the launcher exe has to be rebuilt
-for the change to reach the shipped binary.
+for the change to reach the shipped binary. The builder reads the packaged
+`NeuralScreen.exe`'s VERSIONINFO (the fixed `FILEVERSION`/`PRODUCTVERSION`
+pair and the `FileVersion`/`ProductVersion` strings) and refuses an exe that
+does not report the release version:
+`NeuralScreen.exe version resource differs from the release; expected {...}, got {...} - rerun native\build-launcher.bat`.
 
 ### Step 3 - regenerate the documentation screenshots
 
@@ -249,7 +255,9 @@ This is the step that must **not** run earlier. The builder calls, in order:
 -> mandatory inputs present at the tag -> `validate_runtime_manifest` against the
 tag (`git_ref=tag`, not HEAD) -> DLL architecture gate -> payload packaging ->
 `assert_no_builder_paths` (no packaged file may name the repository root or the
-builder's home folder, in either slash form, UTF-8 or UTF-16) -> the ZIP.
+builder's home folder, in either slash form, UTF-8 or UTF-16) ->
+`assert_launcher_version` (the packaged `NeuralScreen.exe` reports the release
+version) -> the ZIP.
 
 It refuses, with exit code 2 and `RELEASE CONTRACT FAILED: <message>`:
 
@@ -269,6 +277,8 @@ It refuses, with exit code 2 and `RELEASE CONTRACT FAILED: <message>`:
 | missing kernel archs | `runtime architecture mismatch: missing sm_75, sm_89` |
 | file changed during the build | `package file ... changed during build: <path>` |
 | a file names the build machine | `package files contain the builder machine's absolute path: <paths>` |
+| launcher not rebuilt after the bump | `NeuralScreen.exe version resource differs from the release; expected {...}, got {...} - rerun native\build-launcher.bat` |
+| launcher without a version resource | `NeuralScreen.exe has no readable version resource: ...` |
 
 The build is deterministic: ZIP timestamps are pinned to 1980-01-01, modes to
 0644, `VERSION.txt` carries no wall-clock line, so two builds of the same commit
@@ -438,6 +448,7 @@ failure. The messages worth recognising:
 | Manifest not re-pinned after a later commit | builder: `runtime-manifest.json does not match tagged runtime/source inventory; regenerate and review it before the release commit`; local gate: `release manifest: runtime-manifest.json does not match ...` (the zip: integrity error); verifier: `tagged Git blob differs from manifest: <path>` |
 | Manifest re-pinned but not committed | `tracked working tree is dirty; commit or restore these paths:` on the next builder run |
 | Version drift (usually the `.rc` pair forgotten) | `version drift: builder, APP_VERSION and launcher.rc disagree; expected {...}, got {...}`; in the local gate the same text under `release manifest:`; in `tests\test_release_contract.py`, `version drift` |
+| `.rc` bumped but `native\build-launcher.bat` not rerun | builder: `NeuralScreen.exe version resource differs from the release; ...` |
 | An old `FILEVERSION` line left in the `.rc` | `native/launcher.rc must declare exactly one FILEVERSION; found 2` |
 | Dirty tracked tree | `tracked working tree is dirty; commit or restore these paths:` - nothing is written, exit 2 |
 | Builder run before tagging | `required tag vX.Y.Z does not exist` |

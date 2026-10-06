@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -80,6 +81,7 @@ class ReleaseFixture:
     tag = "v9.9.0"
     runtime_artifacts = ("runtime/runtime.bin",)
     launcher_lf = b"@echo off\nrem fixture launcher\nexit /b 0\n"
+    exe: bytes | None = None   # an untracked NeuralScreen.exe, when set
     mandatory = (
         "app.py",
         "native/libraries/README.md",
@@ -121,6 +123,12 @@ class ReleaseFixture:
         (root / builder.THIRD_PARTY_NOTICES).write_text(
             "# notices\n", encoding="utf-8"
         )
+        if self.exe is not None:
+            (root / "NeuralScreen.exe").write_bytes(self.exe)
+            (root / ".gitignore").write_text(
+                "runtime/\ndist*/\nignored.local\nNeuralScreen.exe\n",
+                encoding="utf-8",
+            )
         run_git(root, "init", "-q")
         run_git(root, "config", "user.email", "release-test@example.invalid")
         run_git(root, "config", "user.name", "Release Test")
@@ -805,6 +813,106 @@ class PublishedTrackedAssetTests(unittest.TestCase):
         )
         for name in ("README.ru.md", "TECHNICAL.md", verifier.THIRD_PARTY_NOTICES):
             self.assertNotIn(f"release asset {name} differs", text)
+
+
+def version_resource(numeric: str, file_version: str, product_version: str) -> bytes:
+    """A VS_VERSIONINFO resource as rc.exe lays it out, inside PE-like bytes.
+
+    Written from the documented layout (wLength, wValueLength, wType, UTF-16
+    key, 32-bit padding, value, padded children), independently of the
+    builder's reader.
+    """
+    def block(key: str, value: bytes = b"", count: int | None = None,
+              text: bool = False, children: tuple = ()) -> bytes:
+        data = struct.pack(
+            "<HHH", 0, len(value) if count is None else count, int(text)
+        ) + key.encode("utf-16-le") + b"\0\0"
+        data += b"\0" * (-len(data) % 4) + value
+        for child in children:
+            data += b"\0" * (-len(data) % 4) + child
+        return struct.pack("<H", len(data)) + data[2:]
+
+    def string(key: str, value: str) -> bytes:
+        raw = value.encode("utf-16-le") + b"\0\0"
+        return block(key, raw, count=len(raw) // 2, text=True)
+
+    a, b, c, d = (int(part) for part in numeric.split("."))
+    fixed = struct.pack(
+        "<13I", 0xFEEF04BD, 0x10000, (a << 16) | b, (c << 16) | d,
+        (a << 16) | b, (c << 16) | d, 0x3F, 0, 0x40004, 1, 0, 0, 0,
+    )
+    table = block("040904b0", text=True, children=(
+        string("FileDescription", "NeuralScreen"),
+        string("FileVersion", file_version),
+        string("ProductName", "NeuralScreen"),
+        string("ProductVersion", product_version),
+    ))
+    root = block("VS_VERSION_INFO", fixed, children=(
+        block("StringFileInfo", text=True, children=(table,)),
+        block("VarFileInfo", text=True, children=(
+            block("Translation", struct.pack("<HH", 0x409, 1200)),
+        )),
+    ))
+    return b"MZ" + b"\x90" * 0x1F2 + root + b"\0" * 0x40
+
+
+class LauncherVersionFixture(ReleaseFixture):
+    runtime_artifacts = ("runtime/runtime.bin", "NeuralScreen.exe")
+    mandatory = (*ReleaseFixture.mandatory, "NeuralScreen.exe")
+
+
+class LauncherVersionTests(unittest.TestCase):
+    """The shipped NeuralScreen.exe must report the release version.
+
+    The builder checked native/launcher.rc, but the exe is a generated binary:
+    if build-launcher.bat was not rerun after the bump, the archive carried
+    an exe whose Properties name the previous release.
+    """
+
+    def build_with(self, exe: bytes) -> Path:
+        temp = tempfile.TemporaryDirectory(prefix="ns-release-launcher-")
+        self.addCleanup(temp.cleanup)
+        fixture = type("Fixture", (LauncherVersionFixture,), {"exe": exe})(
+            Path(temp.name)
+        )
+        return fixture.build()
+
+    def test_a_launcher_of_the_release_version_is_packaged(self) -> None:
+        exe = version_resource("9.9.0.0", "9.9.0.0", "9.9.0")
+        archive = self.build_with(exe)
+        with zipfile.ZipFile(archive) as bundle:
+            self.assertEqual(exe, bundle.read("NeuralScreen.exe"))
+
+    def test_a_launcher_left_at_the_previous_version_is_refused(self) -> None:
+        stale = {
+            "all fields": ("9.8.0.0", "9.8.0.0", "9.8.0"),
+            "numeric pair": ("9.8.0.0", "9.9.0.0", "9.9.0"),
+            "ProductVersion string": ("9.9.0.0", "9.9.0.0", "9.9.0.0"),
+        }
+        for label, fields in stale.items():
+            with self.subTest(label):
+                with self.assertRaisesRegex(
+                    builder.ReleaseContractError,
+                    r"NeuralScreen\.exe version resource differs",
+                ):
+                    self.build_with(version_resource(*fields))
+
+    def test_a_launcher_without_a_version_resource_is_refused(self) -> None:
+        with self.assertRaisesRegex(
+            builder.ReleaseContractError, r"NeuralScreen\.exe has no readable"
+        ):
+            self.build_with(b"MZ" + b"\0" * 512)
+
+    @unittest.skipUnless(sys.platform == "win32", "reads a Windows executable")
+    def test_the_reader_agrees_with_a_real_executable(self) -> None:
+        # The interpreter running this test is a real MSVC-built PE whose
+        # string version is its own sys.version_info.
+        values = builder.launcher_version_values(Path(sys.executable).read_bytes())
+        expected = "%d.%d.%d" % sys.version_info[:3]
+        self.assertEqual(expected, values["ProductVersion"])
+        self.assertTrue(values["FILEVERSION"].startswith(
+            "%d.%d." % sys.version_info[:2]
+        ), values)
 
 
 class RuntimePayloadTests(unittest.TestCase):

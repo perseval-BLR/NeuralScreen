@@ -920,6 +920,124 @@ def _assert_payload_matches_manifest(
     )
 
 
+LAUNCHER = "NeuralScreen.exe"
+_VS_VERSION_KEY = "VS_VERSION_INFO".encode("utf-16-le") + b"\0\0"
+_VS_FIXED_SIGNATURE = 0xFEEF04BD
+
+
+def _vs_block(data: bytes, offset: int, root: int) -> tuple[str, bytes, list[int], int]:
+    """One VERSIONINFO block: key, value bytes, child offsets, end offset.
+
+    Each block is wLength, wValueLength, wType, a NUL-terminated UTF-16 key,
+    padding to 32 bits, the value (wValueLength bytes, or WCHARs for text),
+    padding, then child blocks up to wLength. Alignment counts from the
+    root block, which the resource compiler places on a 32-bit boundary.
+    """
+    def align(pos: int) -> int:
+        return root + ((pos - root + 3) & ~3)
+
+    length, value_length, kind = struct.unpack_from("<HHH", data, offset)
+    end = offset + length
+    if length < 6 or end > len(data):
+        raise ValueError("truncated VERSIONINFO block")
+    cursor = offset + 6
+    while data[cursor:cursor + 2] != b"\0\0":
+        cursor += 2
+        if cursor >= end:
+            raise ValueError("unterminated VERSIONINFO key")
+    key = data[offset + 6:cursor].decode("utf-16-le")
+    value_start = align(cursor + 2)
+    value_size = value_length * 2 if kind == 1 else value_length
+    value = data[value_start:value_start + value_size]
+    children = []
+    child = align(value_start + value_size)
+    while child + 6 <= end:
+        child_length = struct.unpack_from("<H", data, child)[0]
+        if child_length == 0:
+            break
+        children.append(child)
+        child = align(child + child_length)
+    return key, value, children, end
+
+
+def launcher_version_values(data: bytes) -> dict[str, str]:
+    """The version a Windows executable reports, in launcher.rc's terms.
+
+    FILEVERSION and PRODUCTVERSION come from VS_FIXEDFILEINFO, FileVersion
+    and ProductVersion from the StringFileInfo table - the four values
+    _version_values reads out of native/launcher.rc, so the two compare
+    directly. Raises ValueError when the file has no readable VERSIONINFO.
+    """
+    start = data.find(_VS_VERSION_KEY)
+    while start >= 6:
+        root = start - 6
+        try:
+            key, value, children, _end = _vs_block(data, root, root)
+            signature = (
+                struct.unpack_from("<I", value, 0)[0] if len(value) >= 52 else 0
+            )
+        except (ValueError, struct.error, UnicodeDecodeError):
+            key, signature = "", 0
+        if key == "VS_VERSION_INFO" and signature == _VS_FIXED_SIGNATURE:
+            break
+        start = data.find(_VS_VERSION_KEY, start + 2)
+    else:
+        raise ValueError("no VERSIONINFO resource")
+    file_ms, file_ls, product_ms, product_ls = struct.unpack_from("<4I", value, 8)
+    values = {
+        "FILEVERSION": (
+            f"{file_ms >> 16}.{file_ms & 0xFFFF}."
+            f"{file_ls >> 16}.{file_ls & 0xFFFF}"
+        ),
+        "PRODUCTVERSION": (
+            f"{product_ms >> 16}.{product_ms & 0xFFFF}."
+            f"{product_ls >> 16}.{product_ls & 0xFFFF}"
+        ),
+    }
+    strings: dict[str, str] = {}
+    for child in children:
+        child_key, _value, tables, _end = _vs_block(data, child, root)
+        if child_key != "StringFileInfo":
+            continue
+        for table in tables:
+            for entry in _vs_block(data, table, root)[2]:
+                name, text, _children, _end = _vs_block(data, entry, root)
+                strings[name] = text.decode("utf-16-le").split("\0", 1)[0]
+    for name in ("FileVersion", "ProductVersion"):
+        if name not in strings:
+            raise ValueError(f"VERSIONINFO has no {name} string")
+        values[name] = strings[name]
+    return values
+
+
+def assert_launcher_version(data: bytes, version: str) -> None:
+    """The packaged launcher must report the release version.
+
+    The builder checks the version in native/launcher.rc, but the shipped
+    NeuralScreen.exe is a generated binary: when build-launcher.bat is not
+    rerun after the bump, the archive carries an exe whose Properties show
+    the previous version, and nothing noticed.
+    """
+    rc_version = f"{version}.0"
+    expected = {
+        "FILEVERSION": rc_version,
+        "PRODUCTVERSION": rc_version,
+        "FileVersion": rc_version,
+        "ProductVersion": version,
+    }
+    try:
+        actual = launcher_version_values(data)
+    except (ValueError, struct.error, UnicodeDecodeError) as exc:
+        raise ReleaseContractError(
+            f"{LAUNCHER} has no readable version resource: {exc}"
+        ) from exc
+    if actual != expected:
+        raise ReleaseContractError(
+            f"{LAUNCHER} version resource differs from the release; "
+            f"expected {expected}, got {actual} - rerun native\\build-launcher.bat"
+        )
+
+
 _PATH_NAME_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyz0123456789_.-")
 
 
@@ -1047,6 +1165,10 @@ def build_release(
             package_data[record["path"]] = _crlf_bytes(package_data[record["path"]])
     _assert_payload_matches_manifest(manifest, package_data, notice_bytes)
     assert_no_builder_paths(package_data, _builder_path_needles(repo))
+    # NeuralScreen.exe is mandatory for a real release (MANDATORY_FILES, held
+    # by tests/test_release_lists_pinned.py); fixtures may leave it out.
+    if LAUNCHER in package_data:
+        assert_launcher_version(package_data[LAUNCHER], version)
 
     internal_hashes = [
         ("VERSION.txt", _sha256_bytes(version_bytes)),
