@@ -29,7 +29,10 @@ def main() -> int:
     source = (BASE / "native" / "dlss5-feed-host64.cpp").read_text(encoding="utf-8")
     capture = source.split("static bool SwizzleCaptureIntoColor(VideoState &v)", 1)[1]
     constants = capture.split("struct { UINT is_float;", 1)[1].split("};", 1)[0]
-    if "(g_capture_float && g_capture_display.enabled) ? 1u : 0u" not in constants:
+    # Whether the capture is converted at all follows the SOURCE (#112); how
+    # it is mapped follows where it goes: tone-mapped for the HDR composite
+    # to invert (1), or kept at SDR white when it is shown as SDR (2).
+    if "(g_capture_float && g_capture_display.enabled) ? (g_hdr_capture ? 1u : 2u) : 0u" not in constants:
         print("FAIL: capture shader HDR flag must follow source HDR, not presentation preference")
         return 1
     if not BAT.exists():

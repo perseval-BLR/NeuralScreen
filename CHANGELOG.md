@@ -315,6 +315,14 @@ Scope and honesty notes:
   * With capture in Python (capture in worker off, or a split-GPU setup), an
     idle desktop no longer keeps a CPU core busy.
 
+* **With Windows HDR on and HDR compatibility off, whites are white again.**
+  The captured HDR desktop was tone-mapped for the HDR composite - which
+  inverts that mapping - but with HDR compatibility off (its default) no
+  composite runs, and the mapped picture went to the screen as it was: SDR
+  white at about 187 of 255, every white grey next to the desktop around it.
+  Shown as SDR, SDR white now stays where it is (about 250) and only what is
+  brighter rolls off. With HDR compatibility on nothing changes.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

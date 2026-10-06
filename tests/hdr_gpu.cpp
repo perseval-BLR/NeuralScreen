@@ -236,6 +236,19 @@ int main()
         // being applied at all, which is the contract.
         check(hdrTone[0] >= 180 && hdrTone[0] <= 195,
               "a real scRGB capture at unit white must still tone-map (~187)");
+        // Shown as SDR (HDR compatibility off, no composite to invert the
+        // tone map): SDR white keeps its place, highlights roll off above it.
+        cap.hdr=2;
+        dispatch(kHdrCaptureHlsl,{unitTex.Get()},proxy.Get(),&cap);
+        auto shownSdr=read(proxy.Get(),4);
+        check(shownSdr[0] >= 248 && shownSdr[1] >= 248 && shownSdr[2] >= 248,
+              "an scRGB capture shown as SDR must keep SDR white near 255, not grey (187)");
+        cap.white=2.05f;
+        dispatch(kHdrCaptureHlsl,{native.Get()},proxy.Get(),&cap);
+        auto shownHigh=read(proxy.Get(),4);
+        check(shownHigh[12] < shownHigh[16] && shownHigh[16] < shownHigh[20],
+              "an scRGB capture shown as SDR must keep its highlights in order");
+        cap.white=1.0f;
         // Source HDR and the output preference are independent. Reuse the
         // same texture across mode changes so stale conversion state fails.
         for (UINT sourceHdr : {1u, 0u, 1u}) {

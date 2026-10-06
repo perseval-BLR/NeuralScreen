@@ -35,7 +35,19 @@ static const char kHdrCaptureHlsl[] =
     // "whites turned grey" report (#99, 10 bpc with HDR off). Only a real
     // scRGB capture gets the tone map; FP16-without-HDR is linear SDR and
     // needs nothing but the display encode.
-    " if(isFloat) c=float4(ToSrgb(max(c.rgb,0)/(hdr ? white+Peak(c.rgb) : 1.0)),1);\n"
+    //
+    // hdr == 2: a real scRGB capture that is SHOWN as SDR (HDR compatibility
+    // off). The tone map above is the half of a pair - the HDR composite
+    // inverts it - and shown on its own it put SDR white at 0.5 linear, 187
+    // of 255: with Windows HDR on and the switch off (its default) every
+    // white the program showed was grey next to the desktop around it.
+    // Here SDR white maps to itself, linearly up to 0.9 of it, and only what
+    // is brighter than that rolls off on a rational tail towards 1 - white
+    // lands at ~250, and highlights several times brighter still keep their
+    // order instead of clipping to one value.
+    " if(isFloat && hdr==2) { float3 x=max(c.rgb,0)/white; float3 t=max(x-0.9,0);\n"
+    "   x=x<=0.9 ? x : 0.9+0.1*t/(t+0.0667); c=float4(ToSrgb(x),1); }\n"
+    " else if(isFloat) c=float4(ToSrgb(max(c.rgb,0)/(hdr ? white+Peak(c.rgb) : 1.0)),1);\n"
     " dst[p.xy]=c; }\n";
 
 static const char kHdrCompositeHlsl[] =

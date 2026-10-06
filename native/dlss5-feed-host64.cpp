@@ -5565,7 +5565,9 @@ static bool SwizzleCaptureIntoColor(VideoState &v)
     struct { UINT is_float; float white; UINT rotate180; UINT hdr; } hdr = {
         g_capture_float ? 1u : 0u, g_hdr_frame_white,
         (g_dda_active && g_capture_rotate180) ? 1u : 0u,
-        (g_capture_float && g_capture_display.enabled) ? 1u : 0u };
+        // 1: tone-mapped for the HDR composite to invert; 2: shown as SDR
+        // (no composite runs - see the capture shader).
+        (g_capture_float && g_capture_display.enabled) ? (g_hdr_capture ? 1u : 2u) : 0u };
     h.list->SetComputeRoot32BitConstants(2, 4, &hdr, 0);
     h.list->Dispatch((g_dda_w + 7) / 8, (g_dda_h + 7) / 8, 1);
     // copy swizzled dst into v.color.tex
