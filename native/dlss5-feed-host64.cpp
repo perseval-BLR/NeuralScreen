@@ -499,7 +499,14 @@ static bool InitDirectNr(const wchar_t *data_path)
     // dlss_manifest.json). The path is relative to the worker's directory
     // or absolute; the default is the bundled nvngx_dlssnr.dll.
     wchar_t dll_path[MAX_PATH] = {};
-    const wchar_t *dll_name = L"nvngx_dlssnr.dll";
+    // The bundled copy by its full path, next to the worker. By bare name,
+    // a native\ folder without it sent LoadLibrary on through the system
+    // folders and PATH - and loaded whichever nvngx_dlssnr.dll it met first.
+    wchar_t bundled[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, bundled, MAX_PATH);
+    if (auto slash = wcsrchr(bundled, L'\\')) *(slash + 1) = 0;
+    wcscat_s(bundled, L"nvngx_dlssnr.dll");
+    const wchar_t *dll_name = bundled;
     if (GetEnvironmentVariableW(L"NS_NR_DLL", dll_path, MAX_PATH) > 0)
     {
         // Through the same gate as the BYO folder. The value comes from the

@@ -239,6 +239,13 @@ Scope and honesty notes:
   now compare the uploaded documents and manifest byte for byte with the
   tagged files and refuse a launcher whose embedded version is stale.
 
+* **The neural runtime is loaded only from the program's own folder.** The
+  bundled nvngx_dlssnr.dll was loaded by bare name, so a native folder
+  without it (a partial copy, an antivirus quarantine) let Windows search the
+  working directory, the system folders and PATH and load whichever file of
+  that name it found first. It is now loaded by its full path; your own
+  runtime still goes through native\libraries\ and its signature check.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
