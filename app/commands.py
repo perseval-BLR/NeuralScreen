@@ -420,12 +420,12 @@ def poll_recording_finalizer(st) -> None:
               f"{rec.written} frames, {rec.duration_ms / 1000.0:.1f}s, "
               f"dropped {rec.dropped}")
         # A GPU recording the worker ended by itself (a failed write, a
-        # worker that died) is published with what reached the disk - and
-        # the user is told it is shorter than they asked for.
+        # worker that died), or a CPU one whose encoder failed, is published
+        # with what reached the disk - and the user is told it is shorter
+        # than they asked for.
         cut = bool(getattr(rec, "cut_short", False))
         if cut:
-            print("[main] the recording was cut short by the worker",
-                  file=sys.stderr)
+            print("[main] the recording was cut short", file=sys.stderr)
         st.display.alert(UI_STRINGS[st.lang].get(
             "record_saved_cut" if cut else "record_saved",
             "Recording saved: {path}").format(path=metadata["path"]))

@@ -188,6 +188,8 @@ class VideoRecorder:
         #: Frames that came before their slot on the clock (not an encoder
         #: that could not keep up - that is `dropped`).
         self.skipped = 0
+        #: The file ends where the encoder failed, not where the user stopped.
+        self.cut_short = False
         self._started = 0.0
         try:
             # The suffix no longer identifies the format, so be explicit.
@@ -688,6 +690,8 @@ class VideoRecorder:
         error = fatal
         if error is None and self._encode_error is not None:
             error = RecordingError("encode", self._encode_error)
+        encode_failed = error is not None
+        closed = False
 
         try:
             if self._container is None:
@@ -696,6 +700,7 @@ class VideoRecorder:
             for packet in self._stream.encode(None):
                 self._container.mux(packet)
             self._container.close()
+            closed = True
         except BaseException as exc:                 # noqa: BLE001
             close_error = RecordingError("close", exc)
             if error is None:
@@ -712,6 +717,23 @@ class VideoRecorder:
             except BaseException as exc:             # noqa: BLE001
                 error = RecordingError("verify", exc)
                 print(f"[record] verification failed: {exc}", file=sys.stderr)
+        elif (encode_failed and closed and self.written > 0
+              and not self._abort_publish.is_set()):
+            # The encoder failed mid-recording, but the file closed cleanly:
+            # what was encoded up to the failure is published, and the user
+            # is told it is shorter than asked - as GpuRecorder does with a
+            # recording the worker ended. A file that does not read back
+            # stays the .partial and the encode error stands.
+            try:
+                self._verify_partial()
+            except BaseException as exc:             # noqa: BLE001
+                print(f"[record] the file left by the failed encoder does "
+                      f"not read back: {exc}", file=sys.stderr)
+            else:
+                print(f"[record] publishing the {self.written} frames encoded "
+                      f"before the failure", file=sys.stderr)
+                self.cut_short = True
+                error = None
 
         # Timeout and publish contend on this lock. Whichever wins defines the
         # immutable result: a timeout can never be followed by a late MP4 that
@@ -822,8 +844,15 @@ class VideoRecorder:
             self._resampler = None
 
     def stopped_elsewhere(self) -> bool:
-        """Never: this recorder stops only when told (see GpuRecorder)."""
-        return False
+        """The encoder failed (a full disk, a lost NVENC), or the recording
+        is already over.
+
+        Polled by the main loop, as GpuRecorder's is. A failure used to be
+        noticed only by the next write(), and write() is reached only when
+        the worker returns pixels - so a recording whose encoder had died
+        could stay "recording" with nothing finalizing it or saying so.
+        """
+        return self._encode_error is not None or self._done.is_set()
 
     @property
     def duration_ms(self) -> float:
