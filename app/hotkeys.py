@@ -331,8 +331,16 @@ class HotkeyController:
         # duplicate that would otherwise follow a delivered WM_HOTKEY (the
         # message loop stamps it too); the down-state makes the poller fire on
         # the press EDGE instead of every cooldown while a key is held.
+        # Both threads check-and-stamp the timestamp table, so that pair is
+        # done under self._lock: unlocked, a WM_HOTKEY and a poller sample of
+        # the same press could both read "not yet" and fire it twice.
         self._poll_last: dict[int, float] = {}
         self._poll_down: dict[int, bool] = {}
+        # The ids RegisterHotKey accepted. Only those are polled: a refused
+        # combination belongs to another program, which gets the press -
+        # firing it from the poller as well made one key do two things,
+        # while the user had been told the key would not work.
+        self._live_ids: set[int] = set()
         self._poll_stop = threading.Event()
 
     def start(self, timeout: float = 3.0) -> None:
@@ -366,9 +374,12 @@ class HotkeyController:
                     # straight back off, the menu opened and closed.
                     vk = binding[1]
                     now = time.monotonic()
-                    if now - self._poll_last.get(vk, 0.0) < POLL_COOLDOWN:
+                    with self._lock:
+                        fresh = now - self._poll_last.get(vk, 0.0) >= POLL_COOLDOWN
+                        if fresh:
+                            self._poll_last[vk] = now
+                    if not fresh:
                         continue  # the poller already delivered this press
-                    self._poll_last[vk] = now
                     self._commands.put(binding[2])
             elif msg.message == MSG_SUSPEND:
                 self._unregister()
@@ -405,9 +416,11 @@ class HotkeyController:
             return
         self.registered = []
         self.failed = []
+        live = set()
         for hk_id, (mods, vk, _cmd, name) in self._bindings.items():
             if user32.RegisterHotKey(None, hk_id, mods, vk):
                 self.registered.append(name)
+                live.add(hk_id)
             else:
                 # Someone else already holds the combination — not fatal,
                 # the remaining hotkeys keep working.
@@ -428,6 +441,7 @@ class HotkeyController:
             # A fresh baseline also clears the cooldowns: they belong to the
             # previous registration, and MSG_REBIND goes through here.
             self._poll_last = {}
+            self._live_ids = live
         self._active = True
 
     def _poll_loop(self) -> None:
@@ -454,7 +468,8 @@ class HotkeyController:
         Split out of the loop so a test can drive it directly.
         """
         with self._lock:
-            bindings = dict(self._bindings)
+            bindings = {hk_id: entry for hk_id, entry in self._bindings.items()
+                        if hk_id in self._live_ids}
         now = time.monotonic()
         for hk_id, (mods, vk, cmd, _name) in bindings.items():
             down = _pressed(vk)
@@ -469,10 +484,10 @@ class HotkeyController:
                 continue                      # not a fresh press
             if not _mods_down(mods) or not _mods_clear(mods):
                 continue
-            last = self._poll_last.get(vk, 0.0)
-            if now - last < POLL_COOLDOWN:
-                continue                      # WM_HOTKEY already did it
-            self._poll_last[vk] = now
+            with self._lock:
+                if now - self._poll_last.get(vk, 0.0) < POLL_COOLDOWN:
+                    continue                  # WM_HOTKEY already did it
+                self._poll_last[vk] = now
             self._commands.put(cmd)
 
     def _unregister(self) -> None:
@@ -481,6 +496,7 @@ class HotkeyController:
         for hk_id in self._bindings:
             user32.UnregisterHotKey(None, hk_id)
         self._active = False
+        self._live_ids = set()
         # The names go with the keys. `registered` is REPORTED - startup prints
         # it, the master switch prints it - and an entry left behind says the
         # program still holds a key it has just given back. That is the one

@@ -58,6 +58,7 @@ def main() -> int:
             {"settings": ("Num2", VK_NUMPAD2)})
         hk._active = True
         hk._bindings = {1: (0, VK_NUMPAD2, "settings", "Num2")}
+        hk._live_ids = {1}          # what _register records for an accepted id
 
         # 1. Baseline: the key is up, one quiet tick.
         hk._poll_tick()
@@ -79,6 +80,7 @@ def main() -> int:
         #    while the key is still physically down. It must treat the
         #    current state as the baseline - no command.
         hk._active = True
+        hk._live_ids = {1}
         hk._poll_tick()
         print(f"after rebind with the key held -> commands {commands}")
         if commands:

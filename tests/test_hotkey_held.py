@@ -59,6 +59,7 @@ def main() -> int:
         # The poller loop is what we test; drive it directly.
         hk._active = True
         hk._bindings = {1: (0, VK_NUMPAD1, "toggle", "Num1")}
+        hk._live_ids = {1}          # what _register records for an accepted id
 
         # 1. The key is held BEFORE the first poll: no command.
         fake.down.add(VK_NUMPAD1)

@@ -86,20 +86,24 @@ def _first_press_in_game() -> str | None:
     The baseline now comes from _register(), which runs before the poller's
     first tick, so the same press is a fresh edge.
 
-    The game is stood in for by making the registration FAIL - which is what
-    a swallowed keyboard means for us - rather than by replacing _register.
-    The REAL _register must run, otherwise this would test the test's own
-    copy of the baseline instead of the product's.
+    The game is stood in for by a registration that SUCCEEDS but never
+    delivers - which is what a swallowed keyboard means for us: the key is
+    ours, the game just keeps WM_HOTKEY from arriving. (A registration that
+    fails is another program holding the key, and the poller leaves those
+    alone.) RegisterHotKey is replaced rather than _register: the REAL
+    _register must run, otherwise this would test the test's own copy of the
+    baseline instead of the product's.
 
     Returns a failure string, or None when it behaved.
     """
     real_register_hotkey = hotkeys.user32.RegisterHotKey
 
-    def refuse(self, *args, **kwargs):
-        """No WM_HOTKEY will ever arrive: the poller is the only path."""
-        return 0
+    def swallowed(*args, **kwargs):
+        """Accepted, but no WM_HOTKEY will ever arrive: the poller is the
+        only path."""
+        return 1
 
-    hotkeys.user32.RegisterHotKey = refuse
+    hotkeys.user32.RegisterHotKey = swallowed
     ctl = None
     try:
         commands: queue.Queue = queue.Queue()
