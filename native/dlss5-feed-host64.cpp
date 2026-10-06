@@ -7004,7 +7004,12 @@ static int ReadVideoMessage(VideoState &v, VideoFrameHeader &fh, std::vector<BYT
         // per-magic and must stay unique; 13 is the next free one.
         return 13;
     }
-    return 0;
+    // A magic no handler owns: the stream is out of step with the client, not
+    // closed. It used to return 0 like EOF, so a desync left the log saying
+    // "input stream closed" and the worker exiting 0 - a clean shutdown.
+    Log("[video] unknown message 0x%08X - the stream is out of step with the client",
+        fh.magic);
+    return -1;
 }
 
 static void ReleaseVideoTextures(VideoState &v)
@@ -7330,6 +7335,7 @@ static int RunVideo()
         // frame. Missing it here sent every PPRM through the "not prepared"
         // path and threw away the frame that was ready.
         if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13) prepared = false;
+        if (msg < 0) return 11;   // protocol desync: not a clean end of input
         if (msg == 0)
         {
             if (live)
