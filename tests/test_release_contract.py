@@ -77,6 +77,7 @@ class ReleaseFixture:
     version = "9.9.0"
     tag = "v9.9.0"
     runtime_artifacts = ("runtime/runtime.bin",)
+    launcher_lf = b"@echo off\nrem fixture launcher\nexit /b 0\n"
     mandatory = (
         "app.py",
         "native/libraries/README.md",
@@ -94,6 +95,9 @@ class ReleaseFixture:
             "runtime/\ndist*/\nignored.local\n", encoding="utf-8"
         )
         (root / "app.py").write_text("print('fixture')\n", encoding="utf-8")
+        # As in the real tree: the launcher is attributed CRLF, stored LF.
+        (root / ".gitattributes").write_bytes(b"*.bat text eol=crlf\n")
+        (root / "launch.bat").write_bytes(self.launcher_lf)
         (root / "build_release_zip.py").write_text(
             f'VERSION = "{self.version}"\n', encoding="utf-8"
         )
@@ -244,6 +248,62 @@ class ReleaseContractTests(unittest.TestCase):
                 builder.THIRD_PARTY_NOTICES, builder.CHECKSUMS,
                 "native/libraries/README.md",
             } <= names)
+
+    def test_crlf_attributed_launcher_ships_with_crlf(self) -> None:
+        # cmd.exe needs CRLF, .gitattributes says *.bat eol=crlf, and a clone
+        # gets CRLF - but the archive is built from the LF blob, and v2.1.9
+        # shipped NeuralScreen.bat with bare LF.
+        blob = subprocess.run(
+            ["git", "show", f"{self.fixture.tag}:launch.bat"], cwd=self.repo,
+            capture_output=True, check=True,
+        ).stdout
+        self.assertEqual(self.fixture.launcher_lf, blob)
+        crlf = self.fixture.launcher_lf.replace(b"\n", b"\r\n")
+        archive = self.fixture.build()
+        with zipfile.ZipFile(archive) as bundle:
+            self.assertEqual(crlf, bundle.read("launch.bat"))
+            # Files not attributed CRLF keep the blob's LF.
+            self.assertNotIn(b"\r", bundle.read("app.py"))
+        manifest = json.loads(
+            (self.fixture.dist / builder.RUNTIME_MANIFEST).read_bytes()
+        )
+        package = {
+            item["path"]: item for item in manifest["package"]["files"]
+        }
+        source = {
+            item["path"]: item for item in manifest["source_inventory"]
+        }
+        # The package record pins the shipped bytes, the source record the blob.
+        self.assertEqual(
+            hashlib.sha256(crlf).hexdigest(), package["launch.bat"]["sha256"]
+        )
+        self.assertEqual("crlf", package["launch.bat"]["eol"])
+        self.assertEqual(
+            hashlib.sha256(blob).hexdigest(), source["launch.bat"]["sha256"]
+        )
+        self.assertNotIn("eol", package["app.py"])
+        self.assertEqual([], verifier.validate_release_set(
+            self.fixture.dist, tag=self.fixture.tag,
+            tag_commit=self.fixture.commit, repo=self.repo,
+        ))
+
+    def test_verifier_rejects_a_crlf_launcher_shipped_with_lf(self) -> None:
+        archive = self.fixture.build()
+        rewrite_release_archive(
+            archive,
+            self.fixture.dist,
+            lambda members: members.__setitem__(
+                "launch.bat", self.fixture.launcher_lf
+            ),
+        )
+        failures = verifier.validate_release_set(
+            self.fixture.dist, tag=self.fixture.tag,
+            tag_commit=self.fixture.commit, repo=self.repo,
+        )
+        self.assertIn("package file checksum mismatch: launch.bat", failures)
+        self.assertIn(
+            "packaged CRLF file has stray line endings: launch.bat", failures
+        )
 
     def test_dirty_tracked_tree_fails_but_ignored_files_do_not(self) -> None:
         (self.repo / "ignored.local").write_text("allowed", encoding="utf-8")

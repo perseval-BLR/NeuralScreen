@@ -162,9 +162,15 @@ formatting is rejected later with
   its folder, `name.*` (`name.py`, `name.libs`, `name.cp313-win_amd64.pyd`)
   and `name-*` (`name-1.0.dist-info`);
 * `package.*` - the complete payload inventory, each record marked `origin: git`
-  (with its Git blob OID) or `origin: generated`;
+  (with its Git blob OID) or `origin: generated`. Size and sha256 are those of
+  the bytes in the ZIP. For a tracked file whose `.gitattributes` at the ref say
+  `eol=crlf` (today only `NeuralScreen.bat`; cmd.exe needs CRLF) the builder
+  ships the CRLF form of the LF blob, as a checkout would write it, and the
+  record carries `eol: crlf` - its size and sha256 are the CRLF bytes, its
+  `git_blob` is the tagged blob;
 * `source_inventory` - every tracked native source/shader, version source and
-  shipped resource with its Git blob OID.
+  shipped resource with its Git blob OID, size and sha256 of the blob itself
+  (for an `eol: crlf` file these differ from its `package` record by design).
 
 It fails closed if a mandatory input is untracked
 (`mandatory release input is untracked at HEAD: <path>`), if a required runtime
@@ -404,7 +410,11 @@ failure. The messages worth recognising:
   `runtime manifest tree digest differs from ZIP`, `ZIP checksum mismatch: <name>`,
   `published ZIP differs from the local release ZIP`,
   `tagged Git blob differs from manifest: <path>`,
-  `package Git blob differs from tag: <path>`
+  `package Git blob differs from tag: <path>`,
+  `package Git file checksum differs from tag: <path>` (for an `eol: crlf`
+  record the tag's blob is converted to CRLF first),
+  `packaged CRLF file has stray line endings: <name>`,
+  `package record has an unknown eol conversion: <path>`
 * repository: `repo description lost the marker 'user presets'`,
   `could not read repository description`
 

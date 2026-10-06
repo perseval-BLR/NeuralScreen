@@ -58,6 +58,16 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _crlf_bytes(data: bytes) -> bytes:
+    """The bytes a checkout with eol=crlf writes for a (LF) Git blob.
+
+    The builder packages files attributed eol=crlf (the .bat launcher) in
+    this form and marks their package record "eol": "crlf"; the record's size
+    and sha256 are those of these bytes, its git_blob is the tagged blob.
+    """
+    return re.sub(rb"\r?\n", b"\r\n", data)
+
+
 def _fetch(url: str, dest: Path) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=60) as response:
@@ -211,6 +221,8 @@ def _validate_package_inventory(
             failures.append(f"package inventory contains metadata member: {path}")
         if origin == "generated" and "git_blob" in record:
             failures.append(f"generated package record has a Git blob: {path}")
+        if "eol" in record and (origin != "git" or record["eol"] != "crlf"):
+            failures.append(f"package record has an unknown eol conversion: {path}")
         if path in by_path:
             failures.append(f"runtime manifest repeats package path: {path}")
         by_path[path] = record
@@ -245,9 +257,13 @@ def _validate_package_inventory(
             source_by_path.get(path) if origin == "git"
             else generated_by_path.get(path)
         )
+        # A CRLF record pins the converted bytes and its source record the
+        # blob, so the two differ by design; the ZIP member is tied back to
+        # the blob in validate_release_set and to the tag in the Git binding.
+        compared = () if "eol" in record else ("size", "sha256")
         if counterpart is None or any(
             counterpart.get(field) != record.get(field)
-            for field in ("size", "sha256")
+            for field in compared
         ):
             failures.append(
                 f"package record is not backed by its {origin} inventory: {path}"
@@ -457,6 +473,8 @@ def validate_manifest_git_binding(
                 failures.append(f"package Git path is absent from tag {tag}: {path}")
                 continue
             oid, data = tagged
+            if record.get("eol") == "crlf":
+                data = _crlf_bytes(data)
             if record.get("git_blob") != oid:
                 failures.append(f"package Git blob differs from tag: {path}")
             if record.get("size") != len(data):
@@ -695,6 +713,15 @@ def validate_release_set(
                 for name in sorted(set(names) & set(source_by_path)):
                     data = archive.read(name)
                     record = source_by_path[name]
+                    if package_by_path.get(name, {}).get("eol") == "crlf":
+                        # Packaged as a CRLF checkout of the pinned blob: it
+                        # must be exactly that form, and undo to the blob.
+                        blob = data.replace(b"\r\n", b"\n")
+                        if _crlf_bytes(blob) != data:
+                            failures.append(
+                                f"packaged CRLF file has stray line endings: {name}"
+                            )
+                        data = blob
                     if record.get("size") != len(data):
                         failures.append(f"packaged Git file size mismatch: {name}")
                     if record.get("sha256") != hashlib.sha256(data).hexdigest():

@@ -247,6 +247,40 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _crlf_bytes(data: bytes) -> bytes:
+    """The bytes a checkout with eol=crlf writes for a (LF) Git blob."""
+    return re.sub(rb"\r?\n", b"\r\n", data)
+
+
+def _crlf_checkout_paths(
+    repo: Path, ref: str, paths: Sequence[str]
+) -> frozenset[str]:
+    """Tracked paths whose .gitattributes at ``ref`` ask for CRLF endings.
+
+    The archive is built from Git blobs, and a blob is stored with LF. A
+    checkout converts the files attributed `eol=crlf` (`*.bat`, which cmd.exe
+    needs) - the archive has to do the same, or it ships a launcher no clone
+    of the repository has. The attributes are read from the release ref, not
+    the working tree, so the result depends on the tag only.
+    """
+    if not paths:
+        return frozenset()
+    result = subprocess.run(
+        ["git", "check-attr", "--source", ref, "-z", "--stdin", "eol"],
+        cwd=repo, input=b"".join(p.encode("utf-8") + b"\0" for p in paths),
+        capture_output=True, check=False,
+    )
+    if result.returncode:
+        error = result.stderr.decode("utf-8", "replace").strip()
+        raise ReleaseContractError(f"git check-attr failed at {ref}: {error}")
+    fields = result.stdout.decode("utf-8").split("\0")
+    return frozenset(
+        fields[index]
+        for index in range(0, len(fields) - 2, 3)
+        if fields[index + 1] == "eol" and fields[index + 2] == "crlf"
+    )
+
+
 def _drop_sitepackage(norm: str) -> bool:
     if not norm.startswith(SP):
         return False
@@ -526,11 +560,27 @@ def _package_inventory_records(
     mandatory_files: Sequence[str],
     required_runtime_artifacts: Sequence[str],
     runtime_paths: Sequence[str],
+    git_ref: str = "HEAD",
 ) -> list[dict]:
     records = []
-    for rel in _package_paths(tree, mandatory_files, runtime_paths):
+    paths = _package_paths(tree, mandatory_files, runtime_paths)
+    crlf = _crlf_checkout_paths(repo, git_ref, [rel for rel in paths if rel in tree])
+    for rel in paths:
         entry = tree.get(rel)
-        if entry is not None:
+        if entry is not None and rel in crlf:
+            # Size and sha256 describe the packaged CRLF bytes; git_blob still
+            # names the tagged blob, and source_inventory keeps the blob's own
+            # size and sha256. "eol" tells the verifier which form it holds.
+            data = _crlf_bytes(_git_blob_bytes(repo, entry["oid"]))
+            record = {
+                "path": rel,
+                "size": len(data),
+                "sha256": _sha256_bytes(data),
+                "git_blob": entry["oid"],
+                "eol": "crlf",
+                "origin": "git",
+            }
+        elif entry is not None:
             record = _git_file_record(repo, rel, entry)
             record["origin"] = "git"
         else:
@@ -590,6 +640,7 @@ def create_runtime_manifest(
         mandatory_files,
         required_runtime_artifacts,
         runtime_paths,
+        git_ref,
     )
     return {
         "schema_version": 3,
@@ -989,6 +1040,11 @@ def build_release(
         rel: _release_input_bytes(repo, rel, tree, required_runtime_artifacts)
         for rel in package_files
     }
+    # Launchers attributed eol=crlf ship as a checkout would write them; the
+    # manifest's package record already pins those converted bytes.
+    for record in manifest["package"]["files"]:
+        if record.get("eol") == "crlf":
+            package_data[record["path"]] = _crlf_bytes(package_data[record["path"]])
     _assert_payload_matches_manifest(manifest, package_data, notice_bytes)
     assert_no_builder_paths(package_data, _builder_path_needles(repo))
 
