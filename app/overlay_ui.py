@@ -2612,8 +2612,15 @@ class OverlayMenu:
             # Backspace or Delete takes the command off the keyboard entirely
             # (#134). There is no key to press for "no key", and Esc already
             # means cancel, so the field needs its own gesture - the one every
-            # rebind dialog uses for clearing.
-            if event.key in (pygame.K_BACKSPACE, pygame.K_DELETE):
+            # rebind dialog uses for clearing. Delete only bare: Ctrl+Delete,
+            # Shift+Delete and the like are ordinary bindings and stay
+            # assignable, as they were before the gesture existed. Backspace
+            # clears with any modifier - it was never a key a binding could
+            # name, so "Ctrl+Backspace" would only be refused as unparsable.
+            if (event.key == pygame.K_BACKSPACE
+                    or (event.key == pygame.K_DELETE
+                        and not pygame.key.get_mods() & (pygame.KMOD_CTRL | pygame.KMOD_ALT
+                                                         | pygame.KMOD_SHIFT))):
                 cmd, self.capturing = self.capturing, None
                 out.append(("hotkey", cmd, "none"))
                 out.append(("capture", None))

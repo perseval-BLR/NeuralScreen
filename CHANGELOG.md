@@ -78,6 +78,11 @@ Scope and honesty notes:
   showed one state and the program ran the other. Numbers are now stored as
   the boolean they mean, and `null` falls back to the shipped default.
 
+* **Ctrl+Delete (and Delete with any modifier) can be bound again (#134).** The
+  "clear this key" gesture caught Delete whatever modifiers were held, so
+  pressing Ctrl+Delete to assign it silently removed the command's key
+  instead. Only the bare Backspace or Delete clears now.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

@@ -223,6 +223,33 @@ def check_menu_field(failures: list) -> None:
         if menu.capturing is not None:
             failures.append(f"{pygame.key.name(key)} left the field capturing")
 
+    # With a modifier held, Delete is a key to bind, not the clear gesture:
+    # "Ctrl+Delete" was assignable before #134 and must stay so.
+    pygame.key.set_mods(pygame.KMOD_LCTRL)
+    try:
+        menu.capturing = "record"
+        actions = menu.handle_event(pygame.event.Event(
+            pygame.KEYDOWN, key=pygame.K_DELETE, mod=pygame.KMOD_LCTRL))
+    finally:
+        pygame.key.set_mods(0)
+    bound = [a for a in actions if a[0] == "hotkey" and a[1] == "record"]
+    if not bound or str(bound[0][2]).lower() in UNBIND_WORDS             or "delete" not in str(bound[0][2]).lower():
+        failures.append(f"Ctrl+Delete unbound the command instead of binding "
+                        f"it (actions={actions})")
+
+    # Backspace with a modifier still clears: it was never bindable, and
+    # handing "Ctrl+Backspace" to the parser only earned a "not recognised".
+    pygame.key.set_mods(pygame.KMOD_LCTRL)
+    try:
+        menu.capturing = "record"
+        actions = menu.handle_event(pygame.event.Event(
+            pygame.KEYDOWN, key=pygame.K_BACKSPACE, mod=pygame.KMOD_LCTRL))
+    finally:
+        pygame.key.set_mods(0)
+    if ("hotkey", "record", "none") not in actions:
+        failures.append(f"Ctrl+Backspace did not clear the field "
+                        f"(actions={actions})")
+
     # Esc still cancels rather than clearing.
     menu.capturing = "record"
     actions = menu.handle_event(pygame.event.Event(pygame.KEYDOWN,
