@@ -236,6 +236,28 @@ _OWN_TITLES = {"'NeuralScreen'", "''"}
 # A file the conversion queue refused is named by the log line; the name is
 # the user's (the folder is already cut out as a path).
 _REFUSED_FILE_RE = re.compile(r"(not queued for conversion: )(.+?)( \()")
+# The conversion queue names the file on every line of a job's life
+# (convert_jobs: "[convert] <name>: started|failed|done|stopped ..."). Only
+# the folder used to go, as a path; the name - "Holiday with Anna.mp4" -
+# reached the bundle. A Windows file name cannot hold a colon, so the name is
+# everything up to the first one. The local log keeps it: it is the user's
+# own file, and the line is how they find which job failed.
+_CONVERT_FILE_RE = re.compile(
+    r"(?P<head>\[convert\] )(?P<name>[^:\r\n]+)"
+    r"(?P<verb>: (?:started|failed|done|stopped)\b)(?P<rest>[^\r\n]*)")
+
+
+def _redact_convert_name(match: "re.Match[str]") -> str:
+    # A failure message may repeat the name (a decoder quoting the file it
+    # could not open), and the output keeps its stem; both go as well. A
+    # name of one or two characters is left in the rest of the line - it
+    # would cut letters out of the error text and hide nothing.
+    name = match.group("name")
+    rest = match.group("rest")
+    for part in (name, Path(name).stem):
+        if len(part) >= 3:
+            rest = rest.replace(part, "<FILE>")
+    return match.group("head") + "<FILE>" + match.group("verb") + rest
 
 
 def _redact_titles(text: str) -> str:
@@ -245,6 +267,7 @@ def _redact_titles(text: str) -> str:
             return match.group(0)
         return f"title=<{max(0, len(quoted) - 2)} chars>"
     text = _WINDOW_TITLE_RE.sub(shield, text)
+    text = _CONVERT_FILE_RE.sub(_redact_convert_name, text)
     return _REFUSED_FILE_RE.sub(lambda m: m.group(1) + "<FILE>" + m.group(3), text)
 
 
