@@ -1022,6 +1022,8 @@ class GpuRecorder:
         self.audio_padded = 0
         #: The file ends where the worker stopped, not where the user did.
         self.cut_short = False
+        #: The worker closed the file before the client asked it to.
+        self._ended_elsewhere = False
         self._worker = worker
         self._reader = reader
         self._state_lock = threading.RLock()
@@ -1071,6 +1073,7 @@ class GpuRecorder:
             except (OSError, ValueError):
                 pass
             self._close_audio()
+            self._discard_late_start()
             raise RecordingError("start", TimeoutError(
                 f"the worker did not answer within {self.START_TIMEOUT_S:g} s"))
         reply = reader.rec_start_reply
@@ -1098,6 +1101,44 @@ class GpuRecorder:
             self._audio_thread = threading.Thread(
                 target=self._audio_loop, name="nr-gpu-audio", daemon=True)
             self._audio_thread.start()
+
+    def _discard_late_start(self) -> None:
+        """Delete the file of a start the worker answered too late.
+
+        The client has given up on this recording and the CPU path records
+        instead, but a worker that was only slow still opens the
+        `.gpu.partial`, then closes it on the RECE sent with the timeout.
+        Nobody publishes or reports that file, so it would stay on the disk
+        beside the real recording. It goes once the worker has closed it (the
+        REAK that answers the RECE) or is gone - in the background, bounded
+        by FINISH_TIMEOUT_S; the deletion is retried while the file is still
+        held open.
+        """
+        reader, partial = self._reader, self.partial_path
+        timeout = self.FINISH_TIMEOUT_S
+
+        def discard() -> None:
+            deadline = time.monotonic() + timeout
+            if reader.rec_started.wait(timeout):
+                reader.rec_done.wait(max(0.0, deadline - time.monotonic()))
+            while True:
+                try:
+                    os.unlink(partial)
+                except FileNotFoundError:
+                    return
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        print(f"[record] the late GPU recording {partial} "
+                              f"could not be removed", file=sys.stderr)
+                        return
+                    time.sleep(0.2)
+                    continue
+                print(f"[record] removed {partial}: the GPU recorder started "
+                      f"after the CPU one took over", file=sys.stderr)
+                return
+
+        threading.Thread(target=discard, name="nr-gpu-late-start",
+                         daemon=True).start()
 
     # -- sound --------------------------------------------------------------
 
@@ -1257,7 +1298,13 @@ class GpuRecorder:
         # The sound up to this moment reaches the ring before the worker is
         # told to drain it.
         self._stop_audio_thread()
-        if not self._reader.rec_done.is_set():
+        if self._reader.rec_done.is_set():
+            # The worker closed the file on its own (an unasked REAK - an
+            # encoder error, an HDR session that left HDR) or is gone: the
+            # file ends before the user stopped it, even when the worker
+            # reports the close as clean.
+            self._ended_elsewhere = True
+        else:
             try:
                 send_rec_stop(self._worker)
             except (OSError, ValueError) as exc:
@@ -1286,6 +1333,8 @@ class GpuRecorder:
         else:
             self.written = int(reply.written)
             self.dropped = int(reply.dropped)
+            if self._ended_elsewhere and reply.written > 0:
+                self.cut_short = True
             if not reply.ok:
                 stage = "encode"
                 self.cut_short = reply.written > 0
