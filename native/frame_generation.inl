@@ -62,6 +62,12 @@ static struct FgState {
     std::condition_variable wake;
     std::thread thread;
     std::atomic<bool> stop{false}, failed{false};
+    // Set with `stop`: the presenter's vblank wait wakes on it at once. Only
+    // the condition variable woke on `stop` before, and a presenter standing
+    // in the 2 s waitable wait (then a 2 s copy wait) held every caller of
+    // StopFgPresentation - a resize, a format change, ClosePresent, the FG
+    // toggle - for up to ~4 s (#138's residual).
+    HANDLE stop_event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     UINT64 sequence = 0;
     // `last` is the call time of the last NEW picture (the interval when the
     // source has no clock), `last_slot` of the last slot queued at all, and
@@ -133,6 +139,7 @@ static void StopFgPresentation()
     // the worker for good (a stop on every FG toggle, resize, format change
     // and ClosePresent - rare, but a hang the client could only time out).
     { std::lock_guard<std::mutex> lock(g_fg.mutex); g_fg.stop = true; }
+    if (g_fg.stop_event != nullptr) SetEvent(g_fg.stop_event);
     g_fg.wake.notify_all();
     if (g_fg.thread.joinable()) g_fg.thread.join();
     // The presenter has stopped: nothing waits on the handle any more.
@@ -209,7 +216,10 @@ static void FgPresenter()
     auto wait_vblank = [&](DWORD ms) {
         if (free_slot) { free_slot = false; return static_cast<DWORD>(WAIT_OBJECT_0); }
         const auto t = std::chrono::steady_clock::now();
-        const DWORD r = WaitForSingleObject(g_fg_waitable, ms);
+        const HANDLE both[2] = {g_fg_waitable, g_fg.stop_event};
+        const DWORD r = g_fg.stop_event != nullptr
+            ? WaitForMultipleObjects(2, both, FALSE, ms)
+            : WaitForSingleObject(g_fg_waitable, ms);
         add(vblank, std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - t).count());
         return r;
@@ -355,9 +365,10 @@ static void FgPresenter()
                     // The compositor's pacing: wait for the back buffer to
                     // be released instead of sleeping to a wall-clock
                     // deadline that drifts against the vblank.
-                    if (wait_vblank(2000) != WAIT_OBJECT_0)
+                    if (wait_vblank(2000) != WAIT_OBJECT_0 && !g_fg.stop)
                         Log("[fg] waitable timeout - the compositor stalled");
                 }
+                if (g_fg.stop) break;   // a stop met in the wait: present nothing more
                 if (!present(chosen->interpolated[index].get())) g_fg.failed = true;
                 else { ++shown_gen; add(copy_gen, last_copy_ms); ++copy_bins[bin_of(last_copy_ms)]; }
                 std::unique_lock<std::mutex> lock(g_fg.mutex);
@@ -373,9 +384,10 @@ static void FgPresenter()
         if (!g_fg.stop && !g_fg.failed)
         {
             if (g_fg_waitable != nullptr
-                && wait_vblank(2000) != WAIT_OBJECT_0)
+                && wait_vblank(2000) != WAIT_OBJECT_0 && !g_fg.stop)
                 Log("[fg] waitable timeout on the real frame");
-            if (!present(chosen->real.get())) g_fg.failed = true;
+            if (g_fg.stop) {}
+            else if (!present(chosen->real.get())) g_fg.failed = true;
             else add(copy_real, last_copy_ms);
         }
         previous = chosen->sequence;
@@ -579,6 +591,7 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
         D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(g_fg.disable_readback.put())))) return false;
     g_fg.w = w; g_fg.height = height; g_fg.mw = v.w; g_fg.mh = v.hgt; g_fg.format = format;
     g_fg.stop = false;
+    if (g_fg.stop_event != nullptr) ResetEvent(g_fg.stop_event);
     // R11 refined: latency 1 belongs to the FG presenter while it owns the
     // present loop. The ordinary NR path presents Present(0,0) per frame and
     // never consumes the waitable - with latency 1 the swapchain would hold
