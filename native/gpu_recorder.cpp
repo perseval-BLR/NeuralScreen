@@ -1081,9 +1081,11 @@ void EncodeItem(Recorder *r, const Item &it)
     const UINT64 done = it.fence->GetCompletedValue();
     if (done == UINT64_MAX || done < it.value)
     {
+        // The slot stays busy: the worker's copy may still be on its way into
+        // it, and a slot handed back now could be read while it lands. The
+        // recording has failed anyway, so nothing waits for the slot again.
         Fail(r, "waiting for the frame copy", done == UINT64_MAX
              ? DXGI_ERROR_DEVICE_REMOVED : HRESULT_FROM_WIN32(WAIT_TIMEOUT));
-        slot.busy.store(false);
         r->dropped.fetch_add(1);
         return;
     }
@@ -1101,9 +1103,24 @@ void EncodeItem(Recorder *r, const Item &it)
     const bool ok = r->hdr ? HdrConvert(r, slot, s) : Blit(r, slot, s.tex);
     r->ctx->End(r->blit_done);
     r->ctx->Flush();
-    for (int spin = 0; spin < 2000 &&
-         r->ctx->GetData(r->blit_done, nullptr, 0, 0) == S_FALSE; ++spin)
+    bool read = false;
+    for (int spin = 0; spin < 2000; ++spin)
+    {
+        if (r->ctx->GetData(r->blit_done, nullptr, 0, 0) != S_FALSE) { read = true; break; }
         Sleep(spin < 50 ? 0 : 1);
+    }
+    if (!read)
+    {
+        // Two seconds and the GPU has still not read the slot: handing it
+        // back would let the worker copy the next frame into it mid-read (a
+        // torn frame, and a "every copy was waited for" that is not true).
+        // Keep it, and end the recording - a stall this long is a hung GPU.
+        Fail(r, "reading the frame copy", HRESULT_FROM_WIN32(WAIT_TIMEOUT));
+        std::lock_guard<std::mutex> lock(r->mu);
+        s.busy.store(false);
+        r->dropped.fetch_add(1);
+        return;
+    }
     slot.busy.store(false);
     if (!ok)
     {
