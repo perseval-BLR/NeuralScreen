@@ -2950,6 +2950,46 @@ static DWORD HudProcessId()
 
 static bool PanelTopmost(HWND hud);   // defined next to RevealOnFirstPresent
 
+// The raise of the panel and the picture under it, off the frame thread. The
+// panel belongs to the client, and SetWindowPos on another thread's window
+// SENDS it WM_WINDOWPOSCHANGING and waits until that thread pumps. The client
+// pumps between frames, but not while it waits for one of our acks - so the
+// frame thread stood in SetWindowPos until the client's 15-20 s ack timeout
+// declared this worker dead (pre-release audit). Done here, the order is the
+// same (panel up, then the picture inserted right under it) and a client that
+// is busy delays only the raise. The last request wins; the thread lives as
+// long as the process.
+static void RaisePanelAndPicture(HWND hud, HWND picture)
+{
+    static std::mutex mutex;
+    static std::condition_variable wake;
+    static HWND want_hud = nullptr, want_picture = nullptr;
+    static bool pending = false;
+    static std::once_flag started;
+    std::call_once(started, [] {
+        std::thread([] {
+            for (;;)
+            {
+                HWND panel = nullptr, pic = nullptr;
+                {
+                    std::unique_lock<std::mutex> lock(mutex);
+                    wake.wait(lock, [] { return pending; });
+                    panel = want_hud; pic = want_picture; pending = false;
+                }
+                SetWindowPos(panel, HWND_TOPMOST, 0, 0, 0, 0,
+                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                SetWindowPos(pic, panel, 0, 0, 0, 0,
+                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+        }).detach();
+    });
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        want_hud = hud; want_picture = picture; pending = true;
+    }
+    wake.notify_one();
+}
+
 static void ReassertPresentTopmost()
 {
     if (g_present_hwnd == nullptr) return;
@@ -3032,12 +3072,7 @@ static void ReassertPresentTopmost()
         // the plain raise, as before.
         const HWND hud = HudWindow();
         if (PanelTopmost(hud))
-        {
-            SetWindowPos(hud, HWND_TOPMOST, 0, 0, 0, 0,
-                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            SetWindowPos(g_present_hwnd, hud, 0, 0, 0, 0,
-                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        }
+            RaisePanelAndPicture(hud, g_present_hwnd);
         else
             SetWindowPos(g_present_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);

@@ -186,6 +186,13 @@ Scope and honesty notes:
   corner, with the real window unprocessed under the panel, until the window
   was moved.
 
+* **A busy panel can no longer stall the picture.** When another program's
+  window covers the picture (a borderless game), the worker raises our panel
+  and puts the picture under it. That call waits for the panel's thread, and
+  the panel's thread is not answering while it waits for the worker - so the
+  worker could stand still until a 15-20 s timeout declared it dead and
+  restarted it. The raise now runs off the frame thread, in the same order.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

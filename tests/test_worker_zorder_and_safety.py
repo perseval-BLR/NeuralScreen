@@ -90,9 +90,15 @@ def main() -> int:
             ("< 16", "1x1 and 20x20 helpers count as covering"),
             ("IntersectRect", "windows on another monitor count as covering"),
             ("PanelTopmost(hud)", "the raise does not put the panel first"),
-            ("SetWindowPos(g_present_hwnd, hud", "the picture is not inserted below the panel")):
+            ("RaisePanelAndPicture(hud, g_present_hwnd)",
+             "the picture is not inserted below the panel")):
         if token not in reassert:
             failures.append(f"ReassertPresentTopmost lost {token!r}: {why}")
+    # The raise itself, off the frame thread (test_panel_raise_async drives
+    # it): panel first, the picture inserted after the panel.
+    raise_both = _code(_body(cpp, "static void RaisePanelAndPicture(HWND hud, HWND picture)"))
+    if not raise_both or "SetWindowPos(pic, panel" not in raise_both:
+        failures.append("RaisePanelAndPicture no longer inserts the picture below the panel")
 
     # 4. stale panel handle
     hud = _code(_body(cpp, "static HWND HudWindow()"))
