@@ -246,6 +246,28 @@ Scope and honesty notes:
   that name it found first. It is now loaded by its full path; your own
   runtime still goes through native\libraries\ and its signature check.
 
+* **Recording and conversion fixes.**
+  * A CPU recording no longer plays in slow motion: without the separate
+    picture window, pixels came back on every frame and each extra one was
+    given the next slot - three seconds of screen became a six-second file.
+  * Sound no longer runs ahead of the picture after a quiet stretch (it was
+    100-200 ms early); each sound packet goes where the playback device's own
+    timestamp puts it, in both recording paths. The recording also follows a
+    switch of the default playback device instead of capturing the old,
+    silent one.
+  * A CPU recording whose encoder fails ends at once and says so; what was
+    encoded is saved and reported as cut short. A GPU recording that started
+    too late leaves no stray file behind, and one the worker closed on its
+    own is reported as cut short.
+  * Converted anamorphic video keeps its picture shape (a 720x480 DVD file
+    came out squeezed to 3:2). Converted images keep their transparency
+    (JPEG gets a white background), a lossless WebP stays lossless, and a
+    CMYK photo's colour profile is no longer attached to the RGB result.
+  * A conversion the network did not actually process is no longer reported
+    as converted: the job fails, or its row says how many frames were missed.
+  * A screenshot named with a dot ("скрин 06.10.2026") is saved instead of
+    lost, and a failed write no longer leaves a truncated picture.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
