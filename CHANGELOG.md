@@ -83,6 +83,15 @@ Scope and honesty notes:
   pressing Ctrl+Delete to assign it silently removed the command's key
   instead. Only the bare Backspace or Delete clears now.
 
+* **An RTSS frame limit inside NeuralScreen is named in the log (#143).**
+  MSI Afterburner / RivaTuner Statistics Server injects `RTSSHooks64.dll` into
+  Direct3D processes and limits them inside Present. The worker presents NR
+  and Frame Generation through one swap chain, so a global 30 FPS profile
+  pinned both at 30 while the panel's frame limit changed nothing. The module
+  lists of both processes are now checked every few seconds and a hook is
+  named once, with what to do about it - in the log a diagnostic package
+  carries. Nothing about RTSS is changed.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

@@ -139,6 +139,7 @@ from i18n import STRINGS as UI_STRINGS
 import channels
 import commands
 import compatibility_runtime
+import foreign_hooks
 import power
 import startup
 import settings_io
@@ -391,6 +392,9 @@ class _Pipeline:
         # re-assert. Declared here because __slots__ turns an undeclared field
         # into an AttributeError at run time, which is its purpose.
         "_power_throttle_last",
+        # #143: foreign_hooks.check's schedule and the processes it has named.
+        "_foreign_hooks_due",
+        "_foreign_hooks_seen",
         "last_foreground",
         "window_list",
         "last_restart",
@@ -888,6 +892,10 @@ def main() -> int:
                 # same cadence as the checks above, and the call is two
                 # SetProcessInformation with no allocation when nothing moved.
                 power.apply_both(st)
+                # #143: an RTSS frame limit inside the worker's Present caps
+                # NR and FG with nothing in our pacing to show it. Named once
+                # per process, in the log a support bundle carries.
+                foreign_hooks.check(st)
                 # And whether the display being captured is in HDR. The
                 # network is trained on SDR: on an HDR desktop the result
                 # reads as "everything is too bright and the sliders do
