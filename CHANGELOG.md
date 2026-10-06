@@ -71,6 +71,13 @@ Scope and honesty notes:
   when the worker can answer. The commands that follow - the output window
   among them - are then answered in milliseconds instead of timing out too.
 
+* **A switch written as `0`, `1` or `null` in config.json means one thing
+  everywhere.** Numbers were left as they were, and the readers disagreed:
+  `bool(0)` is off, while the checks written as `is not False` (the hotkey
+  master switch, "keep full speed while hidden") read it as on - the panel
+  showed one state and the program ran the other. Numbers are now stored as
+  the boolean they mean, and `null` falls back to the shipped default.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

@@ -851,8 +851,17 @@ def _validate_config(cfg: dict) -> dict:
     # a number goes back to the shipped default. (tray_on_* and
     # menu_scale_auto are read with `is True` and need none of this.)
     for key in _BOOL_KEYS:
-        value = cfg.get(key)
-        if value is None or isinstance(value, (bool, int, float)):
+        if key not in cfg:
+            continue
+        value = cfg[key]
+        if isinstance(value, bool):
+            continue
+        # A number is stored as the bool it means. Left as 0, the readers
+        # disagreed: bool(0) is off, but `is not False` (hotkeys_enabled,
+        # keep_speed_when_hidden in the panel) is on - the panel showed one
+        # state while the program ran the other.
+        if isinstance(value, (int, float)) and value == value:
+            cfg[key] = bool(value)
             continue
         if isinstance(value, str):
             word = value.strip().lower()

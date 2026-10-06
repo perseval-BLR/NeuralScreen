@@ -178,6 +178,25 @@ def main() -> int:
         failures.append(f"a broken menu_offset did not fall back to [0, 0]: "
                         f"{loaded['menu_offset']!r}")
 
+    # A switch written as a number or null means one thing to every reader.
+    # Left raw, `0` read as off through bool() and as ON through `is not
+    # False` - the panel and the program disagreed about the same key.
+    for key, raw, want in (("hotkeys_enabled", 0, False),
+                           ("keep_speed_when_hidden", 0, False),
+                           ("gpu_record", 0.0, False),
+                           ("hotkeys_enabled", 1, True),
+                           ("keep_speed_when_hidden", None,
+                            DEFAULTS.get("keep_speed_when_hidden", True))):
+        cfg = dict(DEFAULTS)
+        cfg[key] = raw
+        path = root / "switch.json"
+        path.write_text(json.dumps(cfg), encoding="utf-8")
+        got = settings_io.load_config(path).get(key)
+        if got is not want:
+            failures.append(f"{key}={raw!r} validated to {got!r}, not {want!r} "
+                            f"- the readers that use `is not False` and the "
+                            f"ones that use bool() disagree on it")
+
     for f in failures:
         print("FAIL:", f)
     if failures:
