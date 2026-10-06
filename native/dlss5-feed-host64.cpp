@@ -2894,14 +2894,15 @@ static void FollowCapturedWindow()
     }
     // Shown only once it is in place (it used to come back one frame at the
     // position it was hidden from), and never while the output does not have
-    // its size (PresentModeActive keeps it hidden until it does).
-    if (!g_present_shown && g_present_revealed && !g_present_mismatch)
+    // its size (PresentModeActive keeps it hidden until it does). And not
+    // here: this runs BEFORE the frame's present, so showing now put the
+    // frame from before the minimise on screen for a refresh (F9 was fixed
+    // for the desktop only). The re-show is left to RevealOnFirstPresent,
+    // right after this frame's Present.
+    if (!g_present_shown && g_present_revealed && !g_present_mismatch && !g_present_reshow)
     {
-        const bool below = ShowPresentBelowPanel();
-        if (!below) ShowWindow(g_present_hwnd, SW_SHOWNOACTIVATE);
-        g_present_shown = true;
-        Log("[wgc] the window is back - the overlay is shown (%s)",
-            below ? "below the panel" : "on top - no usable panel handle");
+        g_present_reshow = true;
+        Log("[wgc] the window is back - the overlay is shown after this frame");
     }
 }
 
@@ -3241,6 +3242,8 @@ static bool ShowPresentBelowPanel()
     return true;
 }
 
+static bool CapturedWindowMinimised();   // defined with the WGC state, below
+
 static void RevealOnFirstPresent()
 {
     if (g_present_hwnd == nullptr) return;
@@ -3260,6 +3263,11 @@ static void RevealOnFirstPresent()
         return;
     }
     if (g_present_revealed) return;
+    // Not over a minimised target: a rebuild while the captured window is
+    // minimised would show the picture over the desktop. The first present
+    // after it comes back reveals it (FollowCapturedWindow shows only a
+    // window that was revealed once).
+    if (CapturedWindowMinimised()) return;
     // Shown directly BELOW the parent's panel rather than on top of it.
     //
     // ShowWindow puts a topmost window above every other topmost window, and
@@ -5806,6 +5814,11 @@ static void CloseWgc()
         Log("[wgc] window capture closed");
     }
     CloseDda();          // the bridge and the D3D11 device are shared
+}
+
+static bool CapturedWindowMinimised()
+{
+    return g_wgc_active && g_wgc_hwnd != nullptr && IsIconic(g_wgc_hwnd);
 }
 
 // Any capture source at all - the pipe path is the alternative.

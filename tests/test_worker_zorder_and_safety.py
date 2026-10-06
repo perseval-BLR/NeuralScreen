@@ -79,7 +79,10 @@ def main() -> int:
                             "HWND_TOPMOST - over the open panel (#96)")
         if "SWP_NOZORDER" not in follow:
             failures.append("the follow SetWindowPos does not keep the z-order")
-        if "ShowPresentBelowPanel()" not in follow:
+        # The window-back re-show is handed to RevealOnFirstPresent (after the
+        # frame's Present - F9 in window mode), which shows it below the panel.
+        reveal = _code(_body(cpp, "static void RevealOnFirstPresent()"))
+        if "g_present_reshow = true" not in follow or "ShowPresentBelowPanel()" not in reveal:
             failures.append("the window-back re-show does not go below the panel")
 
     # 3. the re-assert walk
