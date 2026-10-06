@@ -382,6 +382,9 @@ def create_support_bundle(st, *, stage: str | None = None) -> Path:
         app_version=APP_VERSION,
         runtime_path=runtime_path(),
         log_path=BASE_DIR / "NeuralScreen.log",
+        # After a crash and a relaunch the session that crashed is here: the
+        # relaunch moved an oversized log aside before it wrote a line.
+        previous_log_path=BASE_DIR / "NeuralScreen.log.1",
         settings=settings_snapshot(st),
     ))
 

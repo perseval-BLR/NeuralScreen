@@ -67,7 +67,9 @@ def check_convert_names(failures: list) -> None:
 
 def check_tail_cut(failures: list) -> None:
     window = 4096
-    filler = STAMP + "[phase] capture 1.2 ms | send 0.4 ms\n"
+    # Not a profiler line: those are thinned out of a long tail on purpose
+    # (test_bundle_log_session.py), and this check is about the cut alone.
+    filler = STAMP + "[main] frame pacing: 60.0 fps, 0 late\n"
     lines = {
         "title": (STAMP + "[z] foreign-above-hud (changed) top=hwnd=0x1 "
                   f"pid=7 class='Qt' title='Anna ({SENTINEL} private chat) - "
@@ -112,7 +114,7 @@ def check_tail_cut(failures: list) -> None:
                 system_snapshot={"os": {}, "gpus": [], "displays": []},
                 runtime_signature={"status": "skipped"}, runtime_path=log))
         with zipfile.ZipFile(out) as archive:
-            kept = archive.read("log_tail.txt").decode("utf-8").count("[phase]")
+            kept = archive.read("log_tail.txt").decode("utf-8").count("[main]")
         if kept != 10:
             failures.append(f"a window aligned on a line start kept {kept} of "
                             f"its 10 lines")

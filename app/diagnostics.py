@@ -11,7 +11,9 @@ The resulting ZIP always contains exactly two files:
     Application/runtime identity, graphics environment and failure details.
 
 ``log_tail.txt``
-    A bounded, scrubbed tail of ``NeuralScreen.log``.
+    A bounded, scrubbed excerpt of ``NeuralScreen.log``: the head of the
+    current session and its tail, and before them, when there is room, the
+    tail of what came earlier (``NeuralScreen.log.1`` included).
 
 No environment dump is collected, and of the configuration only an
 allow-list of product settings (_SETTINGS_KEYS), each value bounded - no
@@ -84,6 +86,10 @@ class DiagnosticBundleRequest:
     # product keys go in; every value is scrubbed like the log and the payload
     # is bounded, so this stays a product snapshot rather than a user dump.
     settings: Mapping[str, Any] = field(default_factory=dict)
+    # NeuralScreen.log.1, the log a start moved aside. Read only when the
+    # current log leaves room: after a crash and a relaunch it is where the
+    # session that crashed went (see _log_excerpt).
+    previous_log_path: str | os.PathLike[str] | None = None
 
 
 _PRIVATE_KEY_RE = re.compile(
@@ -693,38 +699,236 @@ def _bounded_settings(settings: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _tail(path: Path, limit: int) -> tuple[str, dict[str, Any]]:
-    metadata = {"included": False, "truncated": False, "bytes": 0}
+# --- The log excerpt -------------------------------------------------------
+# The bundle used to carry the last max_log_bytes of NeuralScreen.log and
+# nothing else, and that lost the lines a report is read for twice over:
+#
+# * NS_PHASE=1 writes a [phase]/[pw] line for every frame. A bundle from such
+#   a session held about 1.3 s of profiler output and not one line of the
+#   startup - no [env] header, no driver, no [compat] verdict, no adapter.
+# * a crash and a relaunch: the relaunch moves an oversized log aside to
+#   NeuralScreen.log.1, and the session that crashed is no longer in the file
+#   the bundle read.
+#
+# So the excerpt is built from parts, each cut on whole lines and each
+# scrubbed: the head of the current session (from its "[env] NeuralScreen"
+# header), the session's tail with the profiler lines held to a share of it,
+# and - in whatever room that leaves - what came before the session: the
+# rest of this file, then the tail of NeuralScreen.log.1.
+_SESSION_MARK = b"[env] NeuralScreen "
+_PROFILER_TAGS = (b"[phase]", b"[pw]")
+#: How far back the session header is looked for, and how much of the end of
+#: a file a tail is chosen from. Both only bound the reading: what goes into
+#: the bundle is bounded by max_log_bytes.
+_SESSION_SCAN_BYTES = 64 * 1024 * 1024
+_TAIL_SCAN_BYTES = 4 * 1024 * 1024
+#: The session head takes at most this share of the budget; profiler lines
+#: are held to this share of a tail when the other lines need the room.
+_HEAD_SHARE = 4
+_PROFILER_SHARE = 4
+
+
+def _read_range(handle, start: int, end: int) -> bytes:
+    handle.seek(start)
+    return handle.read(max(0, end - start))
+
+
+def _session_start(handle, size: int) -> int | None:
+    """Offset of the line that opens the last session in the file, or None."""
+    chunk = 1024 * 1024
+    end = size
+    while end > 0 and size - end < _SESSION_SCAN_BYTES:
+        start = max(0, end - chunk)
+        # Overlap into the chunk after this one, so a header split across
+        # the boundary is still found.
+        data = _read_range(handle, start, min(size, end + len(_SESSION_MARK)))
+        found = data.rfind(_SESSION_MARK)
+        if found >= 0:
+            mark = start + found
+            lead_from = max(0, mark - 256)
+            newline = _read_range(handle, lead_from, mark).rfind(b"\n")
+            if newline >= 0:
+                return lead_from + newline + 1
+            return 0 if lead_from == 0 else mark
+        end = start
+    return None
+
+
+def _is_profiler(line: bytes) -> bool:
+    return any(tag in line for tag in _PROFILER_TAGS)
+
+
+def _select_tail(raw: bytes, budget: int, *, aligned: bool) -> tuple[bytes, bool, int]:
+    """The newest whole lines of raw within budget bytes.
+
+    ``aligned`` says whether raw starts on a line; when it does not, the
+    partial first line is dropped - the scrubber's rules are anchored on the
+    start of a title or a path, and the second half of one is not
+    recognisable. When not everything fits, profiler lines get what the
+    other lines leave of the budget, but never less than a share of it - so
+    they cannot crowd the rest out, and do not leave the bundle half empty
+    either. Returns the lines, whether anything was left out, and how many
+    profiler lines were.
+    """
+    lines = raw.splitlines(keepends=True)
+    if lines and not aligned:
+        lines = lines[1:]
+    if sum(len(line) for line in lines) <= budget:
+        return b"".join(lines), False, 0
+    others = sum(len(line) for line in lines if not _is_profiler(line))
+    profiler_cap = max(budget // _PROFILER_SHARE, budget - others)
+    keep: list[bytes] = []
+    used = profiler = kept_profiler = 0
+    for line in reversed(lines):
+        if used + len(line) > budget:
+            break
+        if _is_profiler(line):
+            if profiler + len(line) > profiler_cap:
+                continue
+            profiler += len(line)
+            kept_profiler += 1
+        keep.append(line)
+        used += len(line)
+    keep.reverse()
+    profiler_out = sum(1 for line in lines if _is_profiler(line)) - kept_profiler
+    return b"".join(keep), True, profiler_out
+
+
+def _fit_lines(text: str, limit: int, *, newest: bool) -> str:
+    """Whole lines of an already scrubbed text within limit bytes.
+
+    Scrubbing can make a line longer (<HOME_OR_TEMP> for a short TEMP), so a
+    part chosen to fit can come out over its budget; its oldest lines go
+    then - or its newest, for the session head (``newest=False``).
+    """
+    raw = text.encode("utf-8")
+    if len(raw) <= limit:
+        return text
+    if limit <= 0:
+        return ""
+    if newest:
+        cut = raw[-limit:]
+        if raw[-limit - 1:-limit] != b"\n":
+            newline = cut.find(b"\n")
+            cut = cut[newline + 1:] if newline >= 0 else b""
+    else:
+        cut = raw[:limit]
+        newline = cut.rfind(b"\n")
+        cut = cut[:newline + 1] if newline >= 0 else b""
+    return cut.decode("utf-8", errors="ignore")
+
+
+def _note(text: str) -> str:
+    return f"[bundle] --- {text} ---\n"
+
+
+def _size(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def _log_excerpt(
+    path: Path,
+    previous: Path | None,
+    limit: int,
+    sensitive_values: Sequence[str],
+) -> tuple[bytes, dict[str, Any]]:
+    """The scrubbed log excerpt of a bundle, and its metadata (see above)."""
+    metadata: dict[str, Any] = {
+        "included": False, "truncated": False, "bytes": 0,
+        "session_head": False, "previous_log": False,
+    }
+
+    def scrub(raw: bytes) -> str:
+        return sanitize_text(raw.decode("utf-8", errors="replace"),
+                             sensitive_values=sensitive_values)
+
     try:
         size = path.stat().st_size
         with path.open("rb") as handle:
-            if size > limit:
-                # One byte more than the window, to see whether the window
-                # starts a line. A cut inside a line used to keep its second
-                # half, and the scrubber's rules are anchored on the start:
-                # "title='" or the drive letter of a path were on the far
-                # side of the cut, so the private rest of a window title or
-                # a path went into the bundle as plain text. The partial
-                # line is dropped instead.
-                handle.seek(-(limit + 1), os.SEEK_END)
-                raw = handle.read(limit + 1)
-                newline = raw.find(b"\n")
-                raw = raw[newline + 1:] if newline >= 0 else b""
-            else:
-                raw = handle.read(limit)
+            head_start = _session_start(handle, size)
+            session_from = head_start if head_start is not None else 0
+            head_raw = b""
+            if head_start is not None:
+                head_raw = _read_range(
+                    handle, head_start,
+                    min(size, head_start + limit // _HEAD_SHARE))
+                if head_start + len(head_raw) < size:
+                    newline = head_raw.rfind(b"\n")
+                    head_raw = head_raw[:newline + 1] if newline >= 0 else b""
+            rest_from = session_from + len(head_raw)
+            tail_from = max(rest_from, size - _TAIL_SCAN_BYTES)
+            tail_raw = _read_range(handle, tail_from, size)
+            # This file before the session: only as much as a budget can use.
+            older_from = max(0, session_from - limit)
+            older_raw = _read_range(handle, older_from, session_from)
     except OSError:
-        return "", metadata
+        return b"", metadata
     metadata["included"] = True
-    metadata["truncated"] = size > limit
-    return raw.decode("utf-8", errors="replace"), metadata
+    truncated = False
 
+    # The session: its head, then its tail.
+    scrubbed = scrub(head_raw)
+    head = _fit_lines(scrubbed, limit // _HEAD_SHARE, newest=False)
+    metadata["session_head"] = bool(head)
+    truncated |= head != scrubbed
+    gap_note = ""
+    if tail_from > rest_from:
+        truncated = True
+        if head:
+            gap_note = _note("the middle of this session is left out here")
+    budget = limit - _size(head) - _size(gap_note)
+    aligned = tail_from == rest_from
+    chosen, left_out, profiler_out = _select_tail(tail_raw, budget, aligned=aligned)
+    if profiler_out:
+        # Again, with room for the line that says so.
+        reserve = _size(_note("0000000 profiler lines ([phase]/[pw]) are "
+                              "left out of what follows"))
+        chosen, left_out, profiler_out = _select_tail(
+            tail_raw, budget - reserve, aligned=aligned)
+    scrubbed = scrub(chosen)
+    if profiler_out:
+        scrubbed = _note(f"{profiler_out} profiler lines ([phase]/[pw]) are "
+                         f"left out of what follows") + scrubbed
+    tail = _fit_lines(scrubbed, budget, newest=True)
+    truncated |= left_out or tail != scrubbed
+    session = head + gap_note + tail
 
-def _bounded_utf8_tail(text: str, limit: int) -> bytes:
-    raw = text.encode("utf-8")
-    if len(raw) <= limit:
-        return raw
-    # Drop a partial leading UTF-8 sequence after slicing from the end.
-    return raw[-limit:].decode("utf-8", errors="ignore").encode("utf-8")
+    # Before the session, newest first and only in the room it left: the
+    # rest of this file, then the previous one.
+    room = limit - _size(session)
+    older = ""
+    if session_from > 0:
+        chosen, left_out, _ = _select_tail(
+            older_raw, room, aligned=(older_from == 0))
+        scrubbed = scrub(chosen)
+        older = _fit_lines(scrubbed, room, newest=True)
+        truncated |= left_out or older_from > 0 or older != scrubbed
+        room -= _size(older)
+    if previous is not None and room >= limit // _HEAD_SHARE:
+        before_note = _note("NeuralScreen.log.1, the log before this one")
+        after_note = _note("NeuralScreen.log")
+        space = room - _size(before_note) - _size(after_note)
+        previous_from = 0
+        try:
+            # Usually absent: only a start that found an oversized log made it.
+            previous_size = previous.stat().st_size
+            previous_from = max(0, previous_size - _TAIL_SCAN_BYTES)
+            with previous.open("rb") as handle:
+                previous_raw = _read_range(handle, previous_from, previous_size)
+        except OSError:
+            previous_raw = b""
+        chosen, _, _ = _select_tail(
+            previous_raw, space, aligned=(previous_from == 0))
+        part = _fit_lines(scrub(chosen), space, newest=True)
+        if part:
+            older = before_note + part + after_note + older
+            metadata["previous_log"] = True
+
+    text = older + session
+    data = _fit_lines(text, limit, newest=True).encode("utf-8")
+    metadata["truncated"] = truncated or len(data) < _size(text)
+    metadata["bytes"] = len(data)
+    return data, metadata
 
 
 def _json_bytes(report: Mapping[str, Any]) -> bytes:
@@ -811,11 +1015,10 @@ def create_diagnostic_bundle(
         else collect_system_snapshot()
     )
     log_path = Path(request.log_path) if request.log_path is not None else BASE_DIR / "NeuralScreen.log"
-    raw_log, log_metadata = _tail(log_path, request.max_log_bytes)
-
-    safe_log_text = sanitize_text(raw_log, sensitive_values=request.sensitive_values)
-    safe_log = _bounded_utf8_tail(safe_log_text, request.max_log_bytes)
-    log_metadata["bytes"] = len(safe_log)
+    previous_log = (Path(request.previous_log_path)
+                    if request.previous_log_path is not None else None)
+    safe_log, log_metadata = _log_excerpt(
+        log_path, previous_log, request.max_log_bytes, request.sensitive_values)
 
     report = _sanitize_value(
         {
