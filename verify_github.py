@@ -34,6 +34,9 @@ CHECKSUMS = "SHA256SUMS"
 # compares the two, because a doc missing from one list and present in the
 # other is exactly how "release vX is missing asset README.md" happened.
 RELEASE_DOCUMENTS = ("README.md", "README.ru.md", "TECHNICAL.md", "TECHNICAL.ru.md")
+# The release assets that are tracked files: each must be byte-identical to
+# the tagged blob, not merely present.
+TRACKED_ASSETS = (RUNTIME_MANIFEST, THIRD_PARTY_NOTICES, *RELEASE_DOCUMENTS)
 VERSION_SOURCE_PATHS = (
     "build_release_zip.py",
     "app/settings_io.py",
@@ -508,6 +511,36 @@ def asset_set_failures(
     return failures
 
 
+def tracked_asset_failures(
+    published: Mapping[str, bytes],
+    tagged: Mapping[str, bytes | None],
+    tag: str,
+) -> list[str]:
+    """Every release asset that is a tracked file equals its tagged blob.
+
+    The four documents, runtime-manifest.json and THIRD-PARTY-NOTICES.md are
+    uploaded by hand from the working tree, so presence proves nothing: an
+    asset uploaded from an older or edited checkout passed. ``published``
+    holds the bytes downloaded in this run (an asset that could not be
+    downloaded is reported elsewhere and is absent here); ``tagged`` holds
+    ``git show <tag>:<name>``, or None when the tag lacks the file.
+    """
+    failures: list[str] = []
+    for name in TRACKED_ASSETS:
+        blob = tagged.get(name)
+        if blob is None:
+            failures.append(f"release asset {name}: missing from local tag {tag}")
+            continue
+        asset = published.get(name)
+        if asset is not None and asset != blob:
+            failures.append(
+                f"release asset {name} differs from tag {tag}: "
+                f"asset={hashlib.sha256(asset).hexdigest()[:12]} "
+                f"tag={hashlib.sha256(blob).hexdigest()[:12]}"
+            )
+    return failures
+
+
 def validate_release_set(
     directory: Path,
     *,
@@ -869,10 +902,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             asset["name"]: asset for asset in release.get("assets", [])
         }
         failures.extend(asset_set_failures(required_assets, assets, tag))
-        for name in (archive_name, CHECKSUMS, RUNTIME_MANIFEST, THIRD_PARTY_NOTICES):
+        # Every asset is downloaded, the documents too: the ones that are
+        # tracked files are compared with the tagged blobs below. Only bytes
+        # fetched in this run count, never a file left by an earlier run.
+        published: dict[str, bytes] = {}
+        for name in (archive_name, CHECKSUMS, *TRACKED_ASSETS):
             asset = assets.get(name)
-            if asset and not _fetch_asset(asset["id"], temp / name):
+            if not asset:
+                continue
+            if not _fetch_asset(asset["id"], temp / name):
                 failures.append(f"could not download release asset {name}")
+            elif name in TRACKED_ASSETS:
+                published[name] = (temp / name).read_bytes()
+        if local_tag_commit:
+            tagged = {}
+            for name in TRACKED_ASSETS:
+                blob = _git_blob(ROOT, tag, name)
+                tagged[name] = blob[1] if blob is not None else None
+            failures.extend(tracked_asset_failures(published, tagged, tag))
         if all((temp / name).is_file() for name in (
             archive_name, CHECKSUMS, RUNTIME_MANIFEST, THIRD_PARTY_NOTICES
         )) and tag_commit:

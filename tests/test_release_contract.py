@@ -4,7 +4,9 @@ Run: runtime\python.exe tests\test_release_contract.py
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import shutil
 import subprocess
@@ -674,6 +676,135 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertEqual(
             failures, ["release v9.9.9 is missing asset TECHNICAL.md"],
         )
+
+
+class PublishedTrackedAssetTests(unittest.TestCase):
+    """The hand-uploaded assets that are tracked files must be the tag's bytes.
+
+    The verifier only checked that the four documents were present, and it
+    never compared the downloaded runtime-manifest.json with the tagged blob,
+    so a stale or edited upload passed.
+    """
+
+    def tagged(self) -> dict[str, bytes]:
+        return {
+            name: f"tagged {name}\n".encode("utf-8")
+            for name in verifier.TRACKED_ASSETS
+        }
+
+    def test_the_tracked_assets_are_the_documents_manifest_and_notices(self) -> None:
+        self.assertEqual(
+            {
+                verifier.RUNTIME_MANIFEST, verifier.THIRD_PARTY_NOTICES,
+                *verifier.RELEASE_DOCUMENTS,
+            },
+            set(verifier.TRACKED_ASSETS),
+        )
+
+    def test_identical_assets_pass(self) -> None:
+        tagged = self.tagged()
+        self.assertEqual(
+            [], verifier.tracked_asset_failures(dict(tagged), tagged, "v9.9.9")
+        )
+
+    def test_a_changed_document_or_manifest_is_reported(self) -> None:
+        tagged = self.tagged()
+        published = dict(tagged)
+        published["README.ru.md"] = b"tagged README.ru.md\r\n"
+        published[verifier.RUNTIME_MANIFEST] = b"{}\n"
+        failures = verifier.tracked_asset_failures(published, tagged, "v9.9.9")
+        self.assertEqual(2, len(failures), failures)
+        self.assertTrue(failures[0].startswith(
+            f"release asset {verifier.RUNTIME_MANIFEST} differs from tag v9.9.9"
+        ), failures)
+        self.assertTrue(failures[1].startswith(
+            "release asset README.ru.md differs from tag v9.9.9"
+        ), failures)
+
+    def test_an_asset_absent_from_the_tag_is_reported(self) -> None:
+        tagged = self.tagged()
+        published = dict(tagged)
+        tagged["TECHNICAL.md"] = None
+        self.assertEqual(
+            ["release asset TECHNICAL.md: missing from local tag v9.9.9"],
+            verifier.tracked_asset_failures(published, tagged, "v9.9.9"),
+        )
+
+    def test_an_asset_not_downloaded_is_left_to_the_download_check(self) -> None:
+        tagged = self.tagged()
+        published = dict(tagged)
+        del published["README.md"]
+        self.assertEqual(
+            [], verifier.tracked_asset_failures(published, tagged, "v9.9.9")
+        )
+
+    def test_main_compares_the_downloaded_assets_with_the_tag(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ns-release-verify-") as temp:
+            repo = Path(temp)
+            fixture = ReleaseFixture(repo)
+            for name in verifier.RELEASE_DOCUMENTS:
+                (repo / name).write_bytes(f"# {name}\n".encode("utf-8"))
+            run_git(repo, "add", *verifier.RELEASE_DOCUMENTS)
+            run_git(repo, "commit", "-qm", "documents")
+            run_git(repo, "tag", "-f", fixture.tag)
+            tag, commit = fixture.tag, fixture.commit
+            tracked = (
+                verifier.RUNTIME_MANIFEST, verifier.THIRD_PARTY_NOTICES,
+                *verifier.RELEASE_DOCUMENTS,
+            )
+            names = [
+                f"neuralscreen-v{fixture.version}-full.zip", verifier.CHECKSUMS,
+                *tracked,
+            ]
+            payload = {
+                name: subprocess.run(
+                    ["git", "show", f"{tag}:{name}"], cwd=repo,
+                    capture_output=True, check=True,
+                ).stdout
+                for name in tracked
+            }
+            payload[names[0]] = b"zip"
+            payload[verifier.CHECKSUMS] = b"sums"
+            # Uploaded from a stale checkout: a document and the manifest.
+            payload["README.md"] = b"# an older README\n"
+            payload[verifier.RUNTIME_MANIFEST] += b"\n"
+            release = {
+                "body": "",
+                "assets": [
+                    {"name": name, "id": index}
+                    for index, name in enumerate(names)
+                ],
+            }
+
+            def gh(args):
+                if args[0] == "repo":
+                    return "user presets, 12 languages"
+                if args[1].endswith("/releases/latest"):
+                    return tag
+                if "/git/ref/tags/" in args[1]:
+                    return json.dumps({"object": {"type": "commit", "sha": commit}})
+                return json.dumps(release)
+
+            def fetch_asset(asset_id, dest):
+                dest.write_bytes(payload[names[asset_id]])
+                return True
+
+            output = io.StringIO()
+            with mock.patch.object(verifier, "ROOT", repo), \
+                    mock.patch.object(verifier, "_gh", side_effect=gh), \
+                    mock.patch.object(verifier, "_fetch", return_value=False), \
+                    mock.patch.object(verifier, "_fetch_asset", side_effect=fetch_asset), \
+                    mock.patch.object(verifier, "validate_release_set", return_value=[]), \
+                    contextlib.redirect_stdout(output):
+                code = verifier.main([tag])
+        text = output.getvalue()
+        self.assertEqual(1, code, text)
+        self.assertIn(f"release asset README.md differs from tag {tag}", text)
+        self.assertIn(
+            f"release asset {verifier.RUNTIME_MANIFEST} differs from tag {tag}", text
+        )
+        for name in ("README.ru.md", "TECHNICAL.md", verifier.THIRD_PARTY_NOTICES):
+            self.assertNotIn(f"release asset {name} differs", text)
 
 
 class RuntimePayloadTests(unittest.TestCase):

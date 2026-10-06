@@ -373,7 +373,11 @@ order:
    commits agree;
 3. the release body carries the two mandatory blocks;
 4. the asset set is exactly the eight (missing and extra both reported);
-5. the four built assets are downloaded and the set is validated offline:
+5. all eight assets are downloaded, and the six that are tracked files (the four
+   documents, `runtime-manifest.json`, `THIRD-PARTY-NOTICES.md`) must be
+   byte-identical to `git show <tag>:<name>` - an asset uploaded from a
+   checkout other than the tag is a failure, not merely "present";
+6. the built set is validated offline:
    canonical manifest JSON, schema/product identity, tag/manifest agreement,
    version sources, package and runtime inventories, `source_inventory` vs the
    tagged blobs, outer `SHA256SUMS` (exactly the ZIP, manifest, notices) with
@@ -381,8 +385,8 @@ order:
    checksums against the ZIP's own `SHA256SUMS`, `VERSION.txt` (version, tag,
    commit, manifest digest), and - if the local archive is still in the root - the
    published ZIP against the local one;
-6. the release is the Latest one;
-7. the repository description still contains `user presets` and `12 languages`.
+7. the release is the Latest one;
+8. the repository description still contains `user presets` and `12 languages`.
 
 Exit code 0 means PASS. Exit code 1 means `FAIL: <N>` followed by one line per
 failure. The messages worth recognising:
@@ -391,6 +395,9 @@ failure. The messages worth recognising:
   `release vX carries 2 asset(s) beyond the release set: docs/screenshot-main-dark.png, ...`
 * documents: `<name>: missing from local tag vX`, `<name>: fetch failed`,
   `<name>: tagged blob mismatch local=<sha12> github=<sha12>`
+* uploaded tracked assets: `release asset <name> differs from tag vX: asset=<sha12> tag=<sha12>`,
+  `release asset <name>: missing from local tag vX`,
+  `could not download release asset <name>`
 * body: `release vX is missing standard NVIDIA notice`,
   `release vX is missing driver warning alert`
 * release/tag: `release vX does not exist`, `local tag vX is missing or invalid`,
@@ -426,6 +433,7 @@ failure. The messages worth recognising:
 |---------|--------------|
 | The four documents were not uploaded as assets | `release vX is missing asset README.md` (one line per missing name) |
 | Documents uploaded but not committed to the tag (or the tag not pushed) | `<name>: missing from local tag vX`, `<name>: fetch failed`, `<name>: tagged blob mismatch ...` |
+| A document, the manifest or the notices uploaded from a checkout other than the tag | `release asset README.md differs from tag vX: asset=<sha12> tag=<sha12>` |
 | Documentation PNGs uploaded as assets | `release vX carries N asset(s) beyond the release set: docs/screenshot-...` |
 | Manifest not re-pinned after a later commit | builder: `runtime-manifest.json does not match tagged runtime/source inventory; regenerate and review it before the release commit`; local gate: `release manifest: runtime-manifest.json does not match ...` (the zip: integrity error); verifier: `tagged Git blob differs from manifest: <path>` |
 | Manifest re-pinned but not committed | `tracked working tree is dirty; commit or restore these paths:` on the next builder run |
