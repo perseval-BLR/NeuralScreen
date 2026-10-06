@@ -2184,6 +2184,11 @@ struct VideoState
     UINT out_rows = 0;
     UINT64 out_row_size = 0;
     bool inputs_ready = false;
+    // v.color.tex is created in COPY_DEST and rests in NON_PIXEL_SHADER_RESOURCE
+    // once a frame has been copied in. The capture path cannot use
+    // inputs_ready for this: a CAP1 or the WANT_PIXELS retry grabs before the
+    // motion upload sets it.
+    bool color_in_srv = false;
 
     // NS_NR_SMALL=1: run Neural Rendering on a smaller frame than the screen.
     //
@@ -3691,6 +3696,7 @@ static bool CreateVideoResources(VideoState &v, UINT w, UINT hgt, UINT full_w = 
     const UINT cw = v.upscale ? full_w : w;   // color texture: full-res in upscale mode
     const UINT ch = v.upscale ? full_h : hgt;
     if (v.nr_small) SafeProcessingSize(cw,ch,v.nr_w,v.nr_h);
+    v.color_in_srv = false;   // created in COPY_DEST
     if (!CreateVideoTex(v.color, cw, ch, DXGI_FORMAT_R8G8B8A8_UNORM, cw * 4) ||
         // ALLOW_UNORDERED_ACCESS: the motion field upscale shader writes into it
         !CreateVideoTex(v.mv, w, hgt, DXGI_FORMAT_R16G16_FLOAT, w * 4,
@@ -5492,7 +5498,10 @@ static bool SwizzleCaptureIntoColor(VideoState &v)
     D3D12_RESOURCE_BARRIER to_copy = Transition(g_dda_dst, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                                                 D3D12_RESOURCE_STATE_COPY_SOURCE);
     D3D12_RESOURCE_BARRIER pre_c[2] = { to_copy, pre_color };
-    h.list->ResourceBarrier(2, pre_c);
+    // The first copy into a fresh texture finds it in COPY_DEST already: a
+    // barrier from a state it is not in is undefined (the debug layer's
+    // INVALID_SUBRESOURCE_STATE), once per session and after every RNSZ.
+    h.list->ResourceBarrier(v.color_in_srv ? 2 : 1, pre_c);
     D3D12_TEXTURE_COPY_LOCATION src = {}, dst = {};
     src.pResource = g_dda_dst; src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; src.SubresourceIndex = 0;
     dst.pResource = v.color.tex; dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.SubresourceIndex = 0;
@@ -5527,6 +5536,7 @@ static bool SwizzleCaptureIntoColor(VideoState &v)
                                                   D3D12_RESOURCE_STATE_COMMON);
     D3D12_RESOURCE_BARRIER post_c[3] = { to_uav, to_nps, to_common };
     h.list->ResourceBarrier(3, post_c);
+    v.color_in_srv = true;
     // The luminance frame (320x180) for the optical flow and the scene score,
     // in the same list.
     const bool gray = RecordGray();
@@ -6040,6 +6050,7 @@ static bool UploadVideoFrame(VideoState &v, const BYTE *color, const BYTE *mv, b
         };
         h.list->ResourceBarrier(_countof(post), post);
     }
+    v.color_in_srv = true;
     ProfileGpuEnd(PS_MOTION);
     const UINT64 fence = EndCommands();
     if (fence == 0) return false;
@@ -6936,6 +6947,7 @@ static void ReleaseVideoTextures(VideoState &v)
     if (v.nr_alt != nullptr) { v.nr_alt->Release(); v.nr_alt = nullptr; }
     v.nr_small = false;
     v.inputs_ready = false;
+    v.color_in_srv = false;
     // The capture flag says "the current frame is already in v.color" -
     // the texture was just released, so the flag is a lie. Without the
     // reset, an RNSZ in capture mode (WGCW/DDA1) evaluates on a freed
