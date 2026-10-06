@@ -77,9 +77,14 @@ static char g_log_path[MAX_PATH];
 static bool g_video_mode = false;    // stdin/stdout are a binary frame protocol in this mode
 
 static void Log(const char *fmt, ...);
+// Set around the repeated reopen of a lost capture source (RetryLostCapture):
+// a lock screen can last hours, and every attempt would write the same five
+// lines of output and format detail. Only the frame thread sets it.
+static bool g_log_quiet = false;
 
 static void Log(const char *fmt, ...)
 {
+    if (g_log_quiet) return;
     char line[2048];
     va_list ap;
     va_start(ap, fmt);
@@ -4364,6 +4369,35 @@ static double                  g_capture_source_seconds = 0.0;
 // desktop that simply did not change is not that: its last frame is still the
 // picture, and the NR and FG histories built on it are still valid (F4).
 static bool                    g_capture_interrupted = false;
+
+// A capture source that went away under us and could not be opened again at
+// once: the secure desktop of a UAC prompt, the lock screen or Ctrl+Alt+Del
+// refuses DuplicateOutput for as long as it is up; a fullscreen game's mode
+// switch does for a moment; a window capture recreated while the window is
+// minimised has no size. The source stays WANTED: CaptureActive() still says
+// yes, the last picture is kept, and the frame loop reopens it with a backoff.
+// It used to count as gone - the next CAP1 or NO_COLOR frame then ended the
+// worker, the client restarted it (NGX init, seconds), and three of those in
+// a row turned NR off (pre-release audit).
+static bool      g_capture_lost = false;
+static bool      g_capture_lost_window = false;
+static ULONGLONG g_capture_retry_at = 0;
+static DWORD     g_capture_retry_ms = 0;
+// NS_TEST_FAIL_STAGE=dda-lost: the desktop refuses duplication until then.
+static ULONGLONG g_test_capture_refused_until = 0;
+
+static void MarkCaptureLost(bool window)
+{
+    if (!g_capture_lost)
+        Log("[cap] the %s is not available - keeping the last picture and retrying",
+            window ? "captured window" : "desktop");
+    g_capture_lost = true;
+    g_capture_lost_window = window;
+    g_capture_interrupted = true;   // its history is stale when it comes back
+    g_capture_retry_ms = 250;
+    g_capture_retry_at = GetTickCount64() + g_capture_retry_ms;
+}
+
 static UINT                    g_dda_w = 0, g_dda_h = 0;
 static ID3D11Device           *g_dda_d11 = nullptr;
 static ID3D11DeviceContext    *g_dda_ctx = nullptr;
@@ -5074,6 +5108,8 @@ static bool OpenDda(UINT w, UINT hgt)
     g_wgc_hwnd = nullptr;
     CloseDda();
     if (w == 0 || hgt == 0) { Log("[dda] capture off"); return true; }
+    if (GetTickCount64() < g_test_capture_refused_until)
+    { Log("[test] DuplicateOutput refused (secure desktop)"); return false; }
     if (!EnsureDdaSwizzle()) return false;
     if (!EnsureCaptureDevice()) return false;
     IDXGIFactory1 *factory = nullptr;
@@ -5263,6 +5299,7 @@ static bool OpenDda(UINT w, UINT hgt)
                         : "");
     }
     g_dda_w = w; g_dda_h = hgt; g_dda_active = true;
+    g_capture_lost = false;
     g_dda_first_frame = true;   // the duplication has produced nothing yet
     Log("[dda] capture %ux%u active", w, hgt);
     return true;
@@ -5581,7 +5618,7 @@ static bool DdaGrab(VideoState &v)
         if (g_dda_hdr_mode != (HdrEnabled() && g_capture_display.enabled))
         {
             Log("[hdr] desktop display mode changed; recreating capture");
-            OpenDda(g_dda_w, g_dda_h);
+            if (!OpenDda(g_dda_w, g_dda_h) || !g_dda_active) MarkCaptureLost(false);
             return false;
         }
     }
@@ -5589,12 +5626,19 @@ static bool DdaGrab(VideoState &v)
     DXGI_OUTDUPL_FRAME_INFO fi = {};
     const double t_acq = PhaseNow();
     HRESULT hr = g_dda_dup->AcquireNextFrame(100, &fi, &res);
+    static unsigned test_acquires = 0;   // the injection waits for a live stream
+    if (++test_acquires > 30 && TestFailureOnce("dda-lost"))
+    {
+        if (SUCCEEDED(hr)) { g_dda_dup->ReleaseFrame(); res->Release(); res = nullptr; }
+        hr = DXGI_ERROR_ACCESS_LOST;
+        g_test_capture_refused_until = GetTickCount64() + 1500;
+    }
     PhaseAdd(PH_ACQ, t_acq);
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) return false;      // desktop unchanged
     if (FAILED(hr))
     {
         Log("[dda] acquire failed 0x%08X - recreating", hr);
-        OpenDda(g_dda_w, g_dda_h);
+        if (!OpenDda(g_dda_w, g_dda_h) || !g_dda_active) MarkCaptureLost(false);
         return false;
     }
     // LastPresentTime is zero for pointer-only updates. NR keeps processing
@@ -5634,7 +5678,7 @@ static bool DdaGrab(VideoState &v)
     {
         Log("[dda] capture resized -> %ux%u, format %u - recreating",
             new_w, new_h, (unsigned)new_format);
-        OpenDda(new_w, new_h);
+        if (!OpenDda(new_w, new_h) || !g_dda_active) MarkCaptureLost(false);
         return false;
     }
     if (st != StageResult::Ok) return false;
@@ -5755,7 +5799,7 @@ static void CloseWgc()
 // Any capture source at all - the pipe path is the alternative.
 static bool CaptureActive()
 {
-    return g_dda_active || g_wgc_active;
+    return g_dda_active || g_wgc_active || g_capture_lost;
 }
 
 static bool OpenWgc(HWND hwnd)
@@ -5844,6 +5888,7 @@ static bool OpenWgc(HWND hwnd)
         g_wgc = s;
         g_wgc_hwnd = hwnd;
         g_wgc_active = true;
+        g_capture_lost = false;
         // No self-capture loop in this mode, so stop hiding: this is what
         // makes the overlay visible to OBS and lets the NVIDIA App record.
         ApplyPresentAffinity();
@@ -5858,6 +5903,30 @@ static bool OpenWgc(HWND hwnd)
         delete s;
         return false;
     }
+}
+
+// The frame loop's half of MarkCaptureLost: reopen the lost source when its
+// time has come, doubling the wait to 2 s while it keeps refusing.
+static void RetryLostCapture()
+{
+    if (!g_capture_lost) return;
+    const ULONGLONG now = GetTickCount64();
+    if (now < g_capture_retry_at) return;
+    // The first attempt speaks; the rest are quiet until one succeeds.
+    g_log_quiet = g_capture_retry_ms > 250;
+    const bool back = g_capture_lost_window
+        ? (g_wgc_hwnd != nullptr && IsWindow(g_wgc_hwnd) && OpenWgc(g_wgc_hwnd) && g_wgc_active)
+        : (g_dda_w != 0 && OpenDda(g_dda_w, g_dda_h) && g_dda_active);
+    g_log_quiet = false;
+    if (back)
+    {
+        Log("[cap] the %s is back", g_capture_lost_window ? "captured window" : "desktop");
+        g_capture_lost = false;
+        return;
+    }
+    // OpenDda/OpenWgc clear the flag on success only, so it is still set.
+    g_capture_retry_ms = (std::min)(g_capture_retry_ms * 2, static_cast<DWORD>(2000));
+    g_capture_retry_at = now + g_capture_retry_ms;
 }
 
 static void RecreateWgcPool(UINT width, UINT height)
@@ -5901,7 +5970,7 @@ static bool WgcGrab(VideoState &v)
         {
             const HWND hwnd = g_wgc_hwnd;
             Log("[hdr] window display mode changed; recreating capture");
-            OpenWgc(hwnd);
+            if (!OpenWgc(hwnd) || !g_wgc_active) MarkCaptureLost(true);
             return false;
         }
     }
@@ -6023,6 +6092,7 @@ static bool WgcGrab(VideoState &v)
     {
         Log("[wgc] grab threw 0x%08X - capture closed", (unsigned)e.code());
         CloseWgc();
+        MarkCaptureLost(true);
         return false;
     }
 }
@@ -7568,6 +7638,7 @@ static int RunVideo()
         {
             // DDA1: take over the capture (width==0 turns it off, back to the pipe).
             uint32_t ok = 0;
+            g_capture_lost = false;   // the client says what the source is now
             if (dc.width == 0 || dc.height == 0)
             {
                 CloseDda();
@@ -7618,6 +7689,7 @@ static int RunVideo()
             // WGCW: capture one window instead of the desktop (hwnd == 0 off).
             const HWND hwnd = reinterpret_cast<HWND>((uintptr_t)g_wgc_cmd.hwnd);
             uint32_t ok = 0;
+            g_capture_lost = false;   // the client says what the source is now
             if (hwnd == nullptr) { CloseWgc(); ok = 1; }
             else ok = OpenWgc(hwnd) ? 1u : 0u;
             // The size the capture really produces - physical pixels, which is
@@ -7757,6 +7829,7 @@ static int RunVideo()
         static bool stall_pending = false;
         static unsigned long stall_gap_ms = 0;
         const ULONGLONG now_tick = GetTickCount64();
+        RetryLostCapture();
         if (CaptureActive())
         {
             // Capture mode: the colour comes from the desktop (DDA1) or from
@@ -7807,8 +7880,10 @@ static int RunVideo()
                     // asked for. Once per dry spell - reopening the capture
                     // on every slot of a recording would be thrashing.
                     g_no_colour_retried = true;
-                    const bool reopened = g_wgc_active
+                    const bool window = g_wgc_active;
+                    const bool reopened = window
                         ? OpenWgc(g_wgc_hwnd) : OpenDda(g_dda_w, g_dda_h);
+                    if (!reopened) MarkCaptureLost(window);
                     // A fresh session does not answer the same millisecond:
                     // the WGC pool fills on its own schedule, a frame
                     // interval or so. Up to ~120 ms of small steps, which is

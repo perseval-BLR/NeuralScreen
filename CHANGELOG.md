@@ -193,6 +193,16 @@ Scope and honesty notes:
   worker could stand still until a 15-20 s timeout declared it dead and
   restarted it. The raise now runs off the frame thread, in the same order.
 
+* **A UAC prompt, the lock screen or Ctrl+Alt+Del no longer restarts the
+  picture.** They put up the secure desktop, and screen capture is refused
+  for as long as it is up (a fullscreen game's mode switch does the same for
+  a moment). The capture was reopened once, at once, and when that was
+  refused the worker ended; the program restarted it - seconds of NGX start
+  each time - and three such restarts turned NR off. The capture source is
+  now kept: the last picture stays, the worker retries with a growing pause
+  (up to 2 s, quietly in the log), and picks up as soon as the desktop is
+  back. The same holds for a captured window recreated while minimised.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
