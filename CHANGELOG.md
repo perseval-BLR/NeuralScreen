@@ -103,6 +103,16 @@ Scope and honesty notes:
   an HDR display here (the bench has none); `NS_EARLY_REPLY=0` turns the early
   answer off for an A/B.
 
+* **An NVIDIA driver too old for the neural renderer is named as the reason
+  (#145).** On 576.x drivers NVIDIA's runtime answers the requirements query
+  with "out of date" and then faults inside the create instead of refusing
+  (#51 and #83 had the same sequence). The check caught the fault, but the
+  dialog said only "failed; stage create; passed 0/0". The worker now reports
+  that combination as its own verdict, the check files it as unsupported for
+  this driver - the verdict is keyed by the driver version, so an update is
+  checked afresh - and the dialog leads with "the NVIDIA driver (576.88) is
+  too old", in all twelve languages.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

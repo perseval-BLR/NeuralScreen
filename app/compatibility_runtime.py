@@ -34,7 +34,8 @@ from gpuinfo import probe as gpu_probe
 from paths import BASE_DIR, NATIVE_DIR, WORKER_EXE
 from pipeline import start_worker
 from protocol import (
-    CREATE_CATEGORY_NONE, CREATE_CATEGORY_UNSUPPORTED, send_frame,
+    CREATE_CATEGORY_DRIVER_OUT_OF_DATE, CREATE_CATEGORY_NONE,
+    CREATE_CATEGORY_UNSUPPORTED, send_frame,
 )
 from settings_io import APP_VERSION
 
@@ -238,6 +239,8 @@ class NativeSelfTestRunner:
         if (not ok and category == CREATE_CATEGORY_UNSUPPORTED
                 and ngx_result == _FEATURE_NOT_SUPPORTED):
             return StageOutcome(StageStatus.UNSUPPORTED)
+        if not ok and category == CREATE_CATEGORY_DRIVER_OUT_OF_DATE:
+            return StageOutcome(StageStatus.DRIVER_OUT_OF_DATE)
         return StageOutcome(StageStatus.ERROR)
 
     def evaluate(self, request: EvaluateRequest) -> StageOutcome:
@@ -431,6 +434,11 @@ def startup_gate(st) -> bool:
                 passed=result.passed, attempted=result.attempted,
                 expected=result.expected)
         message = text["compat_blocked"].format(verdict=verdict, bundle=bundle_text)
+        if result is not None and result.reason == StageStatus.DRIVER_OUT_OF_DATE.value:
+            # The one failure the user can fix in a minute (#145): say so
+            # first, with the driver this machine has.
+            driver = str(getattr(st, "environment", {}).get("driver", "?"))
+            message = text["compat_driver_old"].format(driver=driver) + "\n\n" + message
         retry = 4  # IDRETRY
         try:
             answer = ctypes.windll.user32.MessageBoxW(

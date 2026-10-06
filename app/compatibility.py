@@ -286,6 +286,9 @@ class StageStatus(str, Enum):
     CRASH = "crash"
     DEVICE_LOST = "device_lost"
     TDR = "tdr"
+    # The create failed and the runtime had said the driver is out of date:
+    # a verdict about this driver (the key carries its version), not a fault.
+    DRIVER_OUT_OF_DATE = "driver_out_of_date"
 
 
 @dataclass(frozen=True)
@@ -566,7 +569,13 @@ class CompatibilityPreflight:
         passed: int,
         attempted: int,
     ) -> CompatibilityResult:
-        if status is StageStatus.UNSUPPORTED:
+        # "Driver out of date" is filed as a verdict about THIS driver only when
+        # the key knows which driver that is: keyed by "unknown", an update
+        # would leave the key unchanged and the cached block in place until a
+        # manual Retry. Unknown, it stays a failure, re-checked every launch.
+        driver_known = str(key.driver_version).strip().lower() not in ("", "unknown", "?")
+        if status is StageStatus.UNSUPPORTED or (
+                status is StageStatus.DRIVER_OUT_OF_DATE and driver_known):
             verdict = CompatibilityStatus.UNSUPPORTED
             until = None
         elif status in _TRANSIENT:

@@ -344,6 +344,9 @@ CREATE_ACK_FMT = "<4Iq"  # magic, ok, ngx_result, category, pts
 CREATE_CATEGORY_NONE = 0
 CREATE_CATEGORY_UNSUPPORTED = 1
 CREATE_CATEGORY_FAILED = 2
+# The create failed after the requirements query answered FAIL_OutOfDate:
+# the NVIDIA driver is too old for the feature (#145).
+CREATE_CATEGORY_DRIVER_OUT_OF_DATE = 3
 
 HEADER_FMT = "<10I4f2I"   # magic, w, h, warmup, frame_count, profile, preset,
                           # style, auto_mask, ui_correction, intensity,

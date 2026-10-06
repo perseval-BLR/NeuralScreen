@@ -633,6 +633,13 @@ static bool TestFailureOnce(const char *stage)
     return true;
 }
 
+// The requirements query answered FAIL_OutOfDate (0xBAD0000C) before the
+// create: the driver is older than the feature needs. A create that then
+// fails - the 576.x drivers fault inside NVIDIA's runtime rather than refuse
+// (#51, #83, #145) - is reported to the client as "update the driver"
+// (CACK category 3), not as a bare failure.
+static bool g_requirements_out_of_date = false;
+
 static void ReportFailure(const char *stage, const char *kind, HRESULT code)
 {
     Log("[failure] stage=%s kind=%s code=0x%08X", stage, kind,
@@ -1444,6 +1451,7 @@ static bool CreateFeature(UINT w, UINT h_, int flags, NVSDK_NGX_Result *out_r, U
     h.params->Set("DLSSNR.Hint.Render.Preset", NrPresetHint());
     h.params->Set("DLSS.Feature.Create.Flags", 0u);
 
+    bool inject_create_fault = false;
     // R6: decode the runtime's own requirements before the create - the
     // result names the exact refusal reason (missing file vs driver vs
     // adapter vs OS) instead of a bare 0x FAIL code. Init is not required
@@ -1472,8 +1480,15 @@ static bool CreateFeature(UINT w, UINT h_, int flags, NVSDK_NGX_Result *out_r, U
         NVSDK_NGX_Result qrr = NVSDK_NGX_Result_Success;
         if (TestFailureOnce("requirements"))
             req.FeatureSupported = NVSDK_NGX_FeatureSupportResult_AdapterUnsupported;
+        else if (TestFailureOnce("create-old-driver"))
+        {
+            // #145's sequence: OutOfDate here, then a fault in the create.
+            qrr = static_cast<NVSDK_NGX_Result>(0xBAD0000Cu);
+            inject_create_fault = true;
+        }
         else
             qrr = NVSDK_NGX_D3D12_GetFeatureRequirements(g_adapter3, &di, &req);
+        g_requirements_out_of_date = static_cast<uint32_t>(qrr) == 0xBAD0000Cu;
         if (!NVSDK_NGX_FAILED(qrr))
         {
             if (req.FeatureSupported == NVSDK_NGX_FeatureSupportResult_Supported)
@@ -1514,8 +1529,13 @@ static bool CreateFeature(UINT w, UINT h_, int flags, NVSDK_NGX_Result *out_r, U
     if (!BeginCommands()) return false;
     DWORD ccode = 0;
     NVSDK_NGX_Result rf = static_cast<NVSDK_NGX_Result>(0x7FFFFFFF);
-    __try { rf = g_nr_create(h.list, NVSDK_NGX_Feature_Reserved18, h.params, &h.feature); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { ccode = GetExceptionCode(); }
+    if (inject_create_fault)
+        ccode = EXCEPTION_ACCESS_VIOLATION;
+    else
+    {
+        __try { rf = g_nr_create(h.list, NVSDK_NGX_Feature_Reserved18, h.params, &h.feature); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { ccode = GetExceptionCode(); }
+    }
     g_create_result = static_cast<uint32_t>(rf);
     if (out_r != nullptr) *out_r = rf;
     if (ccode != 0)
@@ -1897,7 +1917,8 @@ struct VideoCreateAck
     uint32_t magic;
     uint32_t ok;
     uint32_t ngx_result;
-    uint32_t category; // 0 success, 1 exact unsupported, 2 other create failure
+    uint32_t category; // 0 success, 1 exact unsupported, 2 other create failure,
+                       // 3 create failed after FAIL_OutOfDate (#145)
     int64_t pts;
 };
 // SHMI: client -> worker, once per worker lifetime (right after the stream
@@ -7053,7 +7074,8 @@ static int RunVideo()
     v.passes = 1u;
     v.passes_live = 1u;
     const uint32_t create_category = feature_created ? 0u :
-        (static_cast<uint32_t>(create_result) == 0xBAD00001u ? 1u : 2u);
+        (static_cast<uint32_t>(create_result) == 0xBAD00001u ? 1u :
+         g_requirements_out_of_date ? 3u : 2u);
     const VideoCreateAck create_ack = {
         CREATE_ACK_MAGIC, feature_created ? 1u : 0u,
         static_cast<uint32_t>(create_result), create_category, 0
