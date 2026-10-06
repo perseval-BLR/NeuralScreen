@@ -694,8 +694,19 @@ def _tail(path: Path, limit: int) -> tuple[str, dict[str, Any]]:
         size = path.stat().st_size
         with path.open("rb") as handle:
             if size > limit:
-                handle.seek(-limit, os.SEEK_END)
-            raw = handle.read(limit)
+                # One byte more than the window, to see whether the window
+                # starts a line. A cut inside a line used to keep its second
+                # half, and the scrubber's rules are anchored on the start:
+                # "title='" or the drive letter of a path were on the far
+                # side of the cut, so the private rest of a window title or
+                # a path went into the bundle as plain text. The partial
+                # line is dropped instead.
+                handle.seek(-(limit + 1), os.SEEK_END)
+                raw = handle.read(limit + 1)
+                newline = raw.find(b"\n")
+                raw = raw[newline + 1:] if newline >= 0 else b""
+            else:
+                raw = handle.read(limit)
     except OSError:
         return "", metadata
     metadata["included"] = True

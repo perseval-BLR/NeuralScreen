@@ -14,6 +14,8 @@ the sentinel is gone while the line still says what happened.
 Run:  runtime\\python.exe tests\\test_bundle_log_privacy.py
 """
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,14 +55,69 @@ def check_convert_names(failures: list) -> None:
                         "rewritten")
 
 
+def check_tail_cut(failures: list) -> None:
+    window = 4096
+    filler = STAMP + "[phase] capture 1.2 ms | send 0.4 ms\n"
+    lines = {
+        "title": (STAMP + "[z] foreign-above-hud (changed) top=hwnd=0x1 "
+                  f"pid=7 class='Qt' title='Anna ({SENTINEL} private chat) - "
+                  "Telegram' rect=(0,0,1,1) | hud=(0,0,1,1)\n"),
+        "path": (STAMP + "[main] recording published: D:\\Media\\Anna "
+                 f"Smith\\{SENTINEL}\\clip.mp4 | 12.0 s\n"),
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        log = work / "NeuralScreen.log"
+        for label, line in lines.items():
+            # The window starts a few characters into the line, before the
+            # sentinel and after the anchor the scrubber looks for.
+            cut = line.index("Anna") + 2
+            after = (filler * 200)[: window - (len(line) - cut)]
+            log.write_text(filler * 300 + line + after, encoding="utf-8",
+                           newline="\n")
+            out = work / f"bundle-{label}.zip"
+            diagnostics.create_diagnostic_bundle(
+                out, diagnostics.DiagnosticBundleRequest(
+                    failure_stage="manual", log_path=log,
+                    max_log_bytes=window,
+                    system_snapshot={"os": {}, "gpus": [], "displays": []},
+                    runtime_signature={"status": "skipped"},
+                    runtime_path=log))
+            with zipfile.ZipFile(out) as archive:
+                tail = archive.read("log_tail.txt").decode("utf-8")
+            if SENTINEL in tail:
+                first = tail.splitlines()[0] if tail else ""
+                failures.append(f"a cut inside a {label} line kept its private "
+                                f"half: {first!r}")
+            if not tail.startswith(STAMP):
+                failures.append(f"the {label} tail does not start on a whole "
+                                f"line: {tail[:60]!r}")
+        # A window that starts exactly on a line keeps that line.
+        log.write_text(filler * 300, encoding="utf-8", newline="\n")
+        out = work / "bundle-aligned.zip"
+        diagnostics.create_diagnostic_bundle(
+            out, diagnostics.DiagnosticBundleRequest(
+                failure_stage="manual", log_path=log,
+                max_log_bytes=len(filler) * 10,
+                system_snapshot={"os": {}, "gpus": [], "displays": []},
+                runtime_signature={"status": "skipped"}, runtime_path=log))
+        with zipfile.ZipFile(out) as archive:
+            kept = archive.read("log_tail.txt").decode("utf-8").count("[phase]")
+        if kept != 10:
+            failures.append(f"a window aligned on a line start kept {kept} of "
+                            f"its 10 lines")
+
+
 def main() -> int:
     failures: list = []
     check_convert_names(failures)
+    check_tail_cut(failures)
     for f in failures:
         print("FAIL:", f)
     if failures:
         return 1
-    print("OK: the bundle's log tail carries no converted file names")
+    print("OK: the bundle's log tail carries no converted file names and "
+          "no half lines")
     return 0
 
 
