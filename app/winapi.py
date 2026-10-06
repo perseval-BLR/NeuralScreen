@@ -199,8 +199,11 @@ def _is_taskbar_window(hwnd: int) -> bool:
     if ex & 0x00000080:  # WS_EX_TOOLWINDOW
         return False
     cloaked = ctypes.c_int(0)
+    # c_void_p: dwmapi has no prototypes here, and a bare int handle goes in
+    # as a C int - one at or above 2**31 raised ArgumentError, which inside
+    # the EnumWindows callback ended the enumeration without a word.
     if ctypes.windll.dwmapi.DwmGetWindowAttribute(
-            hwnd, 14, ctypes.byref(cloaked), 4) == 0 and cloaked.value:
+            ctypes.c_void_p(int(hwnd)), 14, ctypes.byref(cloaked), 4) == 0             and cloaked.value:
         return False  # DWM_CLOAKED: hidden from the taskbar (TextInputHost,
         # the Settings helper windows, ...)
     return True

@@ -63,6 +63,8 @@ def _fake_monitors(entries):
         return True
 
     def fake_getinfo(hmon, lpmi):
+        # The handle may come wrapped in c_void_p, as the real call takes it.
+        hmon = getattr(hmon, "value", hmon)
         for _hmon, dev, _x, _y, _w, _h in entries:
             if _hmon == hmon:
                 info = ctypes.cast(

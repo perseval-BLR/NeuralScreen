@@ -214,7 +214,9 @@ def enable_wgc(st) -> bool:
     st.dda_attempted = True
     if st.window_hwnd is None:
         return True
-    if not ctypes.windll.user32.IsWindow(st.window_hwnd):
+    # c_void_p: windll.user32 has no prototype for IsWindow, and a handle at
+    # or above 2**31 passed as a bare int raised ArgumentError here.
+    if not ctypes.windll.user32.IsWindow(ctypes.c_void_p(st.window_hwnd)):
         print("[main] the captured window is gone - back to full screen",
               file=sys.stderr)
         return False

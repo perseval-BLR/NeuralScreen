@@ -572,7 +572,10 @@ def _windows_displays() -> list[dict[str, Any]]:
         def callback(monitor, _dc, _rect, _data):
             info = MonitorInfoEx()
             info.cbSize = ctypes.sizeof(info)
-            if ctypes.windll.user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+            # c_void_p: a bare int handle at or above 2**31 raised
+            # ArgumentError inside this callback and ended the enumeration.
+            if ctypes.windll.user32.GetMonitorInfoW(ctypes.c_void_p(monitor),
+                                                    ctypes.byref(info)):
                 rect = info.rcMonitor
                 displays.append(
                     {

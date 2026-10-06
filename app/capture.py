@@ -215,7 +215,8 @@ def monitor_origin(devicename: str) -> tuple[int, int] | None:
     def _cb(hmon, _hdc, lprect, _lparam) -> bool:
         info = _MONITORINFOEXW()
         info.cbSize = ctypes.sizeof(_MONITORINFOEXW)
-        if ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+        if ctypes.windll.user32.GetMonitorInfoW(ctypes.c_void_p(hmon),
+                                                ctypes.byref(info)):
             if "".join(info.szDevice).rstrip("\x00") == devicename:
                 r = lprect.contents
                 found.append((r.left, r.top))
@@ -241,7 +242,8 @@ def monitor_work_size(devicename: str) -> tuple[int, int] | None:
     def _cb(hmon, _hdc, _lprect, _lparam) -> bool:
         info = _MONITORINFOEXW()
         info.cbSize = ctypes.sizeof(_MONITORINFOEXW)
-        if ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+        if ctypes.windll.user32.GetMonitorInfoW(ctypes.c_void_p(hmon),
+                                                ctypes.byref(info)):
             if "".join(info.szDevice).rstrip("\x00") == devicename:
                 r = info.rcWork
                 found.append((r.right - r.left, r.bottom - r.top))
@@ -269,7 +271,8 @@ def monitor_size(devicename: str) -> tuple[int, int] | None:
     def _cb(hmon, _hdc, lprect, _lparam) -> bool:
         info = _MONITORINFOEXW()
         info.cbSize = ctypes.sizeof(_MONITORINFOEXW)
-        if ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+        if ctypes.windll.user32.GetMonitorInfoW(ctypes.c_void_p(hmon),
+                                                ctypes.byref(info)):
             if "".join(info.szDevice).rstrip("\x00") == devicename:
                 r = lprect.contents
                 found.append((r.right - r.left, r.bottom - r.top))
@@ -299,7 +302,8 @@ def list_monitors() -> list[tuple[int, int, int, str]]:
         info = _MONITORINFOEXW()
         info.cbSize = ctypes.sizeof(_MONITORINFOEXW)
         devicename = ""
-        if ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+        if ctypes.windll.user32.GetMonitorInfoW(ctypes.c_void_p(hmon),
+                                                ctypes.byref(info)):
             devicename = "".join(info.szDevice).rstrip("\x00")
         monitors.append((r.left, r.top, r.right - r.left, r.bottom - r.top,
                          devicename))
