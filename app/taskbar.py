@@ -85,6 +85,10 @@ user32.DispatchMessageW.argtypes = [ctypes.POINTER(wt.MSG)]
 user32.DispatchMessageW.restype = LRESULT
 user32.RegisterWindowMessageW.argtypes = [wt.LPCWSTR]
 user32.RegisterWindowMessageW.restype = wt.UINT
+user32.ChangeWindowMessageFilterEx.argtypes = [wt.HWND, wt.UINT, wt.DWORD, wt.LPVOID]
+user32.ChangeWindowMessageFilterEx.restype = wt.BOOL
+kernel32.CreateMutexW.argtypes = [wt.LPVOID, wt.BOOL, wt.LPCWSTR]
+kernel32.CreateMutexW.restype = wt.HANDLE
 
 WS_POPUP = 0x80000000
 WS_VISIBLE = 0x10000000
@@ -118,6 +122,52 @@ def _registered_message(name: str) -> int:
 #: the same number for the same name, and no other program's can have it.
 #: The WM_APP number stands in if registration ever fails.
 WM_NS_SHOW = _registered_message("NeuralScreen.ShowSettings") or 0x8000 + 0x3E53
+ERROR_ACCESS_DENIED = 5
+ERROR_ALREADY_EXISTS = 183
+MSGFLT_ALLOW = 1
+SINGLE_INSTANCE_MUTEX = "NeuralScreen_SingleInstance"
+
+
+def _last_error() -> int:
+    """The error the last call on our private kernel32/user32 left."""
+    return ctypes.get_last_error()
+
+
+def claim_single_instance(name: str = SINGLE_INSTANCE_MUTEX):
+    """Create the single-instance mutex: (handle, another copy is running).
+
+    The handle has to be kept for the life of the process - the mutex dies
+    with the last handle, which is what lets a crashed copy not block the
+    next launch.
+
+    ERROR_ALREADY_EXISTS is the usual answer of a second copy. A copy
+    started as administrator creates the mutex with an elevated security
+    descriptor, and then a non-elevated launch cannot open it at all:
+    CreateMutexW returns NULL with ERROR_ACCESS_DENIED - and that copy used
+    to take the NULL as "first" and start next to the running one. Both
+    answers mean another copy holds the name.
+    """
+    handle = kernel32.CreateMutexW(None, False, name)
+    error = _last_error()
+    return handle, error in (ERROR_ALREADY_EXISTS, ERROR_ACCESS_DENIED)
+
+
+def allow_show_message(hwnd) -> bool:
+    """Let WM_NS_SHOW through UIPI to `hwnd`, whatever the sender's level.
+
+    A running copy started as administrator is a high-integrity window, and
+    Windows drops messages posted to it from a normal-integrity process - the
+    second copy's "show yourself" never arrived, and the user saw nothing.
+    Only the current number: the legacy one is not accepted by this window
+    anyway (see WM_NS_SHOW_LEGACY).
+    """
+    try:
+        return bool(user32.ChangeWindowMessageFilterEx(hwnd, WM_NS_SHOW,
+                                                       MSGFLT_ALLOW, None))
+    except Exception:
+        return False
+
+
 SC_MINIMIZE = 0xF020
 SC_RESTORE = 0xF120
 SC_CLOSE = 0xF060
@@ -480,6 +530,7 @@ class TaskbarWindow:
         # set_visible() below; it was simply missed here.
         user32.ShowWindow(self._hwnd, 8)  # SW_SHOWNA - show, do not activate
         self._set_icon(hinst)
+        allow_show_message(self._hwnd)
         msg = wt.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             user32.TranslateMessage(ctypes.byref(msg))

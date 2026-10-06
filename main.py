@@ -504,8 +504,11 @@ def main() -> int:
     # mutex is the standard Windows single-instance mechanism - it lives
     # in the kernel and dies with the process, so a crashed copy does not
     # block the next launch.
-    _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "NeuralScreen_SingleInstance")
-    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+    # ERROR_ALREADY_EXISTS, or ERROR_ACCESS_DENIED when the running copy is
+    # elevated and this one is not (see taskbar.claim_single_instance).
+    from taskbar import claim_single_instance
+    _mutex, _already_running = claim_single_instance()
+    if _already_running:
         # The running copy is asked to show itself: this one used to exit
         # with only a log line, so a double-click on the program while it sat
         # in the tray - or on a new version while the old one ran - did
