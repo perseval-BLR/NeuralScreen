@@ -7993,7 +7993,12 @@ static int RunVideo()
             g_last_out_bypass = (fh.reserved & FRAME_FLAG_BYPASS) != 0 || h.feature == nullptr;
             const double t_up = PhaseNow();
             const bool try_nvofa = NvofaRequested() && !g_nvofa.failed && g_gray_mapped;
-            const bool nvofa_used = try_nvofa && RunNvofa(v, fh.reset != 0, defer_tail ? &upload_done : nullptr,
+            // The stall reset is consumed further down, after this - so the
+            // first fresh frame after a pause measured its flow against the
+            // frame from before the pause, with the old flow as its hint, and
+            // handed NR a motion field for the frame that resets anyway.
+            const bool resets_here = fh.reset != 0 || (stall_pending && source_fresh);
+            const bool nvofa_used = try_nvofa && RunNvofa(v, resets_here, defer_tail ? &upload_done : nullptr,
                                                           !source_fresh);
             if (try_nvofa && !nvofa_used) fh.reset = 1; // do not reuse history after backend failure
             const bool up_ok = nvofa_used || UploadMotionOnly(v, mv_ptr,
