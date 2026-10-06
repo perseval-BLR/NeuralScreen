@@ -326,15 +326,17 @@ class HotkeyController:
         #: Set by the hotkey thread once a MSG_ENABLE has been acted on, so a
         #: caller can report the real state instead of the one it asked for.
         self._enabled_done = threading.Event()
-        # Polling fallback state: vk -> last time the command fired, and
-        # vk -> was the key down on the previous tick. The timestamp kills the
+        # Polling fallback state: (mods, vk) -> last time the command fired,
+        # and vk -> was the key down on the previous tick. Both keyed so that
+        # Num1 and Ctrl+Num1 are two bindings: the cooldown belongs to the
+        # combination, the down-state to the physical key. The timestamp kills the
         # duplicate that would otherwise follow a delivered WM_HOTKEY (the
         # message loop stamps it too); the down-state makes the poller fire on
         # the press EDGE instead of every cooldown while a key is held.
         # Both threads check-and-stamp the timestamp table, so that pair is
         # done under self._lock: unlocked, a WM_HOTKEY and a poller sample of
         # the same press could both read "not yet" and fire it twice.
-        self._poll_last: dict[int, float] = {}
+        self._poll_last: dict[tuple[int, int], float] = {}
         self._poll_down: dict[int, bool] = {}
         # The ids RegisterHotKey accepted. Only those are polled: a refused
         # combination belongs to another program, which gets the press -
@@ -372,12 +374,12 @@ class HotkeyController:
                     # it the poller delivered the same command again ~30 ms
                     # later and every hotkey fired twice: NR toggled on and
                     # straight back off, the menu opened and closed.
-                    vk = binding[1]
+                    key = (binding[0], binding[1])
                     now = time.monotonic()
                     with self._lock:
-                        fresh = now - self._poll_last.get(vk, 0.0) >= POLL_COOLDOWN
+                        fresh = now - self._poll_last.get(key, 0.0) >= POLL_COOLDOWN
                         if fresh:
-                            self._poll_last[vk] = now
+                            self._poll_last[key] = now
                     if not fresh:
                         continue  # the poller already delivered this press
                     self._commands.put(binding[2])
@@ -471,7 +473,14 @@ class HotkeyController:
             bindings = {hk_id: entry for hk_id, entry in self._bindings.items()
                         if hk_id in self._live_ids}
         now = time.monotonic()
-        for hk_id, (mods, vk, cmd, _name) in bindings.items():
+        # One sample and one edge per physical key, before any binding is
+        # looked at. Sampled per binding, the first of two bindings on the
+        # same key (Num1 and Ctrl+Num1) stored "down" and the second then
+        # never saw an edge - it could not fire through the poller at all.
+        fresh: dict[int, bool] = {}
+        for _mods, vk, _cmd, _name in bindings.values():
+            if vk in fresh:
+                continue
             down = _pressed(vk)
             # A key held down at startup (a stuck key, a game holding
             # Num1) must not fire: the poller only triggers on a fresh
@@ -480,14 +489,16 @@ class HotkeyController:
             # while Num1 was physically held).
             was_down = self._poll_down.get(vk, down)
             self._poll_down[vk] = down
-            if not down or was_down:
+            fresh[vk] = down and not was_down
+        for hk_id, (mods, vk, cmd, _name) in bindings.items():
+            if not fresh[vk]:
                 continue                      # not a fresh press
             if not _mods_down(mods) or not _mods_clear(mods):
                 continue
             with self._lock:
-                if now - self._poll_last.get(vk, 0.0) < POLL_COOLDOWN:
+                if now - self._poll_last.get((mods, vk), 0.0) < POLL_COOLDOWN:
                     continue                  # WM_HOTKEY already did it
-                self._poll_last[vk] = now
+                self._poll_last[(mods, vk)] = now
             self._commands.put(cmd)
 
     def _unregister(self) -> None:
