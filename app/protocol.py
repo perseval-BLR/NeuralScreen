@@ -281,9 +281,26 @@ class SharedFrameBuffer:
             print(f"[main] could not close the shared memory: {exc}", file=sys.stderr)
 
 
+#: How long a starting worker may take to reach its command loop: D3D12
+#: device, NVSDK_NGX_D3D12_Init and the first CreateFeature. Measured at
+#: 5-19 s for NGX init alone on a reporter's machine (#148). A dead worker
+#: still ends the wait at once, through the reader's EOF; a HUNG one holds the
+#: main thread (no pumping) for this long, three times in a restart storm -
+#: so twice the worst start measured, not more.
+WORKER_STARTUP_TIMEOUT_S = 45.0
+
+
 def _negotiate_shm(worker: subprocess.Popen, reader: "WorkerReader",
-                   shm: SharedFrameBuffer, timeout: float = 10.0) -> None:
+                   shm: SharedFrameBuffer, timeout: float = 10.0,
+                   startup_timeout: float = WORKER_STARTUP_TIMEOUT_S) -> None:
     """Hand the shared memory name to the worker (SHMI) and wait for SACK.
+
+    The worker reads SHMI only from its command loop, after NGX init and the
+    first CreateFeature - whose verdict (CACK) it sends right before entering
+    that loop. Waiting the SACK timeout from the moment SHMI was WRITTEN made
+    a slow NGX init a "refusal" on every rebuild (#148), and the late SACK
+    then landed on nobody. So the startup is waited for first, on its own
+    budget, and the SACK timeout starts when the worker can answer.
 
     A refusal is not fatal: if the worker could not open the mapping we stay
     on sending the frame down the pipe - that path is still there and works.
@@ -294,6 +311,7 @@ def _negotiate_shm(worker: subprocess.Popen, reader: "WorkerReader",
             SHM_FMT, SHM_MAGIC, shm.color_capacity, shm.motion_capacity, 0, 0,
             shm.name.encode("ascii")))
         worker.stdin.flush()
+        reader.wait_create_ack(startup_timeout)
         reader.wait_sack(timeout)
         shm.negotiated = True
         print(f"[main] shared memory agreed: {shm.size / 1e6:.1f} MB, "

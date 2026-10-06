@@ -61,6 +61,16 @@ Scope and honesty notes:
   Screenshots now hold the processed frame only; CPU recordings still draw an
   open menu in, as before.
 
+* **A slow worker start is no longer read as "no shared memory" (#148).** The
+  worker answers the shared-memory handshake only from its command loop, after
+  NGX initialisation - 5-19 s on the reporter's machine - but the client
+  started its 10 s clock when it sent the request. Every rebuild on such a
+  machine logged "shared memory unavailable" and began degraded. The client
+  now waits for the worker's startup verdict first (on its own 45 s budget; a
+  worker that dies still ends the wait at once), and the 10 s clock starts
+  when the worker can answer. The commands that follow - the output window
+  among them - are then answered in milliseconds instead of timing out too.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
