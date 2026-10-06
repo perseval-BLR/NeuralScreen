@@ -1026,7 +1026,17 @@ def main() -> int:
             # GPU itself: Python sends a full-res frame, motion at work-res
             # (guides is built with work_w/work_h and downsamples its own
             # input) and receives full-res back.
-            if st.work_frame is None and not st.gray_active:
+            #
+            # One window captured by the worker, but no gray channel (GRAY
+            # refused): the colour never reaches Python, and the only frame
+            # Python could grab is dxcam's - the WHOLE monitor, resized to the
+            # window's size. Flow computed from that describes the desktop
+            # around the window, not the window. Nothing is grabbed then and
+            # the frames carry zero motion with a reset, the same fallback a
+            # failing guides step gets.
+            window_blind = (st.window_hwnd is not None and bool(st.dda_mode)
+                            and not st.gray_active)
+            if st.work_frame is None and not st.gray_active and not window_blind:
                 t0 = time.perf_counter()
                 frame = _safe_grab()
                 _perf("grab", t0)
@@ -1105,6 +1115,8 @@ def main() -> int:
                     elif st.gray_active:
                         guide = st.guides.process(gray=st.shm.read_gray(),
                                                   compute_motion=not nvofa)
+                    elif window_blind:
+                        guide = st.guides.zero_guide()
                     else:
                         guide = st.guides.process(st.work_frame)
                     _perf("guides", t0)
@@ -1202,7 +1214,7 @@ def main() -> int:
             # references to its input - buf_full can be reused right away.
             # In DDA mode the worker grabs the frame itself - Python does not.
             next_frame = None
-            if not st.gray_active:
+            if not st.gray_active and not window_blind:
                 t0 = time.perf_counter()
                 next_frame = _safe_grab()
                 _perf("grab", t0)

@@ -159,7 +159,11 @@ def sync_gray(st) -> None:
         print(f"[main] gray channel {gw}x{gh}: guides take luminance from the worker")
     except Exception as exc:
         st.gray_active = False
-        print(f"[main] gray channel unavailable ({exc}) - guides through dxcam",
+        # In window mode dxcam sees the whole monitor, not the window, so the
+        # loop sends zero motion instead (main.py, window_blind).
+        fallback = ("zero motion" if getattr(st, "window_hwnd", None) is not None
+                    else "guides through dxcam")
+        print(f"[main] gray channel unavailable ({exc}) - {fallback}",
               file=sys.stderr)
 
 
