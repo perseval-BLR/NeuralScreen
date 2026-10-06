@@ -148,8 +148,10 @@ class IMMDevice(IUnknown):
         COMMETHOD([], ctypes.HRESULT, "OpenPropertyStore",
                   (["in"], DWORD, "stgmAccess"),
                   (["out"], POINTER(c_void_p), "ppProperties")),
+        # A raw pointer, not c_wchar_p: the string is the caller's to free
+        # (CoTaskMemFree), and it is asked for once a second - see _device_id.
         COMMETHOD([], ctypes.HRESULT, "GetId",
-                  (["out"], POINTER(ctypes.c_wchar_p), "ppstrId")),
+                  (["out"], POINTER(c_void_p), "ppstrId")),
         COMMETHOD([], ctypes.HRESULT, "GetState",
                   (["out"], POINTER(DWORD), "pdwState")),
     ]
@@ -174,6 +176,17 @@ class IMMDeviceEnumerator(IUnknown):
         COMMETHOD([], ctypes.HRESULT, "UnregisterEndpointNotificationCallback",
                   (["in"], c_void_p, "pClient")),
     ]
+
+
+def _device_id(device) -> str:
+    """An endpoint's id string, with the COM allocation behind it freed."""
+    ptr = device.GetId()
+    if not ptr:
+        return ""
+    try:
+        return ctypes.wstring_at(ptr)
+    finally:
+        ctypes.windll.ole32.CoTaskMemFree(c_void_p(ptr))
 
 
 class LoopbackCapture:
@@ -204,6 +217,10 @@ class LoopbackCapture:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._started = threading.Event()
+        # Set by _open(): what the default device is asked about, and the
+        # id of the one being captured.
+        self._enumerator = None
+        self._device_id = ""
 
     # -- public API --------------------------------------------------------
 
@@ -268,6 +285,8 @@ class LoopbackCapture:
     #: How often a lost endpoint is looked for again, and for how long.
     REOPEN_WAIT_S = 0.5
     REOPEN_TRIES = 20
+    #: How often the default playback device is compared with the open one.
+    DEFAULT_CHECK_S = 1.0
 
     def _run(self) -> None:
         client = None
@@ -351,6 +370,31 @@ class LoopbackCapture:
                                       IMMDeviceEnumerator, CLSCTX_ALL)
         device = enumerator.GetDefaultAudioEndpoint(EDATAFLOW_RENDER,
                                                     EROLE_CONSOLE)
+        opened = self._activate(device)
+        self._enumerator = enumerator
+        self._device_id = _device_id(device)
+        return opened
+
+    def _default_changed(self) -> bool:
+        """Whether the default playback device is no longer the open one.
+
+        Switching the output in Windows (speakers to headphones, a monitor's
+        HDMI sound) leaves the old endpoint working: it is no longer what is
+        heard, but WASAPI does not invalidate it, so the capture went on
+        recording a device that had fallen silent. No default device at all
+        is not a change: the open one then fails by itself.
+        """
+        if self._enumerator is None or not self._device_id:
+            return False
+        try:
+            device = self._enumerator.GetDefaultAudioEndpoint(EDATAFLOW_RENDER,
+                                                              EROLE_CONSOLE)
+            return _device_id(device) != self._device_id
+        except Exception:                             # noqa: BLE001
+            return False
+
+    def _activate(self, device):
+        """A shared-mode loopback client on `device`: (client, capture, fmt)."""
         ptr = device.Activate(byref(IAudioClient._iid_), CLSCTX_ALL, None)
         client = ctypes.cast(ptr, POINTER(IAudioClient))
 
@@ -401,7 +445,12 @@ class LoopbackCapture:
         scale = fmt["scale"]
         src_ch = fmt["src_channels"]
         item = np.dtype(dtype).itemsize
+        next_check = time.monotonic() + self.DEFAULT_CHECK_S
         while not self._stop.is_set():
+            if time.monotonic() >= next_check:
+                next_check = time.monotonic() + self.DEFAULT_CHECK_S
+                if self._default_changed():
+                    return "the default playback device changed"
             got_any = False
             while True:
                 try:
