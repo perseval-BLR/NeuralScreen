@@ -549,6 +549,13 @@ def _migrate_config(cfg: dict, defaults: dict) -> tuple[dict, bool]:
     return merged, changed
 
 
+#: The largest width, height and warm-up a config may ask for. 7680x4320 is
+#: the frame the worker accepts at all (it refuses anything larger); it
+#: never runs more than 240 warm-up evaluations (it clamps the header's
+#: value), so a larger number only costs a struct field that may not fit.
+_CONFIG_CEILINGS = {"width": 7680, "height": 4320, "warmup": 240}
+
+
 def _validate_config(cfg: dict) -> dict:
     """Validate and normalise an already migrated config object."""
     if not isinstance(cfg, dict):
@@ -571,6 +578,16 @@ def _validate_config(cfg: dict) -> dict:
     for key in ("width", "height", "warmup"):
         if isinstance(cfg[key], bool) or not isinstance(cfg[key], int) or cfg[key] <= 0:
             raise ValueError(f"config.json: field {key} must be a positive integer")
+        # And a ceiling. "warmup": 4294967296 passed the check above and died
+        # in struct.pack of the worker header ("failed to start", not one word
+        # about the field); a 100000-pixel width is a shared-memory buffer of
+        # gigabytes. Too large is pulled to the limit and said, like the
+        # parameter ranges below: the number is usable, only too big.
+        ceiling = _CONFIG_CEILINGS[key]
+        if cfg[key] > ceiling:
+            print(f"[main] config.json: {key} {cfg[key]} is above {ceiling}; "
+                  f"using {ceiling}", file=sys.stderr)
+            cfg[key] = ceiling
     # Out of range is not an error any more, it is an old config. The
     # ranges shrank when they were measured (intensity 2.5 -> 1.0 and so
     # on), and a user who had 2.5 saved was already getting the picture 1.0
