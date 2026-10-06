@@ -262,15 +262,25 @@ static void FgPresenter()
         }
         last_copy_ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - t_copy).count();
-        const HRESULT pr = g_present_swap->Present(0, 0);
+        HRESULT pr = g_present_swap->Present(0, 0);
+        if (TestFailureOnce("fg-mode-changed")) pr = DXGI_STATUS_MODE_CHANGED;
+        // A change still IN PROGRESS loses this frame and nothing more: a
+        // rebuild here would recreate the DLSS-G feature and the window on
+        // every present for as long as the transition lasts (another app's
+        // fullscreen switch, say). The ordinary path pays no feature create,
+        // so it may rebuild on both; FG waits for MODE_CHANGED.
+        if (pr == DXGI_STATUS_MODE_CHANGE_IN_PROGRESS) return true;
         if (pr == DXGI_STATUS_MODE_CHANGED)
         {
-            // The mode changed under us. The present did not happen; treat
-            // it as a benign skip - the pipeline's resize path rebuilds the
-            // swapchain when the size follows, and the next frame presents
-            // normally. Presenting into the old surface until then is what
-            // froze the overlay black (v1.10-review H2).
-            Log("[fg] present reports a mode change - skipping a frame");
+            // The mode changed under us and the chain is left behind. A
+            // colour-depth change (#58) brings no resize, so nothing else
+            // would rebuild it: mark it stale like PresentStatus does, and
+            // the frame loop's RebuildPresentIfStale builds the window again
+            // (stopping this presenter first). Until then each present here
+            // is lost - said once, not on every present.
+            if (!g_present_stale.exchange(true))
+                Log("[fg] present reports a mode change (0x%08X) - rebuilding the window",
+                    (unsigned)pr);
             return true;
         }
         if (pr == DXGI_STATUS_OCCLUDED)

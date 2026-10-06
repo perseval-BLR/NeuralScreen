@@ -133,6 +133,14 @@ Scope and honesty notes:
   class at start and logs what Windows reads back. Off by default until it is
   measured on such a machine.
 
+* **With Frame Generation on, a display mode change rebuilds the picture
+  window.** Every ordinary present path rebuilds the window when Windows says
+  the mode changed under it (#58: switching the output to 10 bits per colour
+  went black). The Frame Generation presenter only logged it, on every
+  present, and kept presenting into the old chain - a colour-depth change
+  brings no resize, so the picture stayed frozen or black until FG was turned
+  off and on. It now marks the chain for the same rebuild and says it once.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

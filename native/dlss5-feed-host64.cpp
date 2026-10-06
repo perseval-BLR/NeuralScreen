@@ -2463,7 +2463,9 @@ static bool                       g_present_capturable;  // debug flag from WNDO
 // The flags the present window was opened with, and whether the swap chain
 // has to be built again before the next frame. See PresentStatus.
 static uint32_t                   g_present_flags = 0;
-static bool                       g_present_stale = false;
+// Atomic: the FG presenter thread sets it too (a mode change met on its own
+// present), and the frame loop rebuilds on it.
+static std::atomic<bool>          g_present_stale{false};
 
 // Whether the picture window hides itself from screen capture.
 //
