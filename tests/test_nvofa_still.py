@@ -106,15 +106,27 @@ def main() -> int:
         target.close()
 
     if not any("[nvofa] active" in ln for ln in logs):
-        print("SKIP: NVOFA did not run here (no Optical Flow Accelerator)")
-        shutil.rmtree(dump, ignore_errors=True)
-        return 0
+        # Every RTX card has the accelerator; SKIP only on the worker's own
+        # "unavailable" line and never over a failure already collected.
+        if any("[nvofa] unavailable" in ln for ln in logs) and not failures:
+            print("SKIP: NVOFA did not run here (no Optical Flow Accelerator)")
+            shutil.rmtree(dump, ignore_errors=True)
+            return 0
+        failures.append("NVOFA never became active")
     motions = sorted(dump.glob("motion-*.bin"))
     flows = {p.name.split("-")[1] for p in dump.glob("flow-*.bin")}
     if not motions:
         failures.append("the worker dumped no motion fields")
-    still_files = motions[phases.get("still", (0, 0))[0] + 3:
-                          phases.get("still", (0, 0))[1]] if motions else []
+    # Dumps are numbered per optical-flow run, not per client frame: frames
+    # answered before the first capture frame get none. Those can only be at
+    # the start, so client frame i is dump i - skipped.
+    skipped = state["index"] - len(motions)
+    if motions and not 0 <= skipped <= 5:
+        failures.append(f"{skipped} frames without a motion dump - the frame "
+                        f"to dump mapping cannot be trusted")
+        skipped = max(0, skipped)
+    lo, hi = phases.get("still", (0, 0))
+    still_files = motions[max(0, lo + 3 - skipped):max(0, hi - skipped)] if motions else []
     moving_vectors = 0
     for path in still_files:
         field = np.fromfile(path, np.float16)
@@ -127,7 +139,7 @@ def main() -> int:
         failures.append(f"optical flow ran on {len(still_flows)} of "
                         f"{len(still_files)} frames of an unchanged window")
     lo, hi = phases.get("moving", (0, 0))
-    for path in motions[lo:hi]:
+    for path in motions[max(0, lo - skipped):max(0, hi - skipped)]:
         if np.any(np.fromfile(path, np.float16) != 0):
             moving_vectors += 1
     if motions and moving_vectors == 0:

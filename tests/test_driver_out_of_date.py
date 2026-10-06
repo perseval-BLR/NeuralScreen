@@ -45,9 +45,6 @@ PARAMS = {"style": 1, "auto_mask": 0, "intensity": 1.0, "local_tone": 0.5,
 
 
 def check_worker(failures: list) -> None:
-    if not WORKER_EXE.is_file():
-        print("    SKIP (worker half): native/nvngx.dll is not built")
-        return
     os.environ["NS_TEST_FAIL_STAGE"] = "create-old-driver"
     try:
         runner = runtime.NativeSelfTestRunner(PARAMS)
@@ -132,6 +129,9 @@ def check_dialog(failures: list) -> None:
 
 
 def main() -> int:
+    if not WORKER_EXE.is_file():
+        print("SKIP: native/nvngx.dll is not built - the worker cannot run")
+        return 0
     failures: list = []
     check_worker(failures)
     print("the worker reports the old driver as such: checked")

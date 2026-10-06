@@ -148,8 +148,15 @@ def main() -> int:
         shm.close()
         target.close()
     if not any("capture=FP16 scRGB" in ln for ln in logs):
-        print("SKIP: no HDR display to capture from")
-        return 0
+        # A SKIP only on evidence that the capture opened and was not HDR -
+        # a worker that died before the capture opened is a failure, not a
+        # missing display.
+        opened = any("[hdr] capture=" in ln for ln in logs)
+        if opened and not failures:
+            print("SKIP: no HDR display to capture from")
+            return 0
+        if not opened:
+            failures.append("the capture never opened - no [hdr] capture= line")
     if any("tail token order failed" in ln for ln in logs):
         failures.append("the deferred tail lost its token order on HDR")
     presented = [ln for ln in logs if "[present]" in ln and "failed" in ln]

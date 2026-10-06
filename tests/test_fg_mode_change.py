@@ -18,6 +18,7 @@ Run:  runtime\python.exe tests\test_fg_mode_change.py
 """
 import ctypes
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -87,11 +88,14 @@ def main() -> int:
 
     lines = list(logs)
     if not any("injecting failure at stage=fg-mode-changed" in ln for ln in lines):
-        if any("[fg]" in ln and "displayed" in ln for ln in lines):
-            failures.append("FG presented but never met the injected mode change")
-        else:
+        # SKIP only on the worker's own word that DLSS-G is not available here,
+        # and never over a failure already collected.
+        unavailable = any(("[fg]" in ln and ("load failed" in ln or "CreateFeature failed" in ln
+                                             or "BYO refused" in ln)) for ln in lines)
+        if unavailable and not failures:
             print("SKIP: Frame Generation did not run here (DLSS-G unavailable)")
             return 0
+        failures.append("the presenter never met the injected mode change")
     said = [i for i, ln in enumerate(lines) if "mode change" in ln and "[fg]" in ln]
     if len(said) != 1:
         failures.append(f"the mode change was said {len(said)} times, not once")
@@ -99,8 +103,15 @@ def main() -> int:
     if not said or not any(i > said[0] for i in ready):
         failures.append("the window was not built again after the mode change - "
                         "FG kept presenting into the old chain")
-    elif not any("[fg] displayed" in ln for ln in lines[said[0]:]):
-        failures.append("FG did not display anything after the rebuild")
+    else:
+        # The old presenter can log a "displayed" line between the change and
+        # its stop, and the line is written every 2 s even at 0.0 FPS: only a
+        # non-zero rate after the NEW window is up counts.
+        rebuilt = min(i for i in ready if i > said[0])
+        shown_after = [ln for ln in lines[rebuilt:]
+                       if re.search(r"\[fg\] displayed ([1-9]\d*\.\d|0\.[1-9])", ln)]
+        if not shown_after:
+            failures.append("FG did not display anything after the rebuild")
 
     if failures:
         for f in failures:

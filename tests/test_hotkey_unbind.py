@@ -233,7 +233,8 @@ def check_menu_field(failures: list) -> None:
     finally:
         pygame.key.set_mods(0)
     bound = [a for a in actions if a[0] == "hotkey" and a[1] == "record"]
-    if not bound or str(bound[0][2]).lower() in UNBIND_WORDS             or "delete" not in str(bound[0][2]).lower():
+    text = str(bound[0][2]).lower() if bound else ""
+    if not bound or text in UNBIND_WORDS or "delete" not in text:
         failures.append(f"Ctrl+Delete unbound the command instead of binding "
                         f"it (actions={actions})")
 
