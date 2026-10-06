@@ -30,6 +30,8 @@ for _name, _args, _res in (
          wintypes.DWORD),
         ("GetClassNameW", [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int], ctypes.c_int),
         ("GetForegroundWindow", [], wintypes.HWND),
+        ("SetForegroundWindow", [wintypes.HWND], wintypes.BOOL),
+        ("IsWindow", [wintypes.HWND], wintypes.BOOL),
         ("IsWindowVisible", [wintypes.HWND], wintypes.BOOL),
         ("IsIconic", [wintypes.HWND], wintypes.BOOL),
         ("GetCursorPos", [ctypes.POINTER(wintypes.POINT)], wintypes.BOOL),
@@ -117,6 +119,25 @@ def foreign_foreground() -> int:
     if _is_desktop_window(hwnd):
         return 0
     return int(hwnd)
+
+
+def give_back_foreground(ours: int, target: int) -> bool:
+    """Hand the foreground back to `target` if our window `ours` holds it.
+
+    Closing the menu makes the layer click-through again, but a window that
+    is foreground stays foreground: the panel took the focus on the user's
+    click and kept it, so the next keys the user typed - meant for the game
+    or the editor under the overlay - landed in our queue instead. True when
+    the foreground was moved.
+    """
+    if not ours or not target:
+        return False
+    user32 = _user32
+    if int(user32.GetForegroundWindow() or 0) != int(ours):
+        return False            # the user already went elsewhere: leave it
+    if not user32.IsWindow(target):
+        return False
+    return bool(user32.SetForegroundWindow(target))
 
 
 def _is_desktop_window(hwnd: int) -> bool:

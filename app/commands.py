@@ -44,7 +44,7 @@ from settings_io import (CHANNEL_URL, PROFILES, REPO_URL, THEME_NAMES,
                          WORK_SCALE_MIN, WORK_SCALE_STEP,
                          _autostart_enabled, _next_preset_name,
                          _set_autostart, _work_size, hotkey_labels)
-from winapi import window_frame_rect, window_under_cursor
+from winapi import give_back_foreground, window_frame_rect, window_under_cursor
 
 
 #: ``pending_shot`` has requested one worker frame but has no destination yet.
@@ -730,6 +730,27 @@ def run_contained(st, what: str, fn, *args):
         return None
 
 
+def _give_back_focus(st) -> None:
+    """After a menu close: the window the user was in gets the keyboard back.
+
+    The panel takes the focus on the user's first click and a close does not
+    give it away - the layer turns click-through, but it stays foreground,
+    and what the user types next lands in our queue. st.last_foreground is
+    the last focused window that was not ours (main samples it every frame).
+    """
+    get_hwnd = getattr(st.display, "get_hwnd", None)
+    target = getattr(st, "last_foreground", 0)
+    if get_hwnd is None or not target:
+        return
+    try:
+        if give_back_foreground(get_hwnd(), target):
+            print(f"[main] menu closed: the foreground goes back to "
+                  f"0x{int(target):X}")
+    except Exception as exc:
+        print(f"[main] could not give the foreground back: {exc}",
+              file=sys.stderr)
+
+
 def apply_menu_action(st, action: tuple) -> None:
     """A menu action -> a real setting.
 
@@ -1196,6 +1217,7 @@ def apply_menu_action(st, action: tuple) -> None:
             st.display.menu.visible = False
             st.display.set_menu_opaque(False)
             st.display.set_menu_input(False)
+            _give_back_focus(st)
             settings_io.save_menu_layout(st)
             # The close button and Esc both land here, and neither used to say
             # so: the settings paths printed opened/closed, this one printed
@@ -1371,6 +1393,7 @@ def drain_commands(st) -> bool:
                     st.display.menu.visible = False
                     st.display.set_menu_opaque(False)
                     st.display.set_menu_input(False)
+                    _give_back_focus(st)
                     # Everything the ordinary close does, because this IS a
                     # close: the HUD layer goes back onto the captured window
                     # (in one-window mode it was stretched to the whole
@@ -1417,6 +1440,8 @@ def drain_commands(st) -> bool:
                     opened = st.display.menu.toggle()
                 st.display.set_menu_opaque(opened)
                 st.display.set_menu_input(opened)
+                if was_open and not opened:
+                    _give_back_focus(st)
                 if opened:
                     st.menu_opened_at = time.monotonic()
                     if not was_open:

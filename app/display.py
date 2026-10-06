@@ -793,7 +793,22 @@ class Display:
         Exactly the ReShade behaviour. WS_EX_NOACTIVATE is removed too,
         otherwise there is no keyboard.
         """
+        opening = bool(enabled) and not self._menu_input
         self._menu_input = bool(enabled)
+        if opening:
+            # Events are read only while the menu is open, and the closed
+            # paths pump() without reading - so every key typed while the
+            # menu was closed and our layer still had the focus stayed
+            # queued, and the next open replayed it into the panel: a Space
+            # toggled NR on the focused switch, an Esc closed the menu that
+            # had just opened. Input from before the open was never meant
+            # for the panel; window events stay queued.
+            try:
+                pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP,
+                                    pygame.TEXTINPUT, pygame.MOUSEBUTTONDOWN,
+                                    pygame.MOUSEBUTTONUP, pygame.MOUSEWHEEL))
+            except Exception:
+                pass
         try:
             hwnd = pygame.display.get_wm_info()["window"]
         except Exception as exc:
