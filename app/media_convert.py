@@ -470,6 +470,11 @@ WORKER_MAX_W, WORKER_MAX_H = 7680, 4320
 
 #: Pillow formats that carry a colour profile and EXIF when saving.
 _META_FORMATS = ("JPEG", "PNG", "WEBP", "TIFF")
+#: Pillow formats a converted still keeps its transparency in.
+_ALPHA_FORMATS = ("PNG", "WEBP", "TIFF")
+#: Lossy WebP quality. Pillow's default is 80, which visibly softens the very
+#: detail the network was asked to bring out; 95 is the step below lossless.
+WEBP_QUALITY = 95
 
 
 def _load_image(handle) -> tuple[np.ndarray, dict]:
@@ -493,7 +498,11 @@ def _load_image(handle) -> tuple[np.ndarray, dict]:
     image = ImageOps.exif_transpose(handle)
     keep = {}
     icc = image.info.get("icc_profile")
-    if icc:
+    # Only an RGB profile describes the RGB that is written back. A CMYK
+    # photo's profile (or a grey one) on RGB pixels makes a viewer read them
+    # as ink or as grey - wrong colours, or a file it refuses - so it goes;
+    # the pixels are then read as sRGB, which is what the conversion made.
+    if icc and icc[16:20] == b"RGB ":
         keep["icc_profile"] = icc
     exif = image.info.get("exif")
     if exif:
@@ -505,6 +514,43 @@ def _load_image(handle) -> tuple[np.ndarray, dict]:
             grey = (np.clip(grey, 0, 65535) * 255 + 32767) // 65535
         return _as_rgba(np.clip(grey, 0, 255).astype(np.uint8)), keep
     return _as_rgba(np.asarray(image.convert("RGBA"))), keep
+
+
+def _over_white(rgba: np.ndarray) -> np.ndarray:
+    """An RGBA still as it is seen on a white page, opaque."""
+    alpha = rgba[:, :, 3:4].astype(np.float32) / 255.0
+    rgb = rgba[:, :, :3].astype(np.float32) * alpha + 255.0 * (1.0 - alpha)
+    out = np.empty_like(rgba)
+    out[:, :, :3] = np.clip(np.round(rgb), 0, 255).astype(np.uint8)
+    out[:, :, 3] = 255
+    return out
+
+
+def _webp_lossless(source: Path) -> bool:
+    """Whether a WebP file holds a lossless picture (a VP8L bitstream).
+
+    Pillow does not say; the RIFF chunks do. A lossy picture is a VP8 chunk,
+    after an ALPH chunk when it has transparency.
+    """
+    import struct
+
+    try:
+        with open(source, "rb") as handle:
+            head = handle.read(12)
+            if head[:4] != b"RIFF" or head[8:12] != b"WEBP":
+                return False
+            while True:
+                chunk = handle.read(8)
+                if len(chunk) < 8:
+                    return False
+                tag, size = chunk[:4], struct.unpack("<I", chunk[4:])[0]
+                if tag == b"VP8L":
+                    return True
+                if tag in (b"VP8 ", b"ALPH"):
+                    return False
+                handle.seek(size + (size & 1), 1)
+    except OSError:
+        return False
 
 
 def _quarter_turns_to_fit(width: int, height: int) -> int:
@@ -594,6 +640,23 @@ def convert_image(source: Path, output: Path, params: dict, *,
     if width < 64 or height < 64:
         raise ConversionError(
             "decode", f"{width}x{height} is below the 64x64 the worker accepts")
+    # The format is named, never inferred: Pillow picks it from the
+    # EXTENSION, and the partial name ends in ".partial", so letting it
+    # guess raises "unknown file extension" after the frame has already
+    # been through the network - the whole conversion lost at the last
+    # step (found by the first real run).
+    fmt = _PIL_FORMATS.get(output.suffix.lower(), "PNG")
+    # A see-through source. The worker answers an opaque frame, so a format
+    # that keeps transparency gets the source's own alpha back; one that
+    # cannot (JPEG, BMP) is handed to the network as the picture is seen on
+    # a white page - what the transparent pixels hold is usually black, and
+    # it came out as a black background.
+    alpha = None
+    if int(frame[:, :, 3].min()) < 255:
+        if fmt in _ALPHA_FORMATS:
+            alpha = frame[:, :, 3].copy()
+        else:
+            frame = _over_white(frame)
     turns = _quarter_turns_to_fit(width, height)
     if turns:
         frame = np.ascontiguousarray(np.rot90(frame, turns))
@@ -621,19 +684,24 @@ def convert_image(source: Path, output: Path, params: dict, *,
         out = np.ascontiguousarray(pixels)[:, :, :3]
         if turns:
             out = np.ascontiguousarray(np.rot90(out, -turns))
-        image = Image.fromarray(out, mode="RGB")
+        if alpha is not None:
+            image = Image.fromarray(np.ascontiguousarray(
+                np.dstack([out, alpha])), mode="RGBA")
+        else:
+            image = Image.fromarray(out, mode="RGB")
         # The partial name is the recorder's rule, for the recorder's reason:
         # a file that exists is a file someone will open, and a conversion
         # that died halfway must not leave one that looks finished.
-        # The format is named, never inferred: Pillow picks it from the
-        # EXTENSION, and the partial name ends in ".partial", so letting it
-        # guess raises "unknown file extension" after the frame has already
-        # been through the network - the whole conversion lost at the last
-        # step (found by the first real run).
-        fmt = _PIL_FORMATS.get(output.suffix.lower(), "PNG")
         meta = keep if fmt in _META_FORMATS else {}
         if fmt == "JPEG":
             image.save(partial, format=fmt, quality=97, subsampling=0, **meta)
+        elif fmt == "WEBP":
+            # Pillow writes lossy WebP at quality 80 unless told otherwise: a
+            # lossless source came back lossy, and a lossy one softer.
+            if _webp_lossless(source):
+                image.save(partial, format=fmt, lossless=True, **meta)
+            else:
+                image.save(partial, format=fmt, quality=WEBP_QUALITY, **meta)
         else:
             image.save(partial, format=fmt, **meta)
         os.replace(partial, output)
