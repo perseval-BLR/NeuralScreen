@@ -335,6 +335,48 @@ def _hard_failure(logs: list[str]) -> bool:
     return False
 
 
+def _stand_down(st, what: str, exc: BaseException) -> None:
+    """A worker start inside the frame loop failed: NR goes OFF, the program stays.
+
+    The loop starts workers in more places than its two restart branches: a
+    queued settings apply that falls back to a full restart, a window or
+    monitor that changed under the pipeline, the window mode giving up. Each
+    of those goes through require_pass, start_worker, the shared section or a
+    new capture, and any of them can raise - a DLL dropped into
+    native/libraries while the program runs changes the compatibility key,
+    and require_pass then refuses every start. Nothing caught it there, so it
+    travelled to main()'s last handler and the program closed, picture and
+    all.
+
+    The same stand-down as the third failure in a row: the pipeline stops,
+    the overlay is hidden so no black window covers the desktop (#3), the
+    veil comes down (no frame will lift it), and a transient failure gets
+    the one automatic revive. Num1 revives by hand, as after any failure.
+    """
+    import traceback
+    print(f"[main] {what} failed ({exc!r}) - NR OFF", file=sys.stderr)
+    traceback.print_exc()
+    st.paused = True
+    st.worker_failed = True
+    st.consecutive_restarts = 0
+    st.work_frame = None
+    if not _hard_failure(st.worker_logs or []):
+        st.next_auto_revive = time.monotonic() + AUTO_REVIVE_BACKOFF
+        print(f"[main] transient worker failure - auto-revive "
+              f"in {AUTO_REVIVE_BACKOFF:.0f}s")
+    # Each step on its own: the state above is what the loop reads next, and
+    # a window that refuses one call must not keep the rest from happening.
+    for step in (lambda: shutdown_worker(st.worker, st.worker_stop),
+                 st.display.exit_switch_mode,
+                 lambda: st.display.set_visible(False),
+                 lambda: st.display.alert(UI_STRINGS[st.lang]["nr_off"]),
+                 lambda: st.tray._set_state(nr=False)):
+        try:
+            step()
+        except Exception:
+            pass
+
+
 
 
 class _Pipeline:
@@ -795,7 +837,12 @@ def main() -> int:
                 st.pending_apply = None
                 st.pending_apply_due = 0.0
                 print("[main] applying the queued settings")
-                pipeline.do_restart(st, p_scale, p_profile, p_params, new_small=p_small)
+                try:
+                    pipeline.do_restart(st, p_scale, p_profile, p_params,
+                                        new_small=p_small)
+                except Exception as exc:
+                    _stand_down(st, "applying the settings", exc)
+                    continue
 
             if not st.running:
                 break
@@ -846,21 +893,36 @@ def main() -> int:
                 if not ctypes.windll.user32.IsWindow(ctypes.c_void_p(st.window_hwnd)):
                     print("[main] the captured window closed - back to full screen",
                           file=sys.stderr)
-                    pipeline.switch_window(st, 0)
+                    try:
+                        pipeline.switch_window(st, 0)
+                    except Exception as exc:
+                        _stand_down(st, "leaving the window mode", exc)
                     continue
-                pipeline.follow_window(st)
+                try:
+                    pipeline.follow_window(st)
+                except Exception as exc:
+                    _stand_down(st, "following the window", exc)
+                    continue
             elif st.frame_index % 30 == 0:
                 # Not in window mode: watch the monitor instead. Every
                 # 30 frames - a mode change is not a per-frame event and
                 # the query walks the monitor list.
-                pipeline.follow_monitor(st)
+                try:
+                    pipeline.follow_monitor(st)
+                except Exception as exc:
+                    _stand_down(st, "following the monitor", exc)
+                    continue
             if st.want_dda and not st.dda_mode and not st.dda_attempted:
                 if st.window_hwnd is not None:
                     # The channel module opens channels; deciding that the
                     # window is gone and the whole screen comes back is the
                     # pipeline's call, and it lives here.
                     if not channels.enable_wgc(st):
-                        pipeline.switch_window(st, 0)
+                        try:
+                            pipeline.switch_window(st, 0)
+                        except Exception as exc:
+                            _stand_down(st, "leaving the window mode", exc)
+                            continue
                 else:
                     channels.enable_dda(st)
             if st.want_motion_small and not st.motion_small and not st.motion_attempted:
@@ -1076,17 +1138,21 @@ def main() -> int:
                     print("[main] worker stderr (tail):")
                     for line in st.worker_logs[-15:]:
                         print(f"  {line}")
-                pipeline.require_compatibility(st)
-                st.worker, st.worker_logs, st.reader, st.worker_stop = restart_worker(
-                    st.worker, st.params, st.work_w, st.work_h, st.effective_warmup,
-                    st.width if (st.work_w != st.width or st.work_h != st.height) else 0,
-                    st.height if (st.work_w != st.width or st.work_h != st.height) else 0,
-                    st.worker_stop, st.shm)
-                channels.forget_present(st)
-                channels.forget_dda(st)
-                channels.forget_out(st)
-                channels.forget_verdict(st)
-                channels.sync_motion_size(st)
+                try:
+                    pipeline.require_compatibility(st)
+                    st.worker, st.worker_logs, st.reader, st.worker_stop = restart_worker(
+                        st.worker, st.params, st.work_w, st.work_h, st.effective_warmup,
+                        st.width if (st.work_w != st.width or st.work_h != st.height) else 0,
+                        st.height if (st.work_w != st.width or st.work_h != st.height) else 0,
+                        st.worker_stop, st.shm)
+                    channels.forget_present(st)
+                    channels.forget_dda(st)
+                    channels.forget_out(st)
+                    channels.forget_verdict(st)
+                    channels.sync_motion_size(st)
+                except Exception as restart_exc:
+                    _stand_down(st, "restarting the worker", restart_exc)
+                    continue
                 st.frame_index = 0
                 st.pts = 0
                 st.work_frame = None
@@ -1196,17 +1262,21 @@ def main() -> int:
                     continue
                 print(f"[main] worker silent/dead on frame {st.frame_index} ({exc}) - restarting "
                       f"({st.consecutive_restarts}/{MAX_CONSECUTIVE_RESTARTS})")
-                pipeline.require_compatibility(st)
-                st.worker, st.worker_logs, st.reader, st.worker_stop = restart_worker(
-                    st.worker, st.params, st.work_w, st.work_h, st.effective_warmup,
-                    st.width if (st.work_w != st.width or st.work_h != st.height) else 0,
-                    st.height if (st.work_w != st.width or st.work_h != st.height) else 0,
-                    st.worker_stop, st.shm)
-                channels.forget_present(st)
-                channels.forget_dda(st)
-                channels.forget_out(st)
-                channels.forget_verdict(st)
-                channels.sync_motion_size(st)
+                try:
+                    pipeline.require_compatibility(st)
+                    st.worker, st.worker_logs, st.reader, st.worker_stop = restart_worker(
+                        st.worker, st.params, st.work_w, st.work_h, st.effective_warmup,
+                        st.width if (st.work_w != st.width or st.work_h != st.height) else 0,
+                        st.height if (st.work_w != st.width or st.work_h != st.height) else 0,
+                        st.worker_stop, st.shm)
+                    channels.forget_present(st)
+                    channels.forget_dda(st)
+                    channels.forget_out(st)
+                    channels.forget_verdict(st)
+                    channels.sync_motion_size(st)
+                except Exception as restart_exc:
+                    _stand_down(st, "restarting the worker", restart_exc)
+                    continue
                 st.frame_index = 0
                 st.pts = 0
                 st.work_frame = None

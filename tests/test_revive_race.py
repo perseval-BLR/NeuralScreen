@@ -58,6 +58,11 @@ def _handler_after_try(tree):
         first = ast.unparse(node.body[0]) if node.body else ""
         if "require_compatibility" not in first:
             continue
+        # The two restart branches have the same shape now (their failures
+        # are contained too); the auto-revive's handler is the one that says
+        # so in its own log line.
+        if "auto-revive" not in ast.unparse(node.handlers[0]):
+            continue
         candidates.append(node)
     if not candidates:
         return None, ""
