@@ -233,12 +233,16 @@ def test_close_does_not_deadlock_on_stuck_encoder(out: Path,
     rec._encode_one = stuck
     worker = None
     try:
+        # One frame per slot of the recording clock: write() drops a frame
+        # whose slot is already taken, and slot 0 is closed at construction.
+        time.sleep(1.05 / FPS)
         rec.write(make_frame(0))
         if not entered.wait(2.0):
             failures.append("the encoder did not enter the simulated stall")
             return
         worker = rec._thread
         for i in range(rec.QUEUE_DEPTH):
+            time.sleep(1.05 / FPS)
             rec.write(make_frame(i + 1))         # fill the queue behind it
         t0 = time.perf_counter()
         try:

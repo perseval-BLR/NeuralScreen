@@ -181,6 +181,9 @@ class VideoRecorder:
         self._frame_idx = 0
         self._reserved = False  # needs_frame() reserved the next slot
         self.written = 0
+        #: Frames that came before their slot on the clock (not an encoder
+        #: that could not keep up - that is `dropped`).
+        self.skipped = 0
         self._started = 0.0
         try:
             # The suffix no longer identifies the format, so be explicit.
@@ -529,9 +532,18 @@ class VideoRecorder:
             # in the worker, ~36 ms at 27 fps), so recomputing pts here would
             # skip the reserved slot and drop every second frame.
             if not self._reserved:
-                # A direct write() without needs_frame() (tests): reserve the
-                # next slot ourselves.
-                self._frame_idx += 1
+                # A frame nobody reserved: main.py writes whatever pixels come
+                # back, and without a present window they come back on every
+                # frame, not only when needs_frame() asked. It takes its own
+                # slot on the clock, and is dropped when that slot is not
+                # newer than the last one. Handing it the next counter value
+                # instead put two frames into each 30 fps slot of a 60 FPS
+                # pipeline: three seconds of screen became a six-second file.
+                slot = int((time.perf_counter() - self._started) * self.fps)
+                if slot <= self._frame_idx:
+                    self.skipped += 1
+                    return
+                self._frame_idx = slot
             self._reserved = False
             pts = self._frame_idx
             try:

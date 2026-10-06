@@ -106,6 +106,16 @@ def frame(value: int = 0) -> np.ndarray:
     return pixels
 
 
+def next_slot(rec: HarnessRecorder) -> None:
+    """Let one stream period pass before a write.
+
+    write() keeps one frame per slot of the recording clock and drops a frame
+    whose slot is already taken (slot 0 is closed at construction), so frames
+    written back to back would not all reach the encoder.
+    """
+    time.sleep(1.05 / rec.fps)
+
+
 def cleanup(path: Path) -> None:
     path.unlink(missing_ok=True)
     Path(f"{path}.partial").unlink(missing_ok=True)
@@ -129,6 +139,7 @@ def test_nonblocking_drain(out: Path, failures: list[str]) -> None:
     partial = Path(rec.partial_path)
     try:
         for i in range(5):
+            next_slot(rec)
             rec.write(frame(i))
         if not backend.encode_started.wait(1.0):
             failures.append("encoder did not start")
@@ -178,6 +189,7 @@ def test_close_failure(out: Path, failures: list[str]) -> None:
     backend = FakeBackend(close_error=OSError("trailer write failed"))
     rec = make_recorder(out, backend)
     try:
+        next_slot(rec)
         rec.write(frame())
         expect_failure(rec, "close", failures)
         if rec.status is not recorder.RecordingStatus.FAILED:
@@ -195,6 +207,7 @@ def test_verify_failure(out: Path, failures: list[str]) -> None:
     backend = FakeBackend(verify_error=ValueError("bad moov"))
     rec = make_recorder(out, backend)
     try:
+        next_slot(rec)
         rec.write(frame())
         expect_failure(rec, "verify", failures)
         if rec.result is None or rec.result.error is not rec.error:
@@ -209,6 +222,7 @@ def test_timeout_forbids_late_publish(out: Path, failures: list[str]) -> None:
     cleanup(out)
     backend = FakeBackend(gated=True)
     rec = make_recorder(out, backend)
+    next_slot(rec)
     rec.write(frame())
     if not backend.encode_started.wait(1.0):
         failures.append("timeout test encoder did not enter encode()")

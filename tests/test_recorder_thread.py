@@ -53,6 +53,9 @@ def main() -> int:
     worst = 0.0
     result = None
     try:
+        # Slot 0 of the recording clock is closed at construction: a frame
+        # written before the first period passes is not part of the file.
+        time.sleep(1.05 / FPS)
         for i in range(FRAMES):
             frame = make_frame(i)
             t0 = time.perf_counter()
