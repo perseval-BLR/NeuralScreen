@@ -138,6 +138,32 @@ def _apply(handle, keep_timer_resolution: bool) -> bool:
     return ok
 
 
+def _release(handle) -> bool:
+    """Hand the policy back to the system: ControlMask = StateMask = 0.
+
+    The documented "let the system manage all power throttling" call. Without
+    it, turning the option off only changed what the log said - the opt-out
+    set earlier stayed on the process until it exited.
+    """
+    state = _State()
+    state.Version = _CURRENT_VERSION
+    state.ControlMask = 0
+    state.StateMask = 0
+    return bool(_kernel32.SetProcessInformation(handle, _PROCESS_POWER_THROTTLING,
+                                                ctypes.byref(state),
+                                                ctypes.sizeof(state)))
+
+
+def _describe_off(handle) -> str:
+    """The OFF answer, from the read-back rather than from the request."""
+    if not _release(handle):
+        return "refused by the system"
+    read_back = _read(handle)
+    if read_back is not None and read_back[0] & _EXECUTION_SPEED:
+        return "still opted out"
+    return "off (the OS decides)"
+
+
 def _describe(read_back: tuple | None) -> str:
     if read_back is None:
         return "unsupported"
@@ -158,11 +184,14 @@ def apply_own(enabled: bool, log=print) -> str:
         _last["ours"] = "not Windows"
         return _last["ours"]
     if not enabled:
-        _last["ours"] = "off (the OS decides)"
+        _last["ours"] = _describe_off(_current())
         return _last["ours"]
     if not _apply(_current(), keep_timer_resolution=True):
+        # Once per refusal, not once per call: the loop re-asserts this
+        # every 30 frames and a refusing system refuses every time.
+        if _last["ours"] != "refused by the system":
+            log(f"[main] power throttling: the system refused the request ({ctypes.get_last_error()})")
         _last["ours"] = "refused by the system"
-        log(f"[main] power throttling: the system refused the request ({ctypes.get_last_error()})")
         return _last["ours"]
     _last["ours"] = _describe(_read(_current()))
     return _last["ours"]
@@ -194,7 +223,7 @@ def apply_worker(worker, enabled: bool, log=print) -> str:
         return _last["worker"]
     try:
         if not enabled:
-            _last["worker"] = "off (the OS decides)"
+            _last["worker"] = _describe_off(handle)
             return _last["worker"]
         if not _apply(handle, keep_timer_resolution=True):
             _last["worker"] = "refused by the system"

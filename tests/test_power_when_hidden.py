@@ -103,11 +103,18 @@ def check_own_process(failures: list) -> None:
     if "full speed" not in verdict and not verdict.startswith("off"):
         failures.append(f"apply_own said {verdict!r} after clearing the mask")
 
-    power.apply_own(False)
+    verdict_off = power.apply_own(False)
     off = _masks(-1)
     if off is not None and off[1] & EXECUTION_SPEED:
         failures.append("switching the option off left the throttle cleared "
                         "(or worse, enabled it) - off must restore the default")
+    # Off must hand the policy back, not only say so: with ControlMask still
+    # selecting EXECUTION_SPEED the opt-out is in force until the process
+    # exits, while the log and the support bundle report "the OS decides".
+    if off is not None and off[0] & EXECUTION_SPEED:
+        failures.append(f"switching the option off kept the opt-out "
+                        f"(ControlMask={off[0]}) while apply_own reported "
+                        f"{verdict_off!r}")
     # And no state is left behind for the next check to trip over.
     power.apply_own(False)
 
@@ -140,6 +147,14 @@ def check_other_process(failures: list) -> None:
             elif masks[1] & EXECUTION_SPEED:
                 failures.append(f"the opt-out did not reach the other "
                                 f"process: StateMask={masks[1]}")
+            # Through the call the app makes: on, then off, by pid.
+            power.apply_worker(child, True)
+            verdict_off = power.apply_worker(child, False)
+            masks = _masks(handle)
+            if masks is not None and masks[0] & EXECUTION_SPEED:
+                failures.append(f"switching the option off kept the worker "
+                                f"opted out (ControlMask={masks[0]}) while it "
+                                f"reported {verdict_off!r}")
         finally:
             k32.CloseHandle(handle)
     finally:

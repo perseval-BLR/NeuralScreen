@@ -39,6 +39,13 @@ Scope and honesty notes:
   the next launch all eleven default keys were registered again while the panel
   showed every row as "none". `None` alone now means "the defaults".
 
+* **Turning "Keep full speed while hidden" off now gives the speed back to
+  Windows (#137).** Off only changed the status line: the opt-out set earlier
+  stayed on both processes until they exited, while the log and the support
+  bundle reported "the OS decides". Off now makes the documented "let the
+  system manage" call on both processes, the status is read back from the OS,
+  and a refusing system is logged once instead of every 30 frames.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
