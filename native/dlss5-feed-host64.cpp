@@ -5524,7 +5524,13 @@ static bool SwizzleCaptureIntoColor(VideoState &v)
                 (unsigned long long)dd.Width, (unsigned long long)dd.Height);
         clip_said = clipping;
         if (cw == 0 || ch == 0)
-        { Log("[cap] zero copy size - skip"); return false; }
+        {
+            // The list is open: leaving it so made the next BeginCommands
+            // reset an allocator that is still recording - a fatal failure.
+            AbortCommands();
+            Log("[cap] zero copy size - skip");
+            return false;
+        }
         D3D12_BOX box = { 0, 0, 0, cw, ch, 1 };
         h.list->CopyTextureRegion(&dst, 0, 0, 0, &src, &box);
     }
