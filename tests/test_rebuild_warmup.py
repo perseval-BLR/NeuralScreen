@@ -63,7 +63,9 @@ def _state(effective_warmup):
         cfg={"profile": "Natural", "lang": "en"}, lang="en",
         display=_Display(), output_rgba=None,
         capture=types.SimpleNamespace(resolution=(2560, 1600)),
-        worker=None, worker_logs=[], reader=None, worker_stop=None, shm=None)
+        worker=None, worker_logs=[], reader=None, worker_stop=None, shm=None,
+        # rebuild_pipeline sizes the guides before the worker starts now.
+        motion_small=False)
 
 
 def main() -> int:

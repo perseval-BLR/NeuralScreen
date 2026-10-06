@@ -93,7 +93,9 @@ def _state(menu):
         display=_Display(menu), output_rgba=None, mon_origin=(0, 0),
         mon_w=2560, mon_h=1600, window_hwnd=None, hotkey_bindings={},
         capture=types.SimpleNamespace(resolution=(2560, 1600)),
-        worker=None, worker_logs=[], reader=None, worker_stop=None, shm=None)
+        worker=None, worker_logs=[], reader=None, worker_stop=None, shm=None,
+        # rebuild_pipeline sizes the guides before the worker starts now.
+        motion_small=False)
 
 
 def _rebuild(st):

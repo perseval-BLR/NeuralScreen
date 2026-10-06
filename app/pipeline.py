@@ -574,6 +574,33 @@ def teardown_pipeline(st) -> None:
         pass
 
 
+def _rebuild_failed(st, exc: BaseException) -> None:
+    """A rebuild could not start its worker: the pipeline stands failed.
+
+    Whoever called the rebuild has torn the old pipeline down already, so
+    there is no worker to go back to. The state says so - worker_failed and
+    NR OFF, the automatic revive armed - instead of a pipeline that looks
+    alive and feeds a process that is not there. The exception still goes
+    to the caller: the frame loop stands the overlay down, a menu action
+    reports it, the GPU switch reverts.
+    """
+    print(f"[main] the pipeline rebuild could not start a worker ({exc!r}) "
+          f"- NR OFF", file=sys.stderr)
+    try:
+        shutdown_worker(st.worker, st.worker_stop)
+    except Exception:
+        pass
+    st.worker_failed = True
+    st.paused = True
+    st.next_auto_revive = time.monotonic() + AUTO_REVIVE_BACKOFF
+    tray = getattr(st, "tray", None)
+    if tray is not None:
+        try:
+            tray._set_state(nr=False)
+        except Exception:
+            pass
+
+
 def rebuild_pipeline(st, note: str) -> None:
     """Build the worker, the shm and the overlay for the current size.
 
@@ -591,7 +618,35 @@ def rebuild_pipeline(st, note: str) -> None:
     menu_was_open = st.display.menu.visible
     full_w = st.width if (st.work_w != st.width or st.work_h != st.height) else 0
     full_h = st.height if (st.work_w != st.width or st.work_h != st.height) else 0
-    st.shm = SharedFrameBuffer(st.width, st.height)
+    # Everything sized to the new frame, and every per-worker flag, is reset
+    # BEFORE the worker starts. A start that fails - the compatibility check,
+    # start_worker, the shared section - used to leave the old pipeline's
+    # flags set (DDA, gray, the picture window "already negotiated") and the
+    # guides and buffer at the old size next to a new work size; the next
+    # worker inherited all of it and was never asked for its channels.
+    # guides and the buffers follow the new resolution.
+    st.guides = TemporalGuideGenerator(
+        st.work_w, st.work_h, emit_small=st.motion_small,
+        preset=st.cfg.get("flow_preset", "fast"))
+    st.buf_full = np.empty((st.height, st.width, 4), dtype=np.uint8)
+    # Pipeline flags - the new worker knows nothing.
+    st.present_mode = False
+    st.present_attempted = False
+    st.dda_mode = False
+    st.dda_attempted = False
+    st.gray_active = False
+    st.motion_small = False
+    st.motion_attempted = False
+    st.out_shm = False
+    st.out_attempted = False
+    channels.forget_verdict(st)  # a new worker means a new verdict on feature 18
+    st.frame_index = 0
+    st.pts = 0
+    st.work_frame = None
+    # The last NR frame belongs to the previous monitor and size.
+    # Without the reset a screenshot right after the switch would
+    # save it.
+    st.output_rgba = None
     # The launch warm-up, not the rebuild's. st.effective_warmup is 120
     # frames - it exists because a COLD card can take seconds to produce
     # its first NGX frame and the frame watchdog would kill the worker on
@@ -604,10 +659,15 @@ def rebuild_pipeline(st, note: str) -> None:
     # min(), not the constant: a pre-Blackwell card gets 4 and must keep
     # it (audit F3 - the restart storm the shortening exists to prevent).
     warmup = min(st.effective_warmup, RESTART_WARMUP)
-    require_compatibility(st)
-    st.worker, st.worker_logs, st.reader, st.worker_stop = start_worker(
-        st.params, st.work_w, st.work_h, warmup, full_w, full_h,
-        st.shm)
+    try:
+        st.shm = SharedFrameBuffer(st.width, st.height)
+        require_compatibility(st)
+        st.worker, st.worker_logs, st.reader, st.worker_stop = start_worker(
+            st.params, st.work_w, st.work_h, warmup, full_w, full_h,
+            st.shm)
+    except Exception as exc:
+        _rebuild_failed(st, exc)
+        raise
     # #137: ask the OS for full speed in this process and in the worker. Here
     # rather than only in the frame loop because the loop re-asserts every 30
     # frames and a worker that starts demoted would run a whole session that
@@ -699,29 +759,6 @@ def rebuild_pipeline(st, note: str) -> None:
         # rule 10.09: fixed position until the user drags it).
         if st.window_hwnd is not None:
             st.display.set_fullscreen_layer(st.mon_w, st.mon_h)
-    # guides and the buffers follow the new resolution.
-    st.guides = TemporalGuideGenerator(
-        st.work_w, st.work_h, emit_small=st.motion_small,
-        preset=st.cfg.get("flow_preset", "fast"))
-    st.buf_full = np.empty((st.height, st.width, 4), dtype=np.uint8)
-    # Pipeline flags - the new worker knows nothing.
-    st.present_mode = False
-    st.present_attempted = False
-    st.dda_mode = False
-    st.dda_attempted = False
-    st.gray_active = False
-    st.motion_small = False
-    st.motion_attempted = False
-    st.out_shm = False
-    st.out_attempted = False
-    channels.forget_verdict(st)  # a new worker means a new verdict on feature 18
-    st.frame_index = 0
-    st.pts = 0
-    st.work_frame = None
-    # The last NR frame belongs to the previous monitor and size.
-    # Without the reset a screenshot right after the switch would
-    # save it.
-    st.output_rgba = None
     settings_io.save_menu_layout(st)
     print(f"[main] pipeline rebuilt: {st.width}x{st.height}, "
           f"work {st.work_w}x{st.work_h} - {note}")
