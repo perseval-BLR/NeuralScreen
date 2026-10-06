@@ -38,7 +38,9 @@ CLSID_MMDeviceEnumerator = GUID("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
 
 AUDCLNT_SHAREMODE_SHARED = 0
 AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000
+AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY = 0x1
 AUDCLNT_BUFFERFLAGS_SILENT = 0x2
+AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR = 0x4
 
 EDATAFLOW_RENDER = 0
 EROLE_CONSOLE = 0
@@ -196,7 +198,8 @@ class LoopbackCapture:
         self.sample_rate = 0
         self.channels = 0
         self.error: str | None = None
-        self._chunks: list[np.ndarray] = []
+        #: (qpc, block, discontinuity) per endpoint packet - see read_packets().
+        self._chunks: list[tuple[int, np.ndarray, bool]] = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -225,8 +228,24 @@ class LoopbackCapture:
         with self._lock:
             if not self._chunks:
                 return None
-            chunks, self._chunks = self._chunks, []
+            chunks, self._chunks = [c[1] for c in self._chunks], []
         return chunks[0] if len(chunks) == 1 else np.concatenate(chunks, axis=0)
+
+    def read_packets(self) -> list[tuple[int, np.ndarray, bool]]:
+        """Everything captured since the previous call, packet by packet.
+
+        Each packet is (qpc, block, discontinuity): `qpc` is when the
+        endpoint recorded its first frame, in 100 ns units of the performance
+        counter (the clock time.perf_counter() reads; 0 when the endpoint gave
+        no usable time), `block` is float32 (n, 2), and `discontinuity` says
+        the endpoint lost data just before it. A recorder that only counts
+        samples puts the first sound after a quiet stretch where its padding
+        of the gap stopped - a tenth of a second or more early; the time puts
+        it where it was heard.
+        """
+        with self._lock:
+            chunks, self._chunks = self._chunks, []
+        return chunks
 
     def discard(self) -> None:
         """Drop everything captured so far (the endpoint spin-up).
@@ -388,7 +407,7 @@ class LoopbackCapture:
                 try:
                     if capture.GetNextPacketSize() == 0:
                         break
-                    data, frames, flags, _pos, _qpc = capture.GetBuffer()
+                    data, frames, flags, _pos, qpc = capture.GetBuffer()
                 except Exception as exc:              # noqa: BLE001
                     return str(exc)
                 try:
@@ -402,8 +421,12 @@ class LoopbackCapture:
                             arr = np.frombuffer(raw, dtype=dtype)
                             arr = arr.reshape(frames, src_ch)
                             block = self._to_stereo(arr, scale)
+                        if flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR:
+                            qpc = 0
+                        packet = (int(qpc), block, bool(
+                            flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY))
                         with self._lock:
-                            self._chunks.append(block)
+                            self._chunks.append(packet)
                         got_any = True
                 finally:
                     capture.ReleaseBuffer(frames)

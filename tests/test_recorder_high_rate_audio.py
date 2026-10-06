@@ -51,6 +51,12 @@ class _HighRateLoopback:
         # without inventing a real WASAPI device for the test.
         return np.full((19_200, 2), 0.1, dtype=np.float32)
 
+    def read_packets(self):
+        # The same packet, without a time (qpc 0): appended where the track
+        # stands, as the recorders do for an endpoint that gives none.
+        block = self.read()
+        return [] if block is None else [(0, block, False)]
+
     def close(self) -> None:
         pass
 

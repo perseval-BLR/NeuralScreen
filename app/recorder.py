@@ -145,6 +145,9 @@ class VideoRecorder:
     #: not land after silence we already wrote for their slot.
     AUDIO_GAP_S = 0.20
     AUDIO_LAG_S = 0.10
+    #: A loopback packet that starts within this of where the previous one
+    #: ended continues it; one that starts later follows a gap.
+    AUDIO_JOIN_S = 0.005
 
     def __init__(self, path: str, width: int, height: int, fps: float = 60.0,
                  audio: bool = True):
@@ -178,6 +181,7 @@ class VideoRecorder:
         self._audio_input_samples = 0  # source-rate clock for the resampler
         self._audio_samples = 0      # frames handed to the fifo, our audio clock
         self.audio_padded = 0        # frames of silence inserted into gaps
+        self._audio_next_qpc: int | None = None  # see _packet_after_gap()
         self._frame_idx = 0
         self._reserved = False  # needs_frame() reserved the next slot
         self.written = 0
@@ -389,9 +393,10 @@ class VideoRecorder:
         if self._audio is None or self._fifo is None:
             return
         try:
-            chunk = self._audio.read()
-            if chunk is not None and len(chunk):
-                self._push_audio(chunk)
+            for qpc, block, discontinuity in self._audio.read_packets():
+                if len(block):
+                    self._place_audio(qpc, len(block), discontinuity)
+                    self._push_audio(block)
             self._pad_audio()
             self._drain_fifo()
         except Exception as exc:                      # noqa: BLE001
@@ -432,6 +437,32 @@ class VideoRecorder:
         planar = np.zeros((2, samples), dtype=np.float32)
         frame = av.AudioFrame.from_ndarray(planar, format="fltp", layout="stereo")
         self._append_audio_frame(frame)
+
+    def _place_audio(self, qpc: int, frames: int, discontinuity: bool) -> None:
+        """Pad up to the moment a packet that follows a gap was heard.
+
+        _pad_audio() stops AUDIO_LAG_S short of the clock, so the first sound
+        after a quiet stretch used to be written where that padding ended -
+        100-200 ms before its time, the sound ahead of the picture that made
+        it. A packet that starts a run (the first one, one after a gap or
+        after lost data) goes where its own time says. One that continues the
+        previous packet is appended as it is: the device's clock and the
+        counter drift apart a little, and following that would cut holes into
+        continuous sound. `qpc` is in the 100 ns units of the counter that
+        time.perf_counter() reads on Windows, so it compares with _started;
+        a time past the clock is not believed beyond the clock.
+        """
+        after_gap, self._audio_next_qpc = _packet_after_gap(
+            self._audio_next_qpc, qpc, frames, self._audio.sample_rate,
+            discontinuity, self.AUDIO_JOIN_S)
+        if not after_gap:
+            return
+        heard = min(qpc / 1e7, time.perf_counter())
+        due = int((heard - self._started) * self.AAC_SAMPLE_RATE)
+        need = due - self._audio_samples
+        if need > 0:
+            self._push_silence(need)
+            self.audio_padded += need
 
     def _pad_audio(self) -> None:
         """Insert silence when the track has fallen behind the wall clock.
@@ -800,6 +831,21 @@ class VideoRecorder:
         return (end - self._started) * 1000.0
 
 
+def _packet_after_gap(expected: int | None, qpc: int, frames: int, rate: int,
+                      discontinuity: bool, join_s: float):
+    """Whether a loopback packet starts a new run, and where the next one
+    that continues it would start - both in the packet's 100 ns QPC units.
+
+    A packet without a time (qpc 0) is appended where the track stands; the
+    next one with a time starts a run again.
+    """
+    if qpc <= 0 or rate <= 0:
+        return False, None
+    after_gap = (discontinuity or expected is None
+                 or qpc - expected > join_s * 10_000_000)
+    return after_gap, qpc + frames * 10_000_000 // rate
+
+
 def _qpc() -> int:
     """QueryPerformanceCounter, raw: the clock the worker's recorder runs on."""
     value = ctypes.c_int64()
@@ -924,6 +970,7 @@ class GpuRecorder:
     AUDIO_PUMP_S = 0.02
     AUDIO_GAP_S = VideoRecorder.AUDIO_GAP_S
     AUDIO_LAG_S = VideoRecorder.AUDIO_LAG_S
+    AUDIO_JOIN_S = VideoRecorder.AUDIO_JOIN_S
 
     def __init__(self, worker, reader, path: str, *, fps: int = 60,
                  audio: bool = True, codec: int = REC_CODEC_AUTO,
@@ -959,6 +1006,7 @@ class GpuRecorder:
         self._ring: AudioRing | None = None
         self._resampler: av.AudioResampler | None = None
         self._in_samples = 0
+        self._audio_next_qpc: int | None = None  # see _packet_after_gap()
         self._qpf = _qpf()
         self._start_qpc = 0
         self._audio_stop = threading.Event()
@@ -1068,23 +1116,22 @@ class GpuRecorder:
         if self._audio is None or self._ring is None:
             return
         try:
-            chunk = self._audio.read()
-            frames = []
-            if chunk is not None and len(chunk):
-                planar = np.ascontiguousarray(chunk.T)
+            for qpc, block, discontinuity in self._audio.read_packets():
+                if not len(block):
+                    continue
+                # Each packet reaches the ring before the next is placed: the
+                # placement compares a packet's time with the ring's count.
+                self._place_audio(qpc, len(block), discontinuity)
+                planar = np.ascontiguousarray(block.T)
                 frame = av.AudioFrame.from_ndarray(planar, format="fltp",
                                                    layout="stereo")
                 frame.sample_rate = self._audio.sample_rate
                 frame.time_base = Fraction(1, self._audio.sample_rate)
                 frame.pts = self._in_samples
                 self._in_samples += planar.shape[1]
-                frames.extend(self._resampler.resample(frame))
+                self._write_ring(self._resampler.resample(frame))
             if final:
-                frames.extend(self._resampler.resample(None))
-            for converted in frames:
-                if converted is not None and converted.samples > 0:
-                    # s16 is packed: one row of interleaved samples.
-                    self._ring.write(converted.to_ndarray().reshape(-1, 2))
+                self._write_ring(self._resampler.resample(None))
             rate = self.AUDIO_RATE
             due = (_qpc() - self._start_qpc) * rate // self._qpf
             deficit = int(due) - self._ring.written
@@ -1101,6 +1148,27 @@ class GpuRecorder:
             except Exception:
                 pass
             self._audio = None
+
+    def _write_ring(self, frames) -> None:
+        for converted in frames:
+            if converted is not None and converted.samples > 0:
+                # s16 is packed: one row of interleaved samples.
+                self._ring.write(converted.to_ndarray().reshape(-1, 2))
+
+    def _place_audio(self, qpc: int, frames: int, discontinuity: bool) -> None:
+        """Pad the ring up to the moment a packet that follows a gap was
+        heard - VideoRecorder._place_audio, on the worker's QPC clock."""
+        after_gap, self._audio_next_qpc = _packet_after_gap(
+            self._audio_next_qpc, qpc, frames, self._audio.sample_rate,
+            discontinuity, self.AUDIO_JOIN_S)
+        if not after_gap:
+            return
+        ticks = min(qpc * self._qpf // 10_000_000, _qpc())
+        due = (ticks - self._start_qpc) * self.AUDIO_RATE // self._qpf
+        need = int(due) - self._ring.written
+        if need > 0:
+            self._ring.silence(need)
+            self.audio_padded += need
 
     def _stop_audio_thread(self) -> None:
         self._audio_stop.set()
