@@ -6038,7 +6038,24 @@ static bool WgcGrab(VideoState &v)
         // frame - the no-colour recovery polls on its own schedule there.
         if (frame == nullptr && g_dda_ready && g_wgc_arrived != nullptr)
         {
-            WaitForSingleObject(g_wgc_arrived, kWgcIdleWaitMs);
+            // In slices, and back early when the window moves or is
+            // minimised: a window whose content does not redraw produces no
+            // frame while it is dragged, and one 100 ms wait per pass made
+            // the overlay follow it at 10 Hz - the picture trailing the
+            // window it sits on (native audit).
+            const ULONGLONG wait_end = GetTickCount64() + kWgcIdleWaitMs;
+            for (;;)
+            {
+                if (WaitForSingleObject(g_wgc_arrived, 8) == WAIT_OBJECT_0) break;
+                if (GetTickCount64() >= wait_end || IsIconic(g_wgc_hwnd)) break;
+                if (g_present_hwnd == nullptr) continue;   // nothing follows the window
+                RECT fr = {};
+                if (SUCCEEDED(DwmGetWindowAttribute(g_wgc_hwnd, DWMWA_EXTENDED_FRAME_BOUNDS,
+                                                    &fr, sizeof(fr)))
+                    && (fr.left != g_present_follow.left || fr.top != g_present_follow.top ||
+                        fr.right != g_present_follow.right || fr.bottom != g_present_follow.bottom))
+                    break;
+            }
             frame = latest();
         }
         PhaseAdd(PH_ACQ, t_acq);
