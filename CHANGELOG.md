@@ -210,6 +210,26 @@ Scope and honesty notes:
   which restarted and crashed again. It is now caught, said in the log, and
   Frame Generation is switched off for the session.
 
+* **The support bundle carries less of you and more of the session.**
+  Converted file names no longer go into it (they were on every
+  "[convert] <name>: ..." line; your own NeuralScreen.log keeps them); its log
+  no longer starts in the middle of a line, which let the rest of a window
+  title or a path through unscrubbed; and a window title containing "token="
+  or "password:" is cut out like any other - the secret filter used to eat
+  its closing quote and let the title through. A bundle now also keeps how
+  the session started ([env], driver, [compat], adapter) and a tail where
+  profiler lines cannot crowd everything else out, and after a crash and a
+  relaunch it includes the end of NeuralScreen.log.1.
+* **The driver version shown and used for the compatibility check is the
+  card in use (#145).** It was the first NVIDIA entry in the registry - which
+  can be a card removed years ago - and cards past the tenth entry were never
+  read.
+* **A too-large width, height or warmup in config.json no longer stops the
+  program from starting.** They are reduced to what the worker accepts
+  (7680x4320, 240 warm-up frames), and the log says so.
+* **compatibility-cache.json and the support-bundles folder no longer grow
+  forever.** The newest 32 verdicts and the newest 10 bundles are kept.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
