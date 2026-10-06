@@ -5528,6 +5528,10 @@ static ULONGLONG g_capture_display_at = 0;
 // The duplication acquire's wait. 100 ms in the frame loop; the no-colour
 // retry polls with its own 10 ms steps and must not wait 100 on each of them.
 static UINT g_dda_acquire_ms = 100;
+// The longest a capture waits for a new frame while a GPU recording runs: a
+// fraction of a 60 fps slot (the frame work still has to fit in it), so a
+// still picture still fills every slot of the file.
+static constexpr DWORD kCaptureWaitRecordingMs = 5;
 static void RefreshCaptureDisplay(HMONITOR monitor)
 {
     const ULONGLONG now = GetTickCount64();
@@ -5654,7 +5658,11 @@ static bool DdaGrab(VideoState &v)
     IDXGIResource *res = nullptr;
     DXGI_OUTDUPL_FRAME_INFO fi = {};
     const double t_acq = PhaseNow();
-    HRESULT hr = g_dda_dup->AcquireNextFrame(g_dda_acquire_ms, &fi, &res);
+    // The same for the desktop: a still screen answers WAIT_TIMEOUT after the
+    // full acquire wait, and a recording would get one frame per wait.
+    HRESULT hr = g_dda_dup->AcquireNextFrame(
+        GpuRecActive() ? (std::min)(g_dda_acquire_ms, static_cast<UINT>(kCaptureWaitRecordingMs))
+                       : g_dda_acquire_ms, &fi, &res);
     static unsigned test_acquires = 0;   // the injection waits for a live stream
     if (++test_acquires > 30 && TestFailureOnce("dda-lost"))
     {
@@ -6045,7 +6053,12 @@ static bool WgcGrab(VideoState &v)
             // frame while it is dragged, and one 100 ms wait per pass made
             // the overlay follow it at 10 Hz - the picture trailing the
             // window it sits on (native audit).
-            const ULONGLONG wait_end = GetTickCount64() + kWgcIdleWaitMs;
+            // A GPU recording takes a frame per slot: waiting 100 ms for a
+            // window that does not redraw made a recording of a still
+            // window ten frames a second (HDR10 recording test: 19 frames
+            // in 2 s at 60). While one runs, the wait is one slot at most.
+            const ULONGLONG wait_end = GetTickCount64() +
+                (GpuRecActive() ? kCaptureWaitRecordingMs : kWgcIdleWaitMs);
             for (;;)
             {
                 if (WaitForSingleObject(g_wgc_arrived, 8) == WAIT_OBJECT_0) break;
