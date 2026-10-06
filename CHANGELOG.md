@@ -323,6 +323,10 @@ Scope and honesty notes:
   Shown as SDR, SDR white now stays where it is (about 250) and only what is
   brighter rolls off. With HDR compatibility on nothing changes.
 
+* **In window mode the picture keeps up with a window dragged without
+  redrawing** (it moved ten times a second and trailed behind), and Frame
+  Generation does no work while the captured window is minimised.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
