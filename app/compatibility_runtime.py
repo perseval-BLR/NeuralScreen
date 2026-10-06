@@ -35,7 +35,7 @@ from paths import BASE_DIR, NATIVE_DIR, WORKER_EXE
 from pipeline import start_worker
 from protocol import (
     CREATE_CATEGORY_DRIVER_OUT_OF_DATE, CREATE_CATEGORY_NONE,
-    CREATE_CATEGORY_UNSUPPORTED, send_frame,
+    CREATE_CATEGORY_UNSUPPORTED, WORKER_STARTUP_TIMEOUT_S, send_frame,
 )
 from settings_io import APP_VERSION
 
@@ -44,7 +44,12 @@ CACHE_PATH = BASE_DIR / "compatibility-cache.json"
 SUPPORT_DIR = BASE_DIR / "support-bundles"
 PREFLIGHT_WIDTH = 640
 PREFLIGHT_HEIGHT = 360
-CREATE_TIMEOUT_SECONDS = 20.0
+# The probe's CACK comes after the device, NGX init and the create - the same
+# startup the live pipeline waits for. 20 s was below what NGX init alone
+# measured on a reporter's machine (5-19 s, #148), and a timeout here is a
+# 30-minute quarantine of the whole program, on exactly the launches that run
+# the probe: the first after a driver or app update.
+CREATE_TIMEOUT_SECONDS = WORKER_STARTUP_TIMEOUT_S
 EVALUATE_TIMEOUT_SECONDS = 10.0
 PROBE_CONTRACT = "canonical-rgba8-rg16f-640x360-3frames-v2-cack"
 _FEATURE_NOT_SUPPORTED = 0xBAD00001

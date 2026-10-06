@@ -117,6 +117,23 @@ class RuntimeAdapterTests(unittest.TestCase):
         self.assertEqual([call.args[4] for call in sender.call_args_list],
                          [True, False, False])
 
+    def test_slow_startup_is_not_a_timeout(self):
+        """NGX init measured at up to 19 s (#148): a probe whose CACK comes
+        after 25 s is a slow start, not a timeout that quarantines startup."""
+        create, _evaluate = self.request()
+
+        class _SlowReader(_Reader):
+            def wait_create_ack(self, timeout):
+                if timeout < 25.0:
+                    raise TimeoutError("CACK after 25 s")
+                return self.ack
+
+        runner, patches, *_ = self.runner(["[pure] direct feature 18 ready"],
+                                          _SlowReader(None))
+        with patches[0], patches[1]:
+            self.assertEqual(runner.create(create).status, StageStatus.SUCCESS)
+            runner.close()
+
     def test_passthrough_never_passes(self):
         create, evaluate = self.request()
         runner, patches, *_ = self.runner(

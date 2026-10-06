@@ -170,6 +170,14 @@ Scope and honesty notes:
   best, a crash of the worker at worst. The runtime is now unloaded on any
   such failure and the next switch-on starts from scratch.
 
+* **A slow NVIDIA start no longer blocks the program for half an hour
+  (#148).** The startup compatibility check gave the worker 20 s to reach its
+  first verdict - less than NGX initialisation alone took on a reporter's
+  machine (5-19 s). A timeout there quarantines startup for 30 minutes, and
+  the check runs exactly on the launches that start coldest: the first after
+  a driver or program update. It now has the same 45 s budget as the live
+  pipeline.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
