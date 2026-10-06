@@ -735,9 +735,15 @@ def _pick_video_encoder(av, chain, rate, width, height, quality) -> str:
 
 
 def _add_video_stream(out_container, name, rate, width, height, quality,
-                      grid=None):
+                      grid=None, sar=None):
     stream = out_container.add_stream(name, rate=rate)
     stream.width, stream.height = width, height
+    if sar:
+        # The shape of a pixel, as the source stores it. An anamorphic file
+        # (a DVD's 720x480 at 32:27) is 16:9 only because of it; the frames
+        # go through at their stored size, and without it the output plays
+        # squeezed to 3:2.
+        stream.codec_context.sample_aspect_ratio = sar
     stream.pix_fmt = "yuv420p"
     stream.time_base = Fraction(1, 1) / rate
     if grid is not None:
@@ -1173,6 +1179,7 @@ def convert_video(source: Path, output: Path, params: dict, *,
         # The frames go through as they are stored, and the file says how to
         # turn them, the way the source did (_display_rotation).
         rotation = _display_rotation(source)
+        sar = stream.codec_context.sample_aspect_ratio
         rate = stream.average_rate or stream.guessed_rate or Fraction(30, 1)
         rate = Fraction(rate).limit_denominator(1001 * 1000)
         total = _estimate_frames(container, stream, rate)
@@ -1211,7 +1218,8 @@ def convert_video(source: Path, output: Path, params: dict, *,
             out_container = av.open(str(partial), mode="w",
                                     format=container_format)
             out_stream = _add_video_stream(out_container, codec_used, rate,
-                                           even_w, even_h, quality, grid=grid)
+                                           even_w, even_h, quality, grid=grid,
+                                           sar=sar)
             if rotation:
                 out_stream.set_display_rotation(rotation)
             audio_out = None
