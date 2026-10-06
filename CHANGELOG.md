@@ -230,6 +230,15 @@ Scope and honesty notes:
 * **compatibility-cache.json and the support-bundles folder no longer grow
   forever.** The newest 32 verdicts and the newest 10 bundles are kept.
 
+* **The release archive is cleaner.** v2.1.9 carried a pip launcher
+  (runtime/Scripts/mss.exe) pointing at the maintainer's own python.exe -
+  broken on every other PC - plus 31 C header files and a dropped Brotli
+  module; they are left out now, and the build refuses to finish if any
+  packaged file still names the build machine's folders. NeuralScreen.bat
+  ships with the Windows line endings cmd.exe expects. The release checks
+  now compare the uploaded documents and manifest byte for byte with the
+  tagged files and refuse a launcher whose embedded version is stale.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
