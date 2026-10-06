@@ -559,8 +559,14 @@ def teardown_pipeline(st) -> None:
         except Exception as exc:
             print(f"[main] failed to start recording finalization: {exc}",
                   file=sys.stderr)
-    st.pending_shot = None
-    st.shot_rgba = None
+    # A screenshot is not sized to the pipeline, and a rebuild must not eat
+    # it. A frame already frozen belongs to the Save As dialog still open on
+    # it - clearing it here made the user's Save write nothing ("No frame
+    # yet"). A request that has no frame yet stays pending, and the new
+    # pipeline's first frame answers it. Only a frozen frame with no dialog
+    # (nothing left to claim it) goes.
+    if not st.shot_dialog_open:
+        st.shot_rgba = None
     shutdown_worker(st.worker, st.worker_stop)
     try:
         st.shm.close()
