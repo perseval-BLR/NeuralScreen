@@ -290,6 +290,31 @@ Scope and honesty notes:
   * Window and monitor lists no longer come back short on systems that hand
     out large window or monitor handles.
 
+* **The program survives a failed or hung worker start.**
+  * A worker that fails to start while the program runs (for example after a
+    DLL is dropped into native/libraries) turns NR off and arms the automatic
+    revive instead of closing NeuralScreen. A failed monitor, window, GPU or
+    setting switch leaves NR off and ready to revive, not a half-built
+    pipeline.
+  * A worker that hangs or dies while starting is reported as a failed start
+    and cleaned up, instead of freezing the program on its first frame.
+  * The window no longer goes "Not Responding" while a worker starts,
+    restarts or shuts down (the #135 kind of stall).
+  * Starting a recording during a heavy frame no longer makes the program
+    restart a healthy worker.
+* **Switching and capture fixes.**
+  * After a monitor or window switch in the middle of a frame, the new
+    pipeline no longer receives a full-screen grab, and the switch veil no
+    longer drops early.
+  * A screenshot whose Save As dialog is open survives a window resize or a
+    monitor change.
+  * Picking a window that cannot be captured while NR is off no longer
+    restarts desktop capture in the background.
+  * In one-window mode, if the worker refuses the gray channel, motion is no
+    longer computed from the whole monitor.
+  * With capture in Python (capture in worker off, or a split-GPU setup), an
+    idle desktop no longer keeps a CPU core busy.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
