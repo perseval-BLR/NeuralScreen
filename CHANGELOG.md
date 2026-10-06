@@ -203,6 +203,13 @@ Scope and honesty notes:
   (up to 2 s, quietly in the log), and picks up as soon as the desktop is
   back. The same holds for a captured window recreated while minimised.
 
+* **A crash inside NVIDIA's Frame Generation runtime no longer takes the
+  picture down.** The neural renderer has always been protected against an
+  old driver that crashes inside NVIDIA's code instead of refusing (#145);
+  Frame Generation was not, and with FG on the same crash ended the worker,
+  which restarted and crashed again. It is now caught, said in the log, and
+  Frame Generation is switched off for the session.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

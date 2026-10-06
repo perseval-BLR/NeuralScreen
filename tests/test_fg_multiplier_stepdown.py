@@ -65,8 +65,10 @@ def main() -> int:
 
     # Both refusal points must step down: the create (a runtime that refuses
     # the count up front) and the evaluation (one that refuses per frame).
-    create = re.search(r"const auto result = g_fg\.create\((.*?)\n    \}", src,
-                       re.S)
+    # The create runs under an SEH guard now (FgCreateGuarded); its result is
+    # judged after the fault check, before the depth texture is built.
+    create = re.search(r"const auto result = FgCreateGuarded\((.*?)CreateVideoTex\(g_fg\.depth",
+                       src, re.S)
     if not create or "FgStepDown(result)" not in create.group(1):
         failures.append("a refused CreateFeature does not step down")
     evaluate = re.search(r"if \(NVSDK_NGX_FAILED\(result\)\)\s*\n\s*\{"

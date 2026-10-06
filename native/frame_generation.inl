@@ -1,9 +1,39 @@
 // Experimental desktop DLSS-G. Capture has no engine depth: use a flat plane
 // and the estimated motion field. Keep this opt-in; UI/occlusions can distort.
 static PFN_NR_Evaluate g_fg_evaluate = nullptr;
+// The exception code of the last DLSS-G call that faulted inside NVIDIA's
+// runtime, 0 when it did not. NR's create and evaluate have always been
+// guarded so; DLSS-G's were not, and an old driver that faults instead of
+// refusing (#145's shape) took the whole worker down with FG on - no failure
+// line, a restart, and the same again on the next frame with FG.
+static DWORD g_fg_fault = 0;
 static NVSDK_NGX_Result FgEvaluateBridge(ID3D12GraphicsCommandList *list,
     NVSDK_NGX_Handle *handle, NVSDK_NGX_Parameter *params, PFN_NVSDK_NGX_ProgressCallback cb)
-{ return g_fg_evaluate(list, handle, params, cb); }
+{
+    g_fg_fault = 0;
+    __try
+    {
+        if (TestFailureOnce("fg-evaluate-fault"))
+            RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 0, nullptr);
+        return g_fg_evaluate(list, handle, params, cb);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { g_fg_fault = GetExceptionCode(); }
+    return NVSDK_NGX_Result_Fail;
+}
+
+static NVSDK_NGX_Result FgCreateGuarded(PFN_NR_Create create, ID3D12GraphicsCommandList *list,
+                                        const NVSDK_NGX_Parameter *params, NVSDK_NGX_Handle **out)
+{
+    g_fg_fault = 0;
+    __try
+    {
+        if (TestFailureOnce("fg-create-fault"))
+            RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 0, nullptr);
+        return create(list, NVSDK_NGX_Feature_FrameGeneration, params, out);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { g_fg_fault = GetExceptionCode(); }
+    return NVSDK_NGX_Result_Fail;
+}
 #define NVSDK_NGX_D3D12_EvaluateFeature_C FgEvaluateBridge
 #include "include/nvsdk_ngx_helpers_dlssg.h"
 #undef NVSDK_NGX_D3D12_EvaluateFeature_C
@@ -480,7 +510,17 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
     p->Set(NVSDK_NGX_DLSSG_Parameter_InternalHeight, v.hgt);
     p->Set(NVSDK_NGX_DLSSG_Parameter_DynamicResolution, 0u);
     if (!BeginCommands()) return false;
-    const auto result = g_fg.create(h.list, NVSDK_NGX_Feature_FrameGeneration, p, &g_fg.feature);
+    const auto result = FgCreateGuarded(g_fg.create, h.list, p, &g_fg.feature);
+    if (g_fg_fault != 0)
+    {
+        // Never execute a list NVIDIA's runtime faulted in, never trust a
+        // handle it may have half-written; FG is off for this session.
+        AbortCommands();
+        g_fg.feature = nullptr;
+        ReportFailure("fg-create", "seh", static_cast<HRESULT>(g_fg_fault));
+        Log("[fg] CreateFeature raised 0x%08X (caught) - Frame Generation off", g_fg_fault);
+        return false;
+    }
     if (!WaitFenceValue(h.fence, EndCommands(), 30000) || NVSDK_NGX_FAILED(result) || !g_fg.feature)
     {
         Log("[fg] CreateFeature failed 0x%08X", result);
@@ -720,6 +760,14 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
         auto out_pre = Transition(g_fg.output[index].get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         h.list->ResourceBarrier(1, &out_pre);
         const auto result = NGX_D3D12_EVALUATE_DLSSG(h.list, g_fg.feature, p, &ep, &opt);
+        if (g_fg_fault != 0)
+        {
+            AbortCommands();
+            ReportFailure("fg-evaluate", "seh", static_cast<HRESULT>(g_fg_fault));
+            Log("[fg] Evaluate raised 0x%08X (caught) - Frame Generation off", g_fg_fault);
+            g_fg.failed = true;
+            return false;
+        }
         auto disable_pre = Transition(g_fg.disable.get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
         h.list->ResourceBarrier(1, &disable_pre);
         h.list->CopyBufferRegion(g_fg.disable_readback.get(), index * 4, g_fg.disable.get(), 0, 4);
