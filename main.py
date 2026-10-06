@@ -1253,11 +1253,19 @@ def main() -> int:
                                     st.display.raise_topmost()
                             except Exception:
                                 pass
+                        # The watchdog counts the worker's silence, not the
+                        # time a command takes here: Num0 waits up to 8 s for
+                        # the GPU recorder to answer, and the deadline used to
+                        # pass inside that wait - the frame reply already
+                        # queued, the loop raised "silent for 5s" without
+                        # another look and restarted a healthy worker.
+                        commands_from = time.monotonic()
                         if commands.run_contained(st, "a command",
                                                   commands.drain_commands,
                                                   st) is False:
                             st.running = False
                             break
+                        recv_deadline += time.monotonic() - commands_from
                         if st.reader is not recv_reader:
                             break  # a command restarted the worker
                         continue
