@@ -13,6 +13,7 @@ is open.
 from __future__ import annotations
 
 import ctypes
+import os
 import sys
 import time
 from ctypes import wintypes
@@ -109,8 +110,14 @@ def ask_save_path(parent_hwnd: int, default_name: str,
         if not ctypes.windll.comdlg32.GetSaveFileNameW(ctypes.byref(ofn)):
             return None
         path = Path(buf.value.strip())
-        if not path.suffix:
-            path = path.with_suffix(Path(default_name).suffix or ".jpg")
+        if path.suffix.lower() not in (".jpg", ".jpeg", ".png"):
+            # APPENDED, not replaced: a name with a dot in it ("shot
+            # 06.10.2026") has the "suffix" .2026 - the dialog adds its
+            # default extension only to a name with none, with_suffix()
+            # would cut the date to "shot 06.10.jpg", and the writer
+            # refused .2026 after the frozen frame was already let go.
+            path = path.with_name(path.name + (Path(default_name).suffix
+                                               or ".jpg"))
         return path
     except Exception as exc:
         print(f"[dialogs] save dialog unavailable ({exc}) - "
@@ -330,7 +337,18 @@ def save_image(path: Path, rgba) -> bool:
     ok, buf = cv2.imencode(extension, pixels, options)
     if not ok:
         return False
-    path.write_bytes(buf.tobytes())
+    # Through a temporary name and os.replace: a write cut short (a full
+    # disk) leaves no truncated picture under the name the user chose - and
+    # a file that was already there is replaced only by a whole one.
+    staging = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        staging.write_bytes(buf.tobytes())
+        os.replace(staging, path)
+    finally:
+        try:
+            staging.unlink()
+        except FileNotFoundError:
+            pass
     return path.is_file() and path.stat().st_size > 0
 
 
