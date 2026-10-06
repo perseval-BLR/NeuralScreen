@@ -565,6 +565,24 @@ class Display:
             self._alert_font = self._load_font(
                 size=max(10, int(round(ALERT_FONT_SIZE * self.ui_scale))))
 
+    def _rescale_ui(self) -> None:
+        """Follow the interface scale to the layer's current height.
+
+        ui_scale used to be computed once, in __init__: after a resolution
+        change or a move to another monitor the HUD, the alerts and the panel
+        kept the old screen's size - 1440p-sized on a 4K screen. Recomputed
+        on every resize; the fonts are rebuilt only when it really changed.
+        """
+        scale = ui_scale_for(self.height)
+        if abs(scale - self.ui_scale) < 1e-6:
+            return
+        self.ui_scale = scale
+        self.font_size = max(8, int(round(FONT_SIZE * scale)))
+        self._font = self._load_font(size=self.font_size, mono=True)
+        self._alert_font = self._load_font(
+            size=max(10, int(round(ALERT_FONT_SIZE * scale))))
+        self.menu.set_scale(scale)
+
     def set_visible(self, visible: bool) -> None:
         """Show/hide the window (SW_SHOW/SW_HIDE).
 
@@ -894,6 +912,7 @@ class Display:
             return
         self.screen = pygame.display.set_mode((w, h), self._flags)
         self.width, self.height = w, h
+        self._rescale_ui()
         # A set_mode can recreate the physical window; put it back on the
         # chosen monitor (the origin belongs to the pipeline, not to SDL).
         self._move_to_origin()
@@ -928,6 +947,7 @@ class Display:
             # was clipped and could not be dragged above the captured window).
             self.screen = pygame.display.set_mode((full_w, full_h), self._flags)
             self.width, self.height = full_w, full_h
+            self._rescale_ui()
             # set_mode alone does NOT resize the physical window in SDL2 -
             # force it, exactly like __init__ does (SWP_NOZORDER, with size),
             # at the chosen monitor's origin.

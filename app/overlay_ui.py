@@ -638,6 +638,18 @@ class OverlayMenu:
             self.page, self.scroll = saved_page, saved_scroll
         return best
 
+    def set_scale(self, value: float) -> None:
+        """The per-monitor density (display.ui_scale_for) changed.
+
+        Set once in __init__ and never again, a panel made on a 1440p screen
+        stayed 1440p-sized after the user moved to a 4K monitor or changed
+        the resolution. The fonts are sized through _u, so they follow.
+        """
+        if abs(value - self.scale) < 1e-6:
+            return
+        self.scale = value
+        self._build_fonts()
+
     def set_user_scale(self, value: float) -> None:
         """Manual panel stretching. The fonts have to be recreated."""
         value = min(2.0, max(0.6, round(value, 2)))
@@ -1077,6 +1089,12 @@ class OverlayMenu:
             self._settings_content_h = tallest
         s = STRINGS.get(self.lang, STRINGS["en"])
         w = self._u(PANEL_W)
+        # Never wider than the screen: a 1080-wide portrait monitor at the
+        # top manual scale asked for 1152 px, and the clamp below can only
+        # move a panel, not shrink it - the right edge, with the header
+        # icons, was off the screen.
+        if screen_w > 0:
+            w = min(w, int(screen_w))
         pad = self._u(PAD)
         label_h = self._u(LABEL_H)
         ctrl_h = self._u(CTRL_H)
