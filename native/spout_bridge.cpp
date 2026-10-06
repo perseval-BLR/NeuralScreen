@@ -16,6 +16,17 @@ static ID3D12Device *g_dev12 = nullptr;
 static spoutDX *g_spout = nullptr;
 static bool g_enabled = false;
 static UINT g_w = 0, g_h = 0;
+// Signalled once Spout's D3D11 copy of the shared texture has run: the next
+// frame's D3D12 copy into the same texture must not overtake it.
+static ID3D11Query *g_sent = nullptr;
+
+// A shared texture that cannot be made is not retried every frame (it was:
+// the size check never matched, so every frame rebuilt it and logged why).
+static void DisableBridge(const char *why)
+{
+    fprintf(stderr, "[spout] %s - Spout output off for this session\n", why);
+    g_enabled = false;
+}
 
 bool SpoutBridgeInit(ID3D12Device *dev)
 {
@@ -112,18 +123,18 @@ void SpoutBridgeCopy(ID3D12GraphicsCommandList *list, ID3D12Resource *src,
         sd.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
         sd.MiscFlags = D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
         if (FAILED(g_d11->CreateTexture2D(&sd, nullptr, &g_shared)))
-        { fprintf(stderr, "[spout] shared texture failed\n"); return; }
+        { DisableBridge("shared texture failed"); return; }
         IDXGIResource1 *r1 = nullptr;
         if (FAILED(g_shared->QueryInterface(__uuidof(IDXGIResource1), (void **)&r1)) ||
             FAILED(r1->CreateSharedHandle(nullptr,
                                           DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
                                           nullptr, &g_nt)))
-        { fprintf(stderr, "[spout] NT handle failed\n"); if (r1) r1->Release(); return; }
+        { if (r1) r1->Release(); DisableBridge("NT handle failed"); return; }
         r1->Release();
         // Open the same texture in D3D12 so the worker can copy into it.
         if (FAILED(g_dev12->OpenSharedHandle(g_nt, __uuidof(ID3D12Resource),
                                              (void **)&g_d12)))
-        { fprintf(stderr, "[spout] OpenSharedHandle failed\n"); return; }
+        { DisableBridge("OpenSharedHandle failed"); return; }
         g_w = w; g_h = h;
         fprintf(stderr, "[spout] shared texture %ux%u created\n", w, h);
     }
@@ -149,11 +160,31 @@ void SpoutBridgeSend()
     if (!g_enabled || g_shared == nullptr) return;
     if (!g_spout->SendTexture(g_shared))
         fprintf(stderr, "[spout] SendTexture failed\n");
+    // SendTexture only queues its copy on the D3D11 context, and the next
+    // frame's copy into g_shared is a D3D12 command nothing orders against
+    // it: receivers could get a frame torn between two. Wait for the queued
+    // copy (well under a millisecond), bounded so a stuck device cannot hold
+    // the frame thread.
+    if (g_sent == nullptr)
+    {
+        D3D11_QUERY_DESC qd = {};
+        qd.Query = D3D11_QUERY_EVENT;
+        if (FAILED(g_d11->CreateQuery(&qd, &g_sent))) g_sent = nullptr;
+    }
+    if (g_sent != nullptr)
+    {
+        g_ctx->End(g_sent);
+        g_ctx->Flush();
+        for (int spin = 0; spin < 200 &&
+             g_ctx->GetData(g_sent, nullptr, 0, 0) == S_FALSE; ++spin)
+            Sleep(spin < 20 ? 0 : 1);
+    }
 }
 
 void SpoutBridgeShutdown()
 {
     if (g_spout) { g_spout->ReleaseSender(); delete g_spout; g_spout = nullptr; }
+    if (g_sent) { g_sent->Release(); g_sent = nullptr; }
     if (g_shared) { g_shared->Release(); g_shared = nullptr; }
     if (g_d12) { g_d12->Release(); g_d12 = nullptr; }
     if (g_nt) { CloseHandle(g_nt); g_nt = nullptr; }
