@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.1.10 - 2026-10-06 - A full audit: the open tracker reports, HDR early reply, and a capture that survives the secure desktop
 
 * **Taking every hotkey off the keyboard now survives a restart (#134).** With
   all commands unbound, `build_bindings` correctly returns an empty set - but
