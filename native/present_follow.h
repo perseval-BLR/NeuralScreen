@@ -71,4 +71,34 @@ inline Verdict DecideForStep(std::uint32_t buffer_w, std::uint32_t buffer_h,
     return Verdict::Place;
 }
 
+// The size a window capture opens at (#140). The capture item reports the
+// GetWindowRect size, but on Windows 10 the frames WGC delivers carry only the
+// visible frame (their ContentSize is DWMWA_EXTENDED_FRAME_BOUNDS): one window
+// in #140 reported 813x1017 and delivered 799x1010. Opened at the item's size,
+// the client built every buffer 14x7 px too large, the frame pool was quietly
+// recreated at the content size, and the strip the frames never reach stayed
+// black - under the network, on screen past the window's edge, and in every
+// screenshot. Opened at the frame's size, the buffer is what arrives.
+//
+// The frame is taken only where it is SMALLER than the item, axis by axis: a
+// failed query, Windows 11 (the two agree) or anything odd keeps the item's
+// size, and a real mismatch is still caught by the pool's ContentSize check.
+struct CaptureSize {
+    std::uint32_t w;
+    std::uint32_t h;
+};
+
+inline CaptureSize InitialCaptureSize(std::int32_t item_w, std::int32_t item_h,
+                                      bool frame_known, std::int32_t frame_w,
+                                      std::int32_t frame_h) {
+    CaptureSize size = {item_w > 0 ? static_cast<std::uint32_t>(item_w) : 0u,
+                        item_h > 0 ? static_cast<std::uint32_t>(item_h) : 0u};
+    if (!frame_known) return size;
+    if (frame_w > 0 && static_cast<std::uint32_t>(frame_w) < size.w)
+        size.w = static_cast<std::uint32_t>(frame_w);
+    if (frame_h > 0 && static_cast<std::uint32_t>(frame_h) < size.h)
+        size.h = static_cast<std::uint32_t>(frame_h);
+    return size;
+}
+
 }  // namespace ns_present_follow

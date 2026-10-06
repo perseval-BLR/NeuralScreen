@@ -32,7 +32,9 @@ void Check(bool ok, const std::string &what) {
     }
 }
 
+using ns_present_follow::CaptureSize;
 using ns_present_follow::CaptureSlack;
+using ns_present_follow::InitialCaptureSize;
 using ns_present_follow::DecideForStep;
 using ns_present_follow::Verdict;
 
@@ -114,6 +116,31 @@ int main() {
         Check(CaptureSlack(2000, 1900, false) == 0,
               "an unknown capture gives zero slack");
         Check(CaptureSlack(0, 0, true) == 0, "identical rectangles give zero");
+    }
+
+    // 6. The size a window capture opens at (#140): the frames WGC delivers,
+    //    not the item's GetWindowRect size. Opened at the item's size the
+    //    buffer was 14x7 px larger than every frame and that strip was black.
+    {
+        auto opens = [](const char *name, CaptureSize got, std::uint32_t w,
+                        std::uint32_t h) {
+            Check(got.w == w && got.h == h,
+                  std::string(name) + ": opens at " + std::to_string(got.w) +
+                      "x" + std::to_string(got.h) + ", wanted " +
+                      std::to_string(w) + "x" + std::to_string(h));
+        };
+        opens("issue #140 window (Windows 10)",
+              InitialCaptureSize(813, 1017, true, 799, 1010), 799, 1010);
+        opens("issue #30 window (Windows 10)",
+              InitialCaptureSize(1354, 853, true, 1340, 846), 1340, 846);
+        opens("Windows 11: item and frame agree",
+              InitialCaptureSize(1920, 1080, true, 1920, 1080), 1920, 1080);
+        opens("frame query failed: the item's size",
+              InitialCaptureSize(813, 1017, false, 799, 1010), 813, 1017);
+        opens("a frame larger than the item never grows the capture",
+              InitialCaptureSize(1920, 1080, true, 1936, 1096), 1920, 1080);
+        opens("an empty frame rect is ignored",
+              InitialCaptureSize(813, 1017, true, 0, 0), 813, 1017);
     }
 
     std::printf("{\"checks\": %d, \"failed\": %d, \"failures\": [",

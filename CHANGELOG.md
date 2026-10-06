@@ -113,6 +113,16 @@ Scope and honesty notes:
   checked afresh - and the dialog leads with "the NVIDIA driver (576.88) is
   too old", in all twelve languages.
 
+* **No black strip down the right and bottom of a captured window on Windows
+  10 (#140).** Window capture opened at the window's GetWindowRect size, which
+  on Windows 10 includes the invisible resize border, while the frames it
+  delivers carry only the visible frame - 813x1017 against 799x1010 in the
+  report. Every buffer was built 14x7 px too large, and the strip no frame
+  reached stayed black: under the network, on screen past the window's edge
+  (the "shadow"), and in every screenshot. The capture now opens at the
+  visible frame's size where that is smaller; on Windows 11 the two agree and
+  nothing changes.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

@@ -5692,9 +5692,24 @@ static bool OpenWgc(HWND hwnd)
             winrt::put_abi(s->item));
         if (FAILED(ir) || s->item == nullptr)
         { Log("[wgc] CreateForWindow failed 0x%08X", ir); delete s; return false; }
-        const auto size = s->item.Size();
-        if (size.Width <= 0 || size.Height <= 0)
+        const auto item_size = s->item.Size();
+        if (item_size.Width <= 0 || item_size.Height <= 0)
         { Log("[wgc] the window has no size (minimised?)"); delete s; return false; }
+        // Open at the size the frames will have, not the item's (#140).
+        RECT frame_rect = {};
+        // Not while minimised: a minimised window's frame is its title-bar
+        // stub (about 160x28 on Windows 10), not what it will deliver.
+        const bool frame_known = !IsIconic(hwnd) && SUCCEEDED(DwmGetWindowAttribute(
+            hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &frame_rect, sizeof(frame_rect)));
+        const auto opened = ns_present_follow::InitialCaptureSize(
+            item_size.Width, item_size.Height, frame_known,
+            frame_rect.right - frame_rect.left, frame_rect.bottom - frame_rect.top);
+        winrt::Windows::Graphics::SizeInt32 size = item_size;
+        size.Width = static_cast<int32_t>(opened.w);
+        size.Height = static_cast<int32_t>(opened.h);
+        if (size.Width != item_size.Width || size.Height != item_size.Height)
+            Log("[wgc] window rect %dx%d, visible frame %dx%d - capturing the frame",
+                item_size.Width, item_size.Height, size.Width, size.Height);
         g_capture_monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
         g_capture_display = QueryHdrDisplay(g_capture_monitor);
         s->hdr = HdrEnabled() && g_capture_display.enabled;

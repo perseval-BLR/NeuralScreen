@@ -74,6 +74,12 @@ def check_header_contract() -> None:
     for call in re.findall(r"CaptureSlack\(([^;]*?)\)", body):
         assert "wr." in call, (
             "the slack must be measured from GetWindowRect, not assumed")
+    # #140: the window capture opens at the size the frames will have.
+    opener = worker[worker.index("static bool OpenWgc"):]
+    opener = opener[:opener.index("\n}\n")]
+    assert "ns_present_follow::InitialCaptureSize(" in opener, (
+        "OpenWgc does not open at the visible frame's size - on Windows 10 "
+        "the buffer is built 14x7 px larger than every frame (#140)")
 
 
 def build_harness() -> Path | None:
