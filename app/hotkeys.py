@@ -49,6 +49,8 @@ VK_CONTROL = 0x11
 VK_MENU = 0x12
 VK_SHIFT = 0x10
 VK_NUMLOCK = 0x90
+VK_F1 = 0x70
+VK_F24 = 0x87
 # The numpad block. These codes only arrive while Num Lock is ON: with it off
 # the same physical keys send Insert/End/arrows/Home/PageUp, and nothing in
 # RegisterHotKey or GetAsyncKeyState can tell them apart from the dedicated
@@ -149,10 +151,19 @@ UNBIND_WORDS = frozenset({"none", "off", "no", "disabled", "unbound"})
 
 
 def parse_binding(text: str) -> tuple[int, int] | None:
-    """Parse a string like 'F10', 'Ctrl+Alt+Q', 'Insert' -> (mods, vk).
+    """Parse a string like 'F10', 'Ctrl+Alt+Q', 'Num1' -> (mods, vk).
 
     Returns None when the string is not recognised, in which case the binding
-    is left alone.
+    is left alone - and when it names a key that cannot be a global hotkey:
+
+    * a typing key (a letter, a digit, an arrow, Insert/Delete/Home/End/
+      PgUp/PgDn) with no Ctrl or Alt. RegisterHotKey takes the key from
+      every program, so a bare "E" or "Up" would stop working system-wide,
+      and Shift alone is still typing (Shift+Insert pastes, Shift+arrows
+      select). Bare keys are the F-keys and the numpad only;
+    * Shift with a numpad digit or the numpad dot. With Num Lock on, Windows
+      sends those as the navigation keys while Shift is held (Shift+Num1
+      arrives as End), so the combination can never fire.
     """
     if not text:
         return None
@@ -178,6 +189,11 @@ def parse_binding(text: str) -> tuple[int, int] | None:
     vk = _KEY_NAMES.get(parts[-1])
     if vk is None:
         return None
+    if (not mods & (MOD_CONTROL | MOD_ALT)
+            and not VK_F1 <= vk <= VK_F24 and vk not in _NUMPAD_VKS):
+        return None                 # a typing key: it belongs to every program
+    if mods & MOD_SHIFT and (vk in VK_NUMPAD.values() or vk == VK_DECIMAL):
+        return None                 # Shift turns it into a navigation key
     return mods | MOD_NOREPEAT, vk
 
 
@@ -185,7 +201,10 @@ def build_bindings(overrides: dict | None = None) -> dict:
     """Bindings with the user's overrides from the config applied.
 
     overrides: {"toggle": "F10", "record": "Insert", ...} — command -> string.
-    Unknown or malformed strings are ignored and the default stays.
+    Unknown or malformed strings are ignored and the default stays - and so
+    are bindings parse_binding no longer accepts (a bare letter or arrow an
+    older version let through): the command falls back to its default key,
+    and the log says so.
 
     A command can also be taken OFF the keyboard entirely (#134): an empty
     string, or one of UNBIND_WORDS, removes its binding from the set. That is
@@ -207,6 +226,8 @@ def build_bindings(overrides: dict | None = None) -> dict:
             continue
         parsed = parse_binding(text)
         if parsed is None:
+            print(f"[hotkeys] {cmd}: {text!r} cannot be a global hotkey - "
+                  f"the default {name} is used")
             continue
         new_mods, new_vk = parsed
         bindings[hk_id] = (new_mods, new_vk, cmd, text)

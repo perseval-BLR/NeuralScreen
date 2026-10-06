@@ -4,7 +4,9 @@ The point of this test is that the hotkey layer does not break when the
 default bindings change (they moved from Insert to Num0 in v1.4 and a
 measurement script broke because it hard-coded the old key). So:
 
-  * every key name the parser knows round-trips through parse_binding;
+  * every key name the parser knows round-trips through parse_binding
+    (with Ctrl+Alt: a bare typing key is refused, see
+    test_hotkey_typing_keys.py);
   * aliases (CONTROL == CTRL, case, whitespace) resolve to the same VK;
   * build_bindings applies overrides and silently ignores bad ones;
   * DEFAULT_BINDINGS are internally consistent: unique commands, valid
@@ -31,9 +33,10 @@ from hotkeys import (DEFAULT_BINDINGS, _KEY_NAMES, _NUMPAD_VKS,  # noqa: E402
 def main() -> int:
     failures = []
 
-    # 1. Every key name the parser knows must parse back to a VK.
+    # 1. Every key name the parser knows must parse back to a VK. With
+    #    Ctrl+Alt: bare, only the F-keys and the numpad are hotkeys.
     for name, vk in _KEY_NAMES.items():
-        parsed = parse_binding(name)
+        parsed = parse_binding("Ctrl+Alt+" + name)
         if parsed is None:
             failures.append(f"parse_binding({name!r}) returned None")
         elif parsed[1] != vk:
@@ -47,7 +50,7 @@ def main() -> int:
         (" ctrl + alt + q ", (MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x51)),
         ("Shift+F1", (MOD_SHIFT | MOD_NOREPEAT, 0x70)),
         ("Num0", (MOD_NOREPEAT, 0x60)),
-        ("Insert", (MOD_NOREPEAT, 0x2D)),
+        ("Ctrl+Insert", (MOD_CONTROL | MOD_NOREPEAT, 0x2D)),
     ):
         got = parse_binding(text)
         if got != expect:
@@ -59,13 +62,13 @@ def main() -> int:
             failures.append(f"parse_binding({bad!r}) should be None")
 
     # 4. build_bindings: overrides apply, bad ones are ignored.
-    overrides = {"toggle": "F10", "record": "Insert", "settings": "NotAKey"}
+    overrides = {"toggle": "F10", "record": "Ctrl+Insert", "settings": "NotAKey"}
     built = build_bindings(overrides)
     by_cmd = {entry[2]: entry for entry in built.values()}
     if by_cmd["toggle"][1] != 0x79:  # F10
         failures.append("toggle override did not apply (F10)")
     if by_cmd["record"][1] != 0x2D:  # Insert
-        failures.append("record override did not apply (Insert)")
+        failures.append("record override did not apply (Ctrl+Insert)")
     if by_cmd["settings"][1] != DEFAULT_BINDINGS[2][1]:
         failures.append("bad override replaced the default settings binding")
 
