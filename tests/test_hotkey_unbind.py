@@ -109,6 +109,20 @@ def check_build_bindings(failures: list) -> None:
     if built:
         failures.append(f"removing every command left {_commands(built)}")
 
+    # ...and it must stay empty at the next launch. startup hands exactly this
+    # {} to the controller and to the Num Lock / log helpers; an empty dict
+    # read as "no argument" brought all the defaults back on every restart.
+    ctl = hotkeys.HotkeyController(queue.Queue(), built)
+    if ctl._bindings:
+        failures.append(f"a controller built with every command removed "
+                        f"registers {_commands(ctl._bindings)} at launch")
+    if hotkeys.numlock_needed(built):
+        failures.append(f"with every command removed the Num Lock alert still "
+                        f"names {hotkeys.numlock_needed(built)}")
+    if hotkeys.describe(built):
+        failures.append(f"with every command removed the startup log still "
+                        f"describes {hotkeys.describe(built)!r}")
+
 
 def check_no_owner_conflict(failures: list) -> None:
     """A removed binding must not read as a key somebody else holds."""

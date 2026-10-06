@@ -30,6 +30,15 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **Taking every hotkey off the keyboard now survives a restart (#134).** With
+  all commands unbound, `build_bindings` correctly returns an empty set - but
+  the hotkey controller, the Num Lock alert and the startup log treated `{}` as
+  "no argument" and fell back to the defaults. The live session was right; at
+  the next launch all eleven default keys were registered again while the panel
+  showed every row as "none". `None` alone now means "the defaults".
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

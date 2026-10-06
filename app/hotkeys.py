@@ -215,7 +215,7 @@ def build_bindings(overrides: dict | None = None) -> dict:
 
 def describe(bindings: dict | None = None) -> str:
     """A line like 'Num1=toggle, Num2=settings, ...' for the startup log."""
-    src = bindings or DEFAULT_BINDINGS
+    src = DEFAULT_BINDINGS if bindings is None else bindings
     return ", ".join(f"{name}={cmd}" for _, (_, _, cmd, name) in sorted(src.items()))
 
 
@@ -232,7 +232,7 @@ def numlock_needed(bindings: dict | None = None) -> list:
     fire at all. Worth saying out loud rather than letting the user conclude
     the program is broken.
     """
-    src = bindings or DEFAULT_BINDINGS
+    src = DEFAULT_BINDINGS if bindings is None else bindings
     # The arithmetic keys send the same code with Num Lock off.
     return [name for _, (_, vk, _cmd, name) in sorted(src.items())
             if vk in _NUMPAD_VKS
@@ -283,7 +283,8 @@ class HotkeyController:
 
     def __init__(self, commands: queue.Queue, bindings: dict | None = None):
         self._commands = commands
-        self._bindings = bindings or DEFAULT_BINDINGS
+        # {} is a real answer: every command was taken off the keyboard (#134).
+        self._bindings = DEFAULT_BINDINGS if bindings is None else bindings
         self._thread: threading.Thread | None = None
         self._tid = 0
         self.registered: list[str] = []
