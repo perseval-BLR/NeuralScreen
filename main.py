@@ -198,7 +198,7 @@ from protocol import (  # noqa: F401
     WGC_MAGIC, WINDOW_ACK_FMT, WINDOW_ACK_MAGIC, WINDOW_FLAG_CAPTURABLE,
     WINDOW_FLAG_DISABLE, WINDOW_FMT, WINDOW_MAGIC, WorkerReader,
     _read_exact, prepare_capture, send_dda, send_frame, send_gray, send_motion_size,
-    send_out, send_resize, send_wgc, send_window)
+    send_out, send_resize, send_wgc, send_window, set_idle_hook)
 
 # The imports are done: from here on main()'s own handler reports failures.
 if sys.excepthook is _startup_failure:
@@ -583,6 +583,24 @@ def main() -> int:
         print("[main] compatibility preflight cancelled - capture was not opened")
         return 2
     try:
+        def _pump_while_waiting() -> None:
+            """What a wait on the worker does with its time: keep the window alive.
+
+            Starting, restarting and stopping a worker waits on the main
+            thread for seconds at a time (the startup verdict alone may take
+            45 s), and nothing pumped the window meanwhile - Windows marked it
+            Not Responding and the Save As dialog it owns stopped too (#135).
+            The same two things the frame loop's own recv wait does: the
+            switch veil's mark keeps animating (drawing pumps), otherwise the
+            window's messages are pumped. pump(), not get(): the menu reads
+            its events after the wait.
+            """
+            if st.display.is_switch_active():
+                st.display.draw_overlay(0.0)
+            else:
+                pygame.event.pump()
+
+        set_idle_hook(_pump_while_waiting)
         startup.open_capture(st)
         startup.bring_up(st)
 
@@ -1569,6 +1587,11 @@ def main() -> int:
                 print(f"  {line}", file=sys.stderr)
         return 1
     finally:
+        # The window goes below; no wait from here on draws into it.
+        try:
+            set_idle_hook(None)
+        except Exception:
+            pass
         # A conversion may be running on its own worker. Stop it first and
         # wait a bounded moment: the runner reaps its worker on the way out,
         # and the job object in pipeline covers the case where it cannot.

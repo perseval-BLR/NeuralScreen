@@ -289,6 +289,101 @@ class SharedFrameBuffer:
 #: so twice the worst start measured, not more.
 WORKER_STARTUP_TIMEOUT_S = 45.0
 
+#: How often a wait on the worker hands the waiting thread back to its own
+#: window (see set_idle_hook).
+IDLE_HOOK_INTERVAL = 0.1
+
+# (hook, the thread that installed it), or None.
+_idle_hook = None
+
+
+def set_idle_hook(hook) -> None:
+    """Have every wait on a worker call `hook` at least every IDLE_HOOK_INTERVAL.
+
+    The program's window lives on the main thread, and the main thread spends
+    whole seconds waiting on workers: the startup verdict (up to
+    WORKER_STARTUP_TIMEOUT_S), RACK (20 s), the channel acks (15 s), a capture
+    request (5 s), the pause between two workers (2 s) and a worker's exit
+    (10 s and more). Nothing pumped the window during any of them, and Windows
+    marks a window that has not answered for 5 s as Not Responding - which
+    also blocks the Save As dialog it owns (#135). The hook is how a wait lets
+    the window answer.
+
+    Only the thread that installed it calls it: a conversion starts its own
+    workers on its own thread, and pumping a window from there is not allowed.
+    None removes it. A hook that raises is ignored - it is a courtesy to the
+    window, never a reason for the wait to fail.
+    """
+    global _idle_hook
+    _idle_hook = None if hook is None else (hook, threading.get_ident())
+
+
+def _thread_idle_hook():
+    """The idle hook, if this thread is the one that installed it."""
+    entry = _idle_hook
+    if entry is None or entry[1] != threading.get_ident():
+        return None
+    return entry[0]
+
+
+def _call_idle_hook(hook) -> None:
+    try:
+        hook()
+    except Exception:
+        pass
+
+
+def has_idle_hook() -> bool:
+    """Whether this thread installed an idle hook."""
+    return _thread_idle_hook() is not None
+
+
+def idle_tick() -> None:
+    """Call the idle hook once, if this thread has one."""
+    hook = _thread_idle_hook()
+    if hook is not None:
+        _call_idle_hook(hook)
+
+
+def idle_sleep(seconds: float) -> None:
+    """time.sleep that keeps calling this thread's idle hook while it sleeps."""
+    hook = _thread_idle_hook()
+    if hook is None:
+        time.sleep(seconds)
+        return
+    deadline = time.monotonic() + seconds
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(remaining, IDLE_HOOK_INTERVAL))
+        _call_idle_hook(hook)
+
+
+class _IdleTicker:
+    """One wait's schedule for the idle hook: called every IDLE_HOOK_INTERVAL.
+
+    Kept apart from the queue: a wait that keeps receiving replies it is not
+    waiting for (frames during a probe) must still let the window answer, so
+    the hook is due by the clock, not by an empty queue. A wait shorter than
+    the interval - the frame loop's own 50 ms recv slices - never calls it.
+    """
+
+    def __init__(self):
+        self._hook = _thread_idle_hook()
+        self._due = time.monotonic() + IDLE_HOOK_INTERVAL
+
+    def tick(self) -> None:
+        if self._hook is not None and time.monotonic() >= self._due:
+            _call_idle_hook(self._hook)
+            self._due = time.monotonic() + IDLE_HOOK_INTERVAL
+
+    def slice(self, remaining: float) -> float:
+        """How long the next blocking read may take."""
+        if self._hook is None:
+            return remaining
+        return max(0.0, min(remaining, self._due - time.monotonic()))
+
 
 def _negotiate_shm(worker: subprocess.Popen, reader: "WorkerReader",
                    shm: SharedFrameBuffer, timeout: float = 10.0,
@@ -1063,13 +1158,15 @@ class WorkerReader:
         as it always was.
         """
         deadline = time.monotonic() + timeout
+        idle = _IdleTicker()
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self._orphans[tag] = self._orphans.get(tag, 0) + 1
                 raise TimeoutError(f"the worker did not acknowledge {what} within {timeout:.0f}s")
+            idle.tick()
             try:
-                got, payload = self._queue.get(timeout=remaining)
+                got, payload = self._queue.get(timeout=idle.slice(remaining))
             except queue.Empty:
                 continue
             if got is None:
@@ -1172,6 +1269,7 @@ class WorkerReader:
         timeout) are dropped - the protocol cannot desynchronise.
         """
         deadline = time.monotonic() + timeout
+        idle = _IdleTicker()
         while True:
             if self._frames:
                 # A reply a wait_* met while this frame was in flight.
@@ -1181,8 +1279,9 @@ class WorkerReader:
                 if remaining <= 0:
                     raise TimeoutError(
                         f"the worker has been silent for {timeout:.0f}s on frame {index} - NGX did not answer after the restart")
+                idle.tick()
                 try:
-                    got_index, payload = self._queue.get(timeout=remaining)
+                    got_index, payload = self._queue.get(timeout=idle.slice(remaining))
                 except queue.Empty:
                     continue  # the loop raises TimeoutError itself once the deadline passes
             if got_index is None:

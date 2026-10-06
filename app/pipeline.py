@@ -40,9 +40,10 @@ from display import Display
 from guides import TemporalGuideGenerator
 from i18n import STRINGS as UI_STRINGS
 from paths import NATIVE_DIR, WORKER_EXE
-from protocol import (HEADER_FMT, VIDEO_MAGIC, SharedFrameBuffer,
-                      WorkerReader, _negotiate_shm, send_dda, send_per_pass,
-                      send_resize)
+from protocol import (HEADER_FMT, IDLE_HOOK_INTERVAL, VIDEO_MAGIC,
+                      SharedFrameBuffer, WorkerReader, _negotiate_shm,
+                      has_idle_hook, idle_sleep, idle_tick, send_dda,
+                      send_per_pass, send_resize)
 from settings_io import (THEME_NAMES, _work_size, cascade_passes, hotkey_labels,
                          nr_verdict)
 from winapi import window_frame_rect
@@ -345,10 +346,35 @@ def restart_worker(worker: subprocess.Popen, params: dict, width: int, height: i
     (shutdown_worker terminates the process) - there is no read race with the
     new worker: the pipes are different and the old thread physically cannot
     read the stdout of the new process.
+
+    The pause keeps the program's window answering (protocol.idle_sleep):
+    it runs on the main thread, and two seconds of nothing pumped is most of
+    the way to Windows calling the window Not Responding (#135).
     """
     shutdown_worker(worker, stop)
-    time.sleep(2.0)
+    idle_sleep(2.0)
     return start_worker(params, width, height, warmup, full_w, full_h, shm)
+
+
+def _wait_exit(worker: subprocess.Popen, timeout: float):
+    """worker.wait(timeout), letting this thread's window answer meanwhile.
+
+    The same courtesy as every wait on a worker's replies (see
+    protocol.set_idle_hook): a worker that takes its full 10 s to exit, and
+    then the terminate and the kill, is up to 20 s of a window that answers
+    nothing. Without an idle hook on this thread it is the plain wait.
+    """
+    if not has_idle_hook():
+        return worker.wait(timeout=timeout)
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        try:
+            return worker.wait(timeout=max(0.0, min(remaining, IDLE_HOOK_INTERVAL)))
+        except subprocess.TimeoutExpired:
+            if remaining <= IDLE_HOOK_INTERVAL:
+                raise
+            idle_tick()
 
 
 def shutdown_worker(worker: subprocess.Popen, stop: threading.Event | None = None) -> None:
@@ -372,17 +398,17 @@ def shutdown_worker(worker: subprocess.Popen, stop: threading.Event | None = Non
     except OSError:
         pass
     try:
-        code = worker.wait(timeout=10)
+        code = _wait_exit(worker, 10)
         print(f"[main] worker exited cleanly (code {code})")
     except subprocess.TimeoutExpired:
         print("[main] worker did not exit within 10 s - forcing termination")
         worker.terminate()
         try:
-            worker.wait(timeout=5)
+            _wait_exit(worker, 5)
         except subprocess.TimeoutExpired:
             worker.kill()
             try:
-                worker.wait(timeout=5)
+                _wait_exit(worker, 5)
             except subprocess.TimeoutExpired:
                 print("[main] worker could not be reaped after kill",
                       file=sys.stderr)
