@@ -291,6 +291,12 @@ def sanitize_text(text: object, *, sensitive_values: Sequence[str] = ()) -> str:
     for value in custom:
         result = _replace_literal(result, value, _REDACTED, token=False)
 
+    # Titles before the secret rules: a title is a quoted repr, and the
+    # assignment rule's unquoted value runs to the next space - it ate the
+    # closing quote of "title='reset?token=abc'", the title rule then found
+    # no title, and the whole window title went out. "password: x" in a
+    # chat's name did the same.
+    result = _redact_titles(result)
     result = _PRIVATE_KEY_RE.sub(_REDACTED, result)
     result = _AUTH_RE.sub(
         lambda m: f"{m.group('key')}{m.group('sep')}{_REDACTED}", result
@@ -303,7 +309,6 @@ def sanitize_text(text: object, *, sensitive_values: Sequence[str] = ()) -> str:
     )
     for pattern in _KNOWN_TOKEN_RES:
         result = pattern.sub(_REDACTED, result)
-    result = _redact_titles(result)
     return _redact_absolute_paths(result)
 
 

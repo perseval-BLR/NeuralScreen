@@ -6,10 +6,20 @@ paths and other programs' window titles, and three things still got through:
 1. a converted file's name. The conversion queue logs every job as
    "[convert] <name>: started|failed|done|stopped ..." and only the folder
    was cut (as a path) - "Holiday with Anna - private.mp4" reached the bundle.
+2. the second half of a line. The tail was a byte window, so its first line
+   started wherever the cut fell; the title and path rules are anchored on
+   "title='" and on the drive letter, both on the far side of the cut, and
+   the rest of another program's window title or of a path went out as
+   plain text.
+3. a window title with a secret-looking word in it. The secret rules ran
+   first; "token=abc" or "password: x" inside title='...' took the closing
+   quote with the value, the title rule then saw no title, and the whole
+   title - "Divorce lawyer chat" - went out.
 
 Each check builds the line exactly as the program writes it, with a sentinel
-in the private part, runs it through diagnostics.sanitize_text and asserts
-the sentinel is gone while the line still says what happened.
+in the private part, runs it through the scrubber (or a whole bundle, for
+the cut) and asserts the sentinel is gone while the line still says what
+happened.
 
 Run:  runtime\\python.exe tests\\test_bundle_log_privacy.py
 """
@@ -108,16 +118,33 @@ def check_tail_cut(failures: list) -> None:
                             f"its 10 lines")
 
 
+def check_title_with_secret_word(failures: list) -> None:
+    for title in (f"{SENTINEL} token=y",
+                  f"Divorce lawyer {SENTINEL} chat - password: x",
+                  f"acme/reset?token=abc123 {SENTINEL}"):
+        line = (STAMP + "[z] foreign-above-hud (changed) top=hwnd=0x1 pid=7 "
+                f"class='Chrome_WidgetWin_1' title={title!r} "
+                "rect=(0,0,1,1) | hud=(0,0,1,1)")
+        out = diagnostics.sanitize_text(line)
+        if SENTINEL in out or "Divorce" in out:
+            failures.append(f"a title with a secret word in it leaked: {out!r}")
+        if f"title=<{len(title)} chars>" not in out:
+            failures.append(f"the title was not replaced by its length: {out!r}")
+        if "rect=(0,0,1,1) | hud=(0,0,1,1)" not in out:
+            failures.append(f"the rest of the [z] line was lost: {out!r}")
+
+
 def main() -> int:
     failures: list = []
     check_convert_names(failures)
     check_tail_cut(failures)
+    check_title_with_secret_word(failures)
     for f in failures:
         print("FAIL:", f)
     if failures:
         return 1
-    print("OK: the bundle's log tail carries no converted file names and "
-          "no half lines")
+    print("OK: the bundle's log tail carries no converted file names, no "
+          "half lines and no window titles")
     return 0
 
 
