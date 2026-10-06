@@ -151,7 +151,7 @@ bundled copy; `nr_dll` / `NS_NR_DLL` remain the NR override.
 **Num0** records to the configured folder, on the GPU by default (NVENC, 60 fps,
 sound, no frame-rate cost; a recording an error cuts short is kept). The open
 menu is not in it: turn **Record on the GPU** off for the older 30 fps path,
-which draws it in. **Num3** freezes the frame, menu included, before any
+which draws it in. **Num3** freezes the frame, without the menu, before any
 dialog; choose **Save As** or quiet saving, plus PNG or JPEG, in settings.
 
 **Recording externally:**

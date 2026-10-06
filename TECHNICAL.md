@@ -436,7 +436,8 @@ NR itself remains off.
 `FRAME_FLAG_WANT_PIXELS` (the same mechanism as screenshots), the open menu
 is drawn onto the frame with `draw_capture_overlay()`, then PyAV encodes
 AV1 NVENC. A screenshot copies this processed frame before opening Save As,
-so the dialog can never become the next captured frame.
+so the dialog can never become the next captured frame; unlike a recording,
+it does not bake the open menu (#140) - the Screenshot button is in that menu.
 
 Two constraints that look like quirks but are mandatory:
 

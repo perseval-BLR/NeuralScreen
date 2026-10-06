@@ -55,6 +55,12 @@ Scope and honesty notes:
   out the full 15 s and failed, and the debt was re-armed: after NR off/on the
   picture fell back to the slow path on every resume for the worker's life.
 
+* **A screenshot no longer carries our menu (#140).** The open menu was baked
+  into every screenshot on purpose - but the Screenshot button lives in that
+  menu, so a screenshot taken from it always had the panel over the picture.
+  Screenshots now hold the processed frame only; CPU recordings still draw an
+  open menu in, as before.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

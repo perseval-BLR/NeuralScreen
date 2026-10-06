@@ -28,8 +28,6 @@ import traceback
 import webbrowser
 from pathlib import Path
 
-import pygame  # the menu is baked into the screenshot
-
 import channels
 import convert_jobs
 import dialogs
@@ -87,17 +85,13 @@ def _unique_media_path(directory: Path, prefix: str, suffix: str) -> Path:
 
 
 def save_screenshot(st, path: Path, rgba) -> None:
-    """Save the frame as a maximum-quality JPEG.
+    """Save the processed frame, without our menu (#140).
 
-    An open menu ends up in the screenshot: our layer is excluded from
-    capture, so we draw it onto the frame ourselves.
+    The menu used to be baked in, but the Screenshot button lives in that
+    menu: every screenshot taken from it carried the panel over the picture.
+    A screenshot is of the picture. Recordings still bake an open menu
+    (main.py), where it shows what was being changed.
     """
-    try:
-        surf = pygame.image.frombuffer(
-            rgba, (rgba.shape[1], rgba.shape[0]), "RGBX")
-        st.display.draw_capture_overlay(surf)
-    except Exception as exc:
-        print(f"[main] menu was not baked into the screenshot: {exc}", file=sys.stderr)
     try:
         ok = dialogs.save_image(path, rgba)
         if ok:
