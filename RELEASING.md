@@ -154,8 +154,13 @@ formatting is rejected later with
 `runtime-manifest.json is not canonical UTF-8 JSON`. The manifest pins
 
 * `version_sources` - the three version-source files with their extracted values;
-* `runtime.*` - every file under `runtime/` (count, tree digest, per-file size and
-  sha256) plus the nine required runtime artifacts;
+* `runtime.*` - every file under `runtime/` that ships (count, tree digest,
+  per-file size and sha256) plus the nine required runtime artifacts. What does
+  not ship: `runtime/Scripts/` (pip launchers carry the builder's absolute
+  `python.exe` path in their shebang), `runtime/Include/`, Tk, bytecode caches,
+  test folders and the `DROP_PACKAGES` site-packages - a dropped name matches
+  its folder, `name.*` (`name.py`, `name.libs`, `name.cp313-win_amd64.pyd`)
+  and `name-*` (`name-1.0.dist-info`);
 * `package.*` - the complete payload inventory, each record marked `origin: git`
   (with its Git blob OID) or `origin: generated`;
 * `source_inventory` - every tracked native source/shader, version source and
@@ -236,7 +241,9 @@ through the GitHub API and compares them
 This is the step that must **not** run earlier. The builder calls, in order:
 `assert_clean_tracked_tree` -> `assert_release_tag` (tag exists and equals HEAD)
 -> mandatory inputs present at the tag -> `validate_runtime_manifest` against the
-tag (`git_ref=tag`, not HEAD) -> DLL architecture gate -> payload packaging.
+tag (`git_ref=tag`, not HEAD) -> DLL architecture gate -> payload packaging ->
+`assert_no_builder_paths` (no packaged file may name the repository root or the
+builder's home folder, in either slash form, UTF-8 or UTF-16) -> the ZIP.
 
 It refuses, with exit code 2 and `RELEASE CONTRACT FAILED: <message>`:
 
@@ -255,6 +262,7 @@ It refuses, with exit code 2 and `RELEASE CONTRACT FAILED: <message>`:
 | version drift | `version drift: builder, APP_VERSION and launcher.rc disagree; expected {...}, got {...}` |
 | missing kernel archs | `runtime architecture mismatch: missing sm_75, sm_89` |
 | file changed during the build | `package file ... changed during build: <path>` |
+| a file names the build machine | `package files contain the builder machine's absolute path: <paths>` |
 
 The build is deterministic: ZIP timestamps are pinned to 1980-01-01, modes to
 0644, `VERSION.txt` carries no wall-clock line, so two builds of the same commit

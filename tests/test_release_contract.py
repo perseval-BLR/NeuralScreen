@@ -148,6 +148,19 @@ class ReleaseFixture:
     def commit(self) -> str:
         return run_git(self.root, "rev-parse", "HEAD")
 
+    def repin(self) -> None:
+        """Re-pin the manifest after a runtime change and move the tag."""
+        builder.write_runtime_manifest(
+            self.root,
+            version=self.version,
+            expected_tag=self.tag,
+            mandatory_files=self.mandatory,
+            required_runtime_artifacts=self.runtime_artifacts,
+        )
+        run_git(self.root, "add", builder.RUNTIME_MANIFEST)
+        run_git(self.root, "commit", "-qm", "repin release manifest")
+        run_git(self.root, "tag", "-f", self.tag)
+
     def build(self) -> Path:
         return builder.build_release(
             self.root,
@@ -601,6 +614,97 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertEqual(
             failures, ["release v9.9.9 is missing asset TECHNICAL.md"],
         )
+
+
+class RuntimePayloadTests(unittest.TestCase):
+    """What the local interpreter contributes to the archive (v2.1.9 audit).
+
+    v2.1.9 shipped runtime/Scripts/mss.exe - a pip launcher whose shebang is
+    the builder's own python.exe path - the 31 headers of runtime/Include/,
+    and _brotli.cp313-win_amd64.pyd although "_brotli" is a dropped package.
+    """
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(prefix="ns-release-runtime-")
+        self.repo = Path(self.temp.name)
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def write(self, rel: str, data: bytes = b"x") -> None:
+        path = self.repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    def test_pip_launchers_headers_and_dropped_extensions_stay_out(self) -> None:
+        sp = builder.SP
+        shipped = {
+            "runtime/python.exe",
+            "runtime/python313.dll",
+            sp + "numpy/__init__.py",
+            sp + "numpy/_core/_multiarray_umath.cp313-win_amd64.pyd",
+            # Share a prefix with a dropped package but are other packages.
+            sp + "pipx/__init__.py",
+            sp + "yamlloader/__init__.py",
+            sp + "brotlicffi/__init__.py",
+        }
+        dropped = {
+            "runtime/Scripts/mss.exe",
+            "runtime/Scripts/pip.exe",
+            "runtime/Include/Python.h",
+            "runtime/Include/cpython/object.h",
+            sp + "_brotli.cp313-win_amd64.pyd",
+            sp + "brotli.py",
+            sp + "_yaml.cp313-win_amd64.pyd",
+            sp + "pip/__init__.py",
+            sp + "pip-25.0.dist-info/METADATA",
+            sp + "distutils-precedence.pth",
+        }
+        for rel in shipped | dropped:
+            self.write(rel)
+        self.assertEqual(sorted(shipped), builder.runtime_files(self.repo))
+
+    def test_a_path_component_of_the_builder_is_found(self) -> None:
+        # The temp folder lies inside the real home; a stand-in home keeps
+        # the two needles apart so each is proven on its own.
+        with mock.patch.object(Path, "home", return_value=Path("C:/Users/Tester")):
+            needles = builder._builder_path_needles(self.repo)
+        root = str(self.repo.resolve())
+        leaks = {
+            "launcher.exe": b"MZ#!" + root.encode() + b"\\runtime\\python.exe\n",
+            "slashes.txt": root.replace("\\", "/").upper().encode() + b"/x",
+            "wide.dll": ("\0" + root + "\\a.pdb").encode("utf-16-le"),
+            "exact.txt": root.encode(),
+            "home.py": b"cache = 'c:/users/tester/AppData'",
+        }
+        clean = {
+            # A sibling folder that merely starts with the same name.
+            "sibling.txt": (root + "-other\\file").encode(),
+            "placeholder.txt": b"C:\\Users\\Testername\\Python\\Lib",
+            "other.txt": b"C:\\Users\\runneradmin\\build",
+        }
+        with self.assertRaises(builder.ReleaseContractError) as caught:
+            builder.assert_no_builder_paths({**leaks, **clean}, needles)
+        message = str(caught.exception)
+        for name in leaks:
+            self.assertIn(name, message)
+        for name in clean:
+            self.assertNotIn(name, message)
+        builder.assert_no_builder_paths(clean, needles)
+
+    def test_the_build_refuses_a_payload_naming_the_builder(self) -> None:
+        fixture = ReleaseFixture(self.repo)
+        fixture.build()
+        launcher = self.repo / "runtime" / "Lib" / "site-packages" / "tool.exe"
+        launcher.parent.mkdir(parents=True)
+        launcher.write_bytes(
+            b"MZ#!" + str(self.repo.resolve() / "runtime" / "python.exe").encode()
+        )
+        fixture.repin()
+        with self.assertRaisesRegex(
+            builder.ReleaseContractError, r"builder machine's absolute path"
+        ):
+            fixture.build()
 
 
 if __name__ == "__main__":

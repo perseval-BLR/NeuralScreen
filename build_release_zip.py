@@ -90,6 +90,16 @@ TK_SKIP = (
     "runtime/_tkinter.pyd",
     "runtime/Lib/tkinter/",
 )
+# Parts of the local interpreter that only serve pip and extension builds.
+# runtime/Scripts/ holds pip's console-script launchers: each one is an exe
+# with a shebang naming the absolute path of the python.exe it was installed
+# with - the builder machine's - so on a user's machine it is broken and in
+# the archive it publishes that path. runtime/Include/ is the C headers for
+# compiling extensions. Nothing the app runs touches either.
+RUNTIME_DEV_SKIP = (
+    "runtime/Scripts/",
+    "runtime/Include/",
+)
 SP = "runtime/Lib/site-packages/"
 DROP_PACKAGES = {
     "gradio", "gradio_client", "hf_gradio", "huggingface_hub", "hf_xet",
@@ -241,8 +251,13 @@ def _drop_sitepackage(norm: str) -> bool:
     if not norm.startswith(SP):
         return False
     entry = norm[len(SP):].split("/", 1)[0]
+    # "name." covers every top-level file of the package - name.py,
+    # name.libs, name.pth and the extension module itself
+    # (_brotli.cp313-win_amd64.pyd shipped while "_brotli" was listed,
+    # because only .py and .libs were matched). The dot keeps it from
+    # reaching other packages: "pip." does not match "pipx".
     return any(
-        entry == name or entry == name + ".py" or entry == name + ".libs"
+        entry == name or entry.startswith(name + ".")
         or entry.startswith(name + "-")
         for name in DROP_PACKAGES
     )
@@ -253,6 +268,8 @@ def _skip(path: str | Path) -> bool:
     if norm == "config.json":
         return True
     if any(norm == item or norm.startswith(item) for item in TK_SKIP):
+        return True
+    if norm.startswith(RUNTIME_DEV_SKIP):
         return True
     if norm in DEV_ONLY or norm.startswith("tests/") or norm.startswith("test_"):
         return True
@@ -852,6 +869,63 @@ def _assert_payload_matches_manifest(
     )
 
 
+_PATH_NAME_BYTES = frozenset(b"abcdefghijklmnopqrstuvwxyz0123456789_.-")
+
+
+def _builder_path_needles(repo: Path) -> list[bytes]:
+    """The builder machine's own locations, as they could appear in a file.
+
+    The repository root and the user's home folder, with either separator,
+    lower-cased, in UTF-8 and UTF-16-LE (the form Windows binaries store
+    strings in). A bare drive root is not a location anyone could leak.
+    """
+    needles: set[bytes] = set()
+    for base in (Path(repo).resolve(), Path.home()):
+        text = os.fspath(base).rstrip("\\/")
+        if len(PureWindowsPath(text).parts) < 2:
+            continue
+        for form in (text.replace("/", "\\"), text.replace("\\", "/")):
+            form = form.lower()
+            needles.add(form.encode("utf-8"))
+            needles.add(form.encode("utf-16-le"))
+    return sorted(needles, key=len, reverse=True)
+
+
+def assert_no_builder_paths(
+    package_data: dict[str, bytes], needles: Sequence[bytes]
+) -> None:
+    """Refuse a payload that names a folder of the machine that built it.
+
+    A file that carries the builder's absolute path is wrong on every other
+    machine and publishes the maintainer's folder layout: runtime/Scripts/
+    mss.exe shipped with the shebang of the builder's python.exe. A hit has
+    to end the path component - C:\\Users\\User must not match the
+    C:\\Users\\username placeholder in a package's documentation.
+    """
+    def names_path(data: bytes, needle: bytes) -> bool:
+        wide = needle[1:2] == b"\0"
+        start = data.find(needle)
+        while start >= 0:
+            end = start + len(needle)
+            if end >= len(data) or data[end] not in _PATH_NAME_BYTES or (
+                wide and data[end + 1:end + 2] != b"\0"
+            ):
+                return True
+            start = data.find(needle, start + 1)
+        return False
+
+    leaks = []
+    for rel in sorted(package_data):
+        data = package_data[rel].lower()
+        if any(names_path(data, needle) for needle in needles):
+            leaks.append(rel)
+    if leaks:
+        raise ReleaseContractError(
+            "package files contain the builder machine's absolute path: "
+            + ", ".join(leaks)
+        )
+
+
 def build_release(
     repo: Path = BASE,
     *,
@@ -916,6 +990,7 @@ def build_release(
         for rel in package_files
     }
     _assert_payload_matches_manifest(manifest, package_data, notice_bytes)
+    assert_no_builder_paths(package_data, _builder_path_needles(repo))
 
     internal_hashes = [
         ("VERSION.txt", _sha256_bytes(version_bytes)),
