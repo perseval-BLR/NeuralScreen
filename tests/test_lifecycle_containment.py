@@ -16,6 +16,7 @@ worker_failed and NR OFF, the automatic revive armed, the veil down.
 Run:  runtime\\python.exe tests\\test_lifecycle_containment.py
 """
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -34,12 +35,23 @@ def _refuse(*a, **k):
 
 def _case(label, arm, patch):
     """Run the loop, provoke the failure on pass TRIGGER, keep going."""
+    seen = {}
+
     def on_pass(st, n):
         if n == TRIGGER:
             arm(st)
-        return n < TRIGGER + AFTER
+            seen["armed"] = time.monotonic()
+        if n < TRIGGER:
+            return True
+        # The followers run on the loop's housekeeping clock: keep going
+        # until the failure has happened (or 3 s), then AFTER passes more.
+        if "failed_at" not in seen:
+            if st.worker_failed or time.monotonic() - seen["armed"] > 3.0:
+                seen["failed_at"] = n
+            return True
+        return n < seen["failed_at"] + AFTER
 
-    rc, st, log, info = H.run(on_pass, patch=patch)
+    rc, st, log, info = H.run(on_pass, patch=patch, max_passes=10 ** 7)
     problems = []
     if rc != 0:
         problems.append(f"{label}: main() returned {rc} - the failure escaped "
@@ -98,13 +110,12 @@ def main() -> int:
     # 4. The monitor changed size and the rebuild for it is refused.
     def monitor_patch(p, events):
         def follow(st):
-            if st.frame_index % 30 == 0 and getattr(st, "mon_resize", None) == "go":
+            if st.mon_resize == "go":
                 _refuse()
         p.set(pipeline, "follow_monitor", follow)
 
     def monitor_arm(st):
         st.mon_resize = "go"
-        st.frame_index = 30
     failures += _case("a monitor rebuild", monitor_arm, monitor_patch)
 
     # 5. The captured window changed size and its rebuild is refused.

@@ -233,6 +233,16 @@ PERF_KEYS = ("grab", "resize_full", "guides", "send", "recv", "show")
 MAX_CONSECUTIVE_CAPTURE_FAILURES = 3
 CAPTURE_RETRY_BACKOFF = 30.0
 CAPTURE_FAILURE_IDLE = 0.05
+#: How long the loop rests when the Python capture has no new frame yet. It
+#: used to go straight round again: a static desktop with the capture in
+#: Python (capture_in_worker off, or a split-GPU pipeline whose worker cannot
+#: open the display, #88) spun one core on grab() alone.
+GRAB_EMPTY_IDLE = 0.003
+#: How often the loop's housekeeping runs (the HUD's z-order, the monitor
+#: watch, the verdict checks, the power opt-out, the hook scan): twice a
+#: second, by the clock - "every 30 frames" ran it on EVERY pass while no
+#: frame was coming, because the frame counter does not move then.
+HOUSEKEEPING_INTERVAL = 0.5
 
 
 def _next_capture_failure(failures: int, now: float) -> tuple[int, float]:
@@ -695,6 +705,7 @@ def main() -> int:
         last_fps = 0.0
         last_perf_log = time.monotonic()
         motion_status = MotionBackendStatus()
+        next_housekeeping = 0.0
         # Stage timings: mean ms over PERF_LOG_INTERVAL (the [perf] log)
         st.perf = {k: [] for k in PERF_KEYS}
 
@@ -876,6 +887,9 @@ def main() -> int:
             # rebuild therefore ends the iteration, and the next one starts
             # the new worker the way every fresh worker is started.
             iteration_reader = st.reader
+            housekeeping = now >= next_housekeeping
+            if housekeeping:
+                next_housekeeping = now + HOUSEKEEPING_INTERVAL
 
             # NR OFF reaches this path only while a recording, screenshot or
             # Frame Generation explicitly needs raw frames.  The neural pass
@@ -903,8 +917,9 @@ def main() -> int:
                 # the menu is open the pair is re-asserted EVERY frame: the
                 # call is idempotent (raise_topmost inserts the HUD above the
                 # picture, or does nothing when it is already there), so the
-                # steady state costs no SetWindowPos at all. The 30-frame
-                # cadence below stays for the menu-closed HUD case.
+                # steady state costs no SetWindowPos at all. The
+                # housekeeping cadence below stays for the menu-closed HUD
+                # case.
                 st.display.raise_topmost()
             # The same for the HUD even when the menu is closed: a borderless
             # game (Cyberpunk) keeps itself on top and our HUD stays
@@ -912,7 +927,7 @@ def main() -> int:
             # is NOT ours - in the steady state this is zero SetWindowPos
             # calls, so no DWM flicker (user: flicker + invisible HUD over
             # borderless games).
-            if st.frame_index % 30 == 0:
+            if housekeeping:
                 try:
                     top = ctypes.windll.user32.GetTopWindow(0)
                     if top and top != st.display.get_hwnd():
@@ -933,10 +948,10 @@ def main() -> int:
                 except Exception as exc:
                     _stand_down(st, "following the window", exc)
                     continue
-            elif st.frame_index % 30 == 0:
-                # Not in window mode: watch the monitor instead. Every
-                # 30 frames - a mode change is not a per-frame event and
-                # the query walks the monitor list.
+            elif housekeeping:
+                # Not in window mode: watch the monitor instead. Twice a
+                # second - a mode change is not a per-frame event and the
+                # query walks the monitor list.
                 try:
                     pipeline.follow_monitor(st)
                 except Exception as exc:
@@ -973,11 +988,11 @@ def main() -> int:
             # (audit F12).
             #
             # refresh_gpu_ok caches its verdict, so this costs one attribute
-            # check once the worker has spoken; every thirtieth frame is
+            # check once the worker has spoken; the housekeeping runs it
             # twice a second before that, which is soon enough for an alert
             # and far from the per-frame work that cost 29 FPS the last time
             # something was added to this loop.
-            if st.frame_index % 30 == 0:
+            if housekeeping:
                 settings_io.refresh_gpu_ok(st)
                 # And whether Frame Generation came up at all (issue #76:
                 # the switch used to stay ON after the runtime refused).
@@ -1041,7 +1056,10 @@ def main() -> int:
                 frame = _safe_grab()
                 _perf("grab", t0)
                 if frame is None:
-                    continue  # the frame is not ready yet - skip the iteration
+                    # The frame is not ready yet - skip the iteration, and
+                    # rest a moment rather than spin on grab().
+                    time.sleep(GRAB_EMPTY_IDLE)
+                    continue
                 if frame.shape[1] != st.width or frame.shape[0] != st.height:
                     t0 = time.perf_counter()
                     try:
