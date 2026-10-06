@@ -13,7 +13,9 @@ that separates the logo from a dark taskbar is a matter of one pixel, which
 survives being drawn for 16 and does not survive 256 being squeezed into it.
 
 Menu labels come from the caller: they are user-visible text, so they live
-in i18n like the rest of the interface, not in this module.
+in i18n like the rest of the interface, not in this module. tray_labels()
+picks them out of one language's strings, and set_labels() swaps them when
+the user changes the language.
 """
 
 from __future__ import annotations
@@ -27,7 +29,24 @@ from PIL import Image, ImageDraw
 from paths import BASE_DIR
 
 #: Fallback labels, used when the caller passes none.
-DEFAULT_LABELS = {"settings": "Settings", "quit": "Exit"}
+DEFAULT_LABELS = {"settings": "Settings", "quit": "Exit",
+                  "nr_on": "NR: ON", "nr_off": "NR: OFF", "scale": "Scale",
+                  "scale_up": "Scale +0.05", "scale_down": "Scale -0.05"}
+
+
+def tray_labels(strings: dict) -> dict:
+    """The tray's labels out of one language's i18n strings.
+
+    The same words the panel uses for the same things: the NR switch's state,
+    the processing resolution (the tray's "scale" is the work scale the
+    panel's resolution slider sets) and the hotkey names of the two steps.
+    A missing key keeps the English fallback.
+    """
+    pick = {"settings": "settings_title", "quit": "exit", "nr_on": "nr_on",
+            "nr_off": "nr_off", "scale": "nr_res", "scale_up": "hk_scale_up",
+            "scale_down": "hk_scale_down"}
+    return {name: strings.get(key, DEFAULT_LABELS[name])
+            for name, key in pick.items()}
 
 
 def _make_icon(size: int = 64) -> Image.Image:
@@ -73,11 +92,22 @@ class TrayController:
         self._state.update(kw)
         if self._icon is not None:
             try:
-                self._icon.title = (f"NeuralScreen — NR {'ON' if self._state['nr'] else 'OFF'}"
-                                    f" | scale {self._state['scale']:.2f}")
+                nr = self._labels["nr_on" if self._state["nr"] else "nr_off"]
+                self._icon.title = (f"NeuralScreen — {nr}"
+                                    f" | {self._state['scale']:.2f}")
                 self._icon.update_menu()
             except Exception:
                 pass
+
+    def set_labels(self, labels: dict) -> None:
+        """New labels - the user changed the interface language.
+
+        Every label is read through a callable on each update_menu(), so a
+        swap here reaches the open icon; built from strings, the menu kept the
+        launch language for the whole session.
+        """
+        self._labels = dict(DEFAULT_LABELS, **(labels or {}))
+        self._set_state()
 
     def _cmd(self, name: str) -> None:
         self._commands.put(name)
@@ -103,23 +133,24 @@ class TrayController:
 
     def _build_menu(self):
         return pystray.Menu(
-            pystray.MenuItem("NR: ON", self._toggle_nr,
+            pystray.MenuItem(lambda item: self._labels["nr_on"], self._toggle_nr,
                              checked=lambda item: self._state["nr"]),
-            pystray.MenuItem("NR: OFF", self._toggle_nr,
+            pystray.MenuItem(lambda item: self._labels["nr_off"], self._toggle_nr,
                              checked=lambda item: not self._state["nr"]),
             pystray.Menu.SEPARATOR,
             # A callable, read on every update_menu(): the f-string was
             # evaluated once, when the menu was built, and the line kept the
             # launch value for the whole session.
-            pystray.MenuItem(lambda item: f"Scale: {self._state['scale']:.2f}",
+            pystray.MenuItem(lambda item: f"{self._labels['scale']}: "
+                                          f"{self._state['scale']:.2f}",
                              None, enabled=False),
-            pystray.MenuItem("Scale +0.05", self._scale_up),
-            pystray.MenuItem("Scale -0.05", self._scale_down),
+            pystray.MenuItem(lambda item: self._labels["scale_up"], self._scale_up),
+            pystray.MenuItem(lambda item: self._labels["scale_down"], self._scale_down),
             pystray.Menu.SEPARATOR,
             # default=True: left click on the icon triggers this item
-            pystray.MenuItem(self._labels["settings"], self._open_settings,
-                             default=True),
-            pystray.MenuItem(self._labels["quit"], self._quit),
+            pystray.MenuItem(lambda item: self._labels["settings"],
+                             self._open_settings, default=True),
+            pystray.MenuItem(lambda item: self._labels["quit"], self._quit),
         )
 
     def start(self) -> None:

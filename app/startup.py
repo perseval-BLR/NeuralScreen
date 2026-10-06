@@ -52,7 +52,7 @@ from settings_io import (APP_VERSION, THEME_NAMES, _work_size, cascade_passes,
                          clean_per_pass, hotkey_labels,
                          load_config, load_presets, resolve_params)
 from taskbar import TaskbarWindow
-from tray import TrayController
+from tray import TrayController, tray_labels
 
 
 # --- Log to a file instead of the console --------------------------------
@@ -769,10 +769,8 @@ def bring_up(st) -> None:
     # its own thread (see _open_save_dialog); the path arrives here.
     st.shot_paths = queue.Queue()
     st.shot_dialog_open = False
-    st.tray = TrayController(st.tray_commands, labels={
-        "settings": UI_STRINGS[st.lang].get("settings_title", "Settings"),
-        "quit": UI_STRINGS[st.lang].get("exit", "Exit"),
-    })
+    st.tray = TrayController(st.tray_commands,
+                             labels=tray_labels(UI_STRINGS[st.lang]))
     st.tray._set_state(nr=True, scale=st.work_scale)
     st.tray.start()
     print("[main] tray icon started")

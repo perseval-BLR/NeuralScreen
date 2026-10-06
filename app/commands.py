@@ -44,6 +44,7 @@ from settings_io import (CHANNEL_URL, PROFILES, REPO_URL, THEME_NAMES,
                          WORK_SCALE_MIN, WORK_SCALE_STEP,
                          _autostart_enabled, _next_preset_name,
                          _set_autostart, _work_size, hotkey_labels)
+from tray import tray_labels
 from winapi import give_back_foreground, window_frame_rect, window_under_cursor
 
 
@@ -1038,6 +1039,9 @@ def apply_menu_action(st, action: tuple) -> None:
             st.lang = action[1]
             st.display.set_lang(st.lang)
             st.display.menu.set_state({"lang": st.lang})
+            # The tray menu speaks the same language as the panel.
+            if getattr(st, "tray", None) is not None:
+                st.tray.set_labels(tray_labels(UI_STRINGS[st.lang]))
             print(f"[main] interface language -> {st.lang}")
     elif kind == "refresh_windows":
         # The windows page freezes its list while it is open, so the rows cannot
