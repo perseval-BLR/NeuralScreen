@@ -5519,14 +5519,29 @@ fail_capture:
 // The D3D12 half: swizzle BGRA->RGBA out of the shared texture into
 // g_dda_dst, copy that into v.color.tex, and hand the client the luminance
 // frame the optical-flow guides need.
+// The display mode of the captured monitor, asked of Windows at most once a
+// second (and at once when the monitor changes). QueryDisplayConfig plus two
+// DisplayConfigGetDeviceInfo calls on the frame thread; the swizzle and the
+// two grabs each kept a timer of their own, so it ran two to three times a
+// second - a periodic hitch where the call is slow.
+static ULONGLONG g_capture_display_at = 0;
+// The duplication acquire's wait. 100 ms in the frame loop; the no-colour
+// retry polls with its own 10 ms steps and must not wait 100 on each of them.
+static UINT g_dda_acquire_ms = 100;
+static void RefreshCaptureDisplay(HMONITOR monitor)
+{
+    const ULONGLONG now = GetTickCount64();
+    if (monitor == g_capture_monitor && g_capture_display_at != 0 &&
+        now - g_capture_display_at <= 1000)
+        return;
+    g_capture_monitor = monitor;
+    g_capture_display = QueryHdrDisplay(monitor);
+    g_capture_display_at = now;
+}
+
 static bool SwizzleCaptureIntoColor(VideoState &v)
 {
-    static ULONGLONG last_display_query = 0;
-    if (GetTickCount64() - last_display_query > 1000 || last_display_query == 0)
-    {
-        g_capture_display = QueryHdrDisplay(g_capture_monitor);
-        last_display_query = GetTickCount64();
-    }
+    RefreshCaptureDisplay(g_capture_monitor);
     g_hdr_frame_white = g_capture_display.white;
     if (!BeginCommands()) return false;
     ProfileGpuBegin(PS_SWIZZLE);
@@ -5627,22 +5642,17 @@ static bool DdaGrab(VideoState &v)
 {
     if (!g_dda_active) return false;
     g_capture_visual_changed = false;
-    static ULONGLONG last_mode_query = 0;
-    if (GetTickCount64() - last_mode_query > 1000)
+    RefreshCaptureDisplay(g_capture_monitor);
+    if (g_dda_hdr_mode != (HdrEnabled() && g_capture_display.enabled))
     {
-        g_capture_display = QueryHdrDisplay(g_capture_monitor);
-        last_mode_query = GetTickCount64();
-        if (g_dda_hdr_mode != (HdrEnabled() && g_capture_display.enabled))
-        {
-            Log("[hdr] desktop display mode changed; recreating capture");
-            if (!OpenDda(g_dda_w, g_dda_h) || !g_dda_active) MarkCaptureLost(false);
-            return false;
-        }
+        Log("[hdr] desktop display mode changed; recreating capture");
+        if (!OpenDda(g_dda_w, g_dda_h) || !g_dda_active) MarkCaptureLost(false);
+        return false;
     }
     IDXGIResource *res = nullptr;
     DXGI_OUTDUPL_FRAME_INFO fi = {};
     const double t_acq = PhaseNow();
-    HRESULT hr = g_dda_dup->AcquireNextFrame(100, &fi, &res);
+    HRESULT hr = g_dda_dup->AcquireNextFrame(g_dda_acquire_ms, &fi, &res);
     static unsigned test_acquires = 0;   // the injection waits for a live stream
     if (++test_acquires > 30 && TestFailureOnce("dda-lost"))
     {
@@ -5991,20 +6001,13 @@ static bool WgcGrab(VideoState &v)
 {
     if (!g_wgc_active || g_wgc == nullptr) return false;
     g_capture_visual_changed = false;
-    const HMONITOR monitor = MonitorFromWindow(g_wgc_hwnd, MONITOR_DEFAULTTONEAREST);
-    static ULONGLONG last_mode_query = 0;
-    if (monitor != g_capture_monitor || GetTickCount64() - last_mode_query > 1000)
+    RefreshCaptureDisplay(MonitorFromWindow(g_wgc_hwnd, MONITOR_DEFAULTTONEAREST));
+    if (g_wgc->hdr != (HdrEnabled() && g_capture_display.enabled))
     {
-        g_capture_monitor = monitor;
-        g_capture_display = QueryHdrDisplay(monitor);
-        last_mode_query = GetTickCount64();
-        if (g_wgc->hdr != (HdrEnabled() && g_capture_display.enabled))
-        {
-            const HWND hwnd = g_wgc_hwnd;
-            Log("[hdr] window display mode changed; recreating capture");
-            if (!OpenWgc(hwnd) || !g_wgc_active) MarkCaptureLost(true);
-            return false;
-        }
+        const HWND hwnd = g_wgc_hwnd;
+        Log("[hdr] window display mode changed; recreating capture");
+        if (!OpenWgc(hwnd) || !g_wgc_active) MarkCaptureLost(true);
+        return false;
     }
     try
     {
@@ -7927,12 +7930,17 @@ static int RunVideo()
                     // interval or so. Up to ~120 ms of small steps, which is
                     // the difference between a hole and a hiccup, and still
                     // shorter than the acquire timeout we already accept.
+                    // The acquire waits 10 ms here, not 100: twelve 100 ms
+                    // acquires made this "~120 ms" up to 1.3 s of a frozen
+                    // frame thread on a still desktop.
+                    g_dda_acquire_ms = 10;
                     for (int i = 0; reopened && !got && i < 12; ++i)
                     {
                         Sleep(10);
                         got = g_wgc_active ? WgcGrab(v) : DdaGrab(v);
-                        if (g_submission_failed) return 6;
+                        if (g_submission_failed) { g_dda_acquire_ms = 100; return 6; }
                     }
+                    g_dda_acquire_ms = 100;
                     Log("[video] pixels asked for before the first capture "
                         "frame: reopened the capture, %s",
                         got ? "and it answered" : "still nothing");
