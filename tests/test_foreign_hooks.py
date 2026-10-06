@@ -22,6 +22,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
@@ -104,6 +105,35 @@ def main() -> int:
                 break
             except OSError:
                 time.sleep(0.1)
+
+    # The frame loop calls this twice a second for the whole session: a clean
+    # worker must stop being walked, and a walk that raises must not escape
+    # into the loop (main.py has no try around its housekeeping).
+    import main as main_mod
+    calls = []
+    real_find = foreign_hooks.find
+    foreign_hooks.find = lambda pid: calls.append(pid) or []
+    try:
+        st = main_mod._Pipeline()
+        st.worker = SimpleNamespace(pid=424242, poll=lambda: None)
+        for _ in range(40):
+            st._foreign_hooks_due = 0.0
+            foreign_hooks.check(st, log=lambda line: None)
+        walked = calls.count(424242)
+        if walked > foreign_hooks.MAX_WALKS:
+            failures.append(f"a clean worker was walked {walked} times in 40 "
+                            f"ticks - the walk never stops on a machine "
+                            f"without RTSS")
+        foreign_hooks.find = lambda pid: 1 / 0
+        st = main_mod._Pipeline()
+        st.worker = SimpleNamespace(pid=434343, poll=lambda: None)
+        try:
+            foreign_hooks.check(st, log=lambda line: None)
+        except Exception as exc:
+            failures.append(f"a failing walk escaped into the frame loop: "
+                            f"{type(exc).__name__}")
+    finally:
+        foreign_hooks.find = real_find
 
     for f in failures:
         print("FAIL:", f)
