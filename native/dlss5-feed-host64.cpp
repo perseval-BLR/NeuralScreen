@@ -1824,7 +1824,7 @@ static constexpr uint32_t FRAME_FLAG_SPLIT = 0x20u;
 // next capture request - then runs while the GPU finishes this frame instead
 // of after it, and the frame rate stops paying for Python's share of the loop.
 // Honoured only where the tail of the frame is deferred already (a processed
-// frame, present mode, worker capture, no pixels, no wipe, no HDR, no Frame
+// frame, present mode, worker capture, no pixels, no wipe, no Frame
 // Generation): everywhere else the answer still follows the present.
 static constexpr uint32_t FRAME_FLAG_EARLY_REPLY = 0x2000u;
 // The client leaves the scene cut to the worker. With NVOFA the client's only
@@ -2178,7 +2178,8 @@ static HMONITOR g_capture_monitor = nullptr;
 static HdrDisplayInfo g_capture_display;
 static float g_hdr_frame_white = 1.0f;
 static UINT g_hdr_split = UINT_MAX;
-static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg = true);
+static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg = true,
+                       UINT64 *submitted = nullptr);
 static bool FgRequested();
 // `bypass` tells the presenter that the frame it is handing over is the raw
 // capture (NR off), not the neural result: the export must follow the same
@@ -3233,7 +3234,7 @@ static bool PresentFrame(VideoState &v, UINT64 *submitted = nullptr)
 {
     if (!RebuildPresentIfStale()) return false;
     if (submitted) *submitted = 0;
-    if (g_hdr_capture) return PresentHdr(v, false);
+    if (g_hdr_capture) return PresentHdr(v, false, true, submitted);
     // Only when HDR compatibility is on. With it off there is nothing to put
     // back: the swap chain was created R8G8B8A8 and no HDR frame has ever
     // touched it, so the call has nothing to do - and it is not free. 1.8.0
@@ -7739,7 +7740,11 @@ static int RunVideo()
             // the present's fence still cannot complete before it. It is
             // also the mode where frames are cheapest and most numerous, so
             // it is the one with the most round trips to save.
-            defer_tail = !g_hdr_capture && warmup_done && h.feature != nullptr &&
+            // HDR too (#149): PresentHdr takes the token and answers early like
+            // PresentFrame. It was left out by the merge that brought the two
+            // paths together, not for a reason - and lost ~20% of the frame
+            // rate to three fence waits and a lockstep round trip.
+            defer_tail = warmup_done && h.feature != nullptr &&
                 PresentModeActive(v) &&
                 (fh.reserved & (FRAME_FLAG_BYPASS | FRAME_FLAG_SPLIT | FRAME_FLAG_WANT_PIXELS)) == 0;
             // This frame is being processed: remember what it will show, so a
@@ -7852,7 +7857,7 @@ static int RunVideo()
             }
             const bool pres_ok = bypass ? PresentBypass(v) : PresentFrame(v, defer_tail ? &present_done : nullptr);
             // Whether PresentFrame answered already (FRAME_FLAG_EARLY_REPLY):
-            // Frame Generation and HDR present elsewhere and never do.
+            // Frame Generation presents elsewhere and never does.
             const bool replied = g_early_reply.sent;
             const bool reply_failed = g_early_reply.failed;
             g_early_reply = {};

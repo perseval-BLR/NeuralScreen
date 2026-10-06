@@ -107,7 +107,7 @@ static bool EnsureHdrPipeline(UINT w, UINT height, bool pq)
     return g_hdr_output != nullptr;
 }
 
-static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg)
+static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg, UINT64 *submitted)
 {
     // NR OFF is not a reason for ordinary presentation either: FG owns the
     // present loop on both paths. `bypass` still selects WHICH frame is
@@ -258,7 +258,14 @@ static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg)
     auto export_post = Transition(export_src, D3D12_RESOURCE_STATE_COPY_SOURCE, rest);
     h.list->ResourceBarrier(1, &export_post);
     const auto fence = EndCommands();
-    if (!WaitFenceValue(h.fence, fence, 2000, "hdr-present"))
+    // The deferred tail, as on the SDR path (#149): with `submitted` the
+    // upload and the evaluation were not waited for, so this fence covers
+    // them too - the 60 s budget is theirs - and the client is answered
+    // now, while the GPU runs. Nothing it does next can touch this frame:
+    // the next message is read only after the present below.
+    if (submitted) *submitted = fence;
+    if (fence != 0 && !framegen) SendEarlyReply();
+    if (!ProfileWait(PS_PRESENT, fence, submitted ? 60000 : 2000, "hdr-present"))
     {
         if (g_submission_failed) bb.detach();
         return false;
@@ -269,7 +276,11 @@ static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg)
     if (framegen)
     {
         // The export follows the same source this path composed and showed.
-        if (FgPresent(v, g_hdr_output, D3D12_RESOURCE_STATE_COMMON, bypass)) return true;
+        if (FgPresent(v, g_hdr_output, D3D12_RESOURCE_STATE_COMMON, bypass))
+        {
+            if (submitted) *submitted = g_fg_present_fence;
+            return true;
+        }
         // Ordinary output for this frame, and never FG again inside it. A
         // refused multiplier (FgStepDown) lowers only the ceiling and leaves
         // g_fg.failed clear: the lower count takes effect at the next frame
@@ -277,7 +288,7 @@ static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg)
         // feature at the SAME refused count and recursed until the stack ran
         // out - HDR with 3x/4x on a card that refuses it. The SDR paths
         // already fall through to a plain present here.
-        return PresentHdr(v, bypass, false);
+        return PresentHdr(v, bypass, false, submitted);
     }
     if (!CopyToBackBuffer(bb.get(), g_hdr_output, D3D12_RESOURCE_STATE_COMMON, "hdr-present"))
     {

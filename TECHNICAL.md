@@ -521,9 +521,9 @@ commands, the next capture request - while the GPU sat idle. With
 as the frame's work is on the GPU queue, then waits for it and presents as
 before; the client's work runs in that time. Nothing is reordered: the worker
 reads the next message only once this frame is on screen, and a dead worker
-still shows as a missing answer. It is honoured only on the plain present path
-(a processed frame, worker capture, no pixels, wipe or HDR); Frame Generation,
-HDR, screenshots and CPU recording keep the old timing. `NS_EARLY_REPLY=0`
+still shows as a missing answer. It is honoured on the plain present path, SDR
+or HDR (a processed frame, worker capture, no pixels or wipe; HDR since #149);
+Frame Generation, screenshots and CPU recording keep the old timing. `NS_EARLY_REPLY=0`
 turns it off.
 
 Measured off-screen on an RTX 5080 at 2560×1440 - window capture, worker

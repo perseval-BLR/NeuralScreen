@@ -92,6 +92,17 @@ Scope and honesty notes:
   named once, with what to do about it - in the log a diagnostic package
   carries. Nothing about RTSS is changed.
 
+* **HDR no longer loses a fifth of the frame rate to waiting (#149).** With
+  Windows HDR and HDR compatibility on, NR ran at 68-70 FPS where SDR ran at
+  85, with the network's GPU time unchanged. The early reply and the deferred
+  frame tail (one GPU wait per frame instead of three, and the client's work
+  overlapped with the GPU's) were reserved for SDR - not by decision: the
+  merge that joined them with the HDR path left HDR out because the HDR
+  present took no fence token. It takes one now and answers early like the
+  SDR present. Found and traced to the line by the reporter. Not measured on
+  an HDR display here (the bench has none); `NS_EARLY_REPLY=0` turns the early
+  answer off for an A/B.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

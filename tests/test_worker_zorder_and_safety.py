@@ -58,7 +58,7 @@ def main() -> int:
     grec = _read("gpu_recorder.cpp")
 
     # 1. HDR + FG retry
-    present_hdr = _code(_body(hdr, "static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg)"))
+    present_hdr = _code(_body(hdr, "static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg, UINT64 *submitted)"))
     if not present_hdr:
         failures.append("PresentHdr no longer takes allow_fg")
     elif "allow_fg && FgRequested()" not in present_hdr:
@@ -66,7 +66,7 @@ def main() -> int:
     if re.search(r"return\s+PresentHdr\(v,\s*bypass\)\s*;", hdr):
         failures.append("the FG-failure retry re-enters PresentHdr with FG allowed "
                         "- it recurses at a refused multiplier")
-    if "return PresentHdr(v, bypass, false);" not in hdr:
+    if "return PresentHdr(v, bypass, false, submitted);" not in hdr:
         failures.append("the FG-failure retry is not an ordinary (no FG) present")
 
     # 2. follow step: a move, never a raise
