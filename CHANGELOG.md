@@ -327,6 +327,11 @@ Scope and honesty notes:
   redrawing** (it moved ten times a second and trailed behind), and Frame
   Generation does no work while the captured window is minimised.
 
+* **A GPU recording of a still picture is smooth again.** Since v2.1.7 the
+  capture waits up to a tenth of a second for a new frame, and a window or
+  desktop that did not change was recorded at about ten frames a second.
+  While a recording runs the wait is a few milliseconds.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
