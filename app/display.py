@@ -279,6 +279,34 @@ ALERT_FONT_SIZE = 28
 ALERT_TOP_MARGIN = 28
 
 
+def elide_middle(font, text: str, max_w: int) -> str:
+    """`text` shortened in the MIDDLE until `font` draws it within max_w.
+
+    The alerts that carry a path - a saved diagnostic package, a recording,
+    a converted file - are a sentence at the head and a file name at the
+    tail, and the middle (the folders) is what nobody reads. Cut from the
+    right, the file name would go first; not cut at all, the alert ran past
+    the right edge of a 1366-1600 px screen. The tail keeps the extra
+    character when the split is odd.
+    """
+    if max_w <= 0 or font.size(text)[0] <= max_w:
+        return text
+    ell = "\u2026"
+
+    def cut(n: int) -> str:
+        head = n // 2
+        return text[:head] + ell + text[len(text) - (n - head):]
+
+    lo, hi = 0, len(text) - 1
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if font.size(cut(mid))[0] <= max_w:
+            lo = mid
+        else:
+            hi = mid - 1
+    return cut(lo)
+
+
 def ui_scale_for(height: int) -> float:
     """Interface multiplier derived from the screen height.
 
@@ -2492,9 +2520,14 @@ class Display:
             return
         c = self.theme
         text, _ = self._alerts[-1]
-        surf = self._alert_font.render(text, True, self._rgb(c["text"]))
         pad_x = int(round(26 * self.ui_scale))
         pad_y = int(round(14 * self.ui_scale))
+        # The panel, padding and the screen-edge gap _alert_rect keeps
+        # included, never wider than the screen.
+        edge = int(round(8 * self.ui_scale))
+        text = elide_middle(self._alert_font, text,
+                            self.width - 2 * (pad_x + edge))
+        surf = self._alert_font.render(text, True, self._rgb(c["text"]))
         w = surf.get_width() + pad_x * 2
         h = surf.get_height() + pad_y * 2
         rect = self._alert_rect(w, h)
