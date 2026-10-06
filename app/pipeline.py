@@ -43,7 +43,7 @@ from paths import NATIVE_DIR, WORKER_EXE
 from protocol import (HEADER_FMT, IDLE_HOOK_INTERVAL, VIDEO_MAGIC,
                       SharedFrameBuffer, WorkerReader, _negotiate_shm,
                       has_idle_hook, idle_sleep, idle_tick, send_dda,
-                      send_per_pass, send_resize)
+                      send_per_pass, send_resize, send_wgc)
 from settings_io import (THEME_NAMES, _work_size, cascade_passes, hotkey_labels,
                          nr_verdict)
 from winapi import window_frame_rect
@@ -846,8 +846,24 @@ def _restore_after_failed_probe(st, hwnd: int) -> None:
         still believed in window mode;
       * the processed window itself (the follow path re-probing it) - it can
         no longer be captured, so window mode ends honestly.
+
+    With NR OFF the source this pipeline had was NOTHING: the idle worker's
+    capture is closed (channels.suspend_for_off), and a window picked from
+    the menu meanwhile is probed on that worker. Putting "the desktop" back
+    there sent DDA1 and left an idle worker capturing the screen behind NR
+    OFF; what goes back is the closed capture. Turning NR on re-arms the
+    capture from whatever the pipeline points at then.
     """
     current = st.window_hwnd
+    if getattr(st, "off_suspended", False):
+        try:
+            send_wgc(st.worker, 0)
+            st.reader.wait_wgak(timeout=5.0)
+        except Exception as exc:
+            print(f"[main] the idle worker's capture did not close after the "
+                  f"probe ({exc})", file=sys.stderr)
+        st.display.exit_switch_mode()  # the overlay was raised before the probe
+        return
     try:
         if current is None:
             send_dda(st.worker, st.width, st.height)
