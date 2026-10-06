@@ -544,6 +544,17 @@ client needs the capture before `FRM1` for one thing only - the scene-cut test,
 the mean difference of two 320×180 grays against 0.24. Done in the worker, that
 round trip could go too.
 
+### Next to a GPU-heavy game: `NS_GPU_PRIORITY` (experimental)
+
+An uncapped game in the foreground can take the GPU from the network almost
+entirely - #142 measured eval at 200-650 ms of GPU time with the CPU side
+under 1 ms, and Alt-Tab alone brought it back. A command queue's priority
+does not reach across processes (and is ignored under hardware scheduling);
+the process's GPU scheduling class does. `NS_GPU_PRIORITY=above_normal` or
+`high` sets the worker's class at start and logs what Windows reads back
+(`[gpu] GPU scheduling priority ...`). Off by default and not yet measured
+against such a game: it can take time from the game as well.
+
 ### work_scale costs nothing (in upscale mode)
 
 In the legacy upscale mode (nr_small off) NGX evaluation time does not depend

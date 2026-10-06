@@ -1053,6 +1053,45 @@ typedef HRESULT (WINAPI *PFN_D3D12CreateDevice_)(IUnknown *, D3D_FEATURE_LEVEL, 
 typedef HRESULT (WINAPI *PFN_D3D12GetDebugInterface_)(REFIID, void **);
 typedef HRESULT (WINAPI *PFN_CreateDXGIFactory1_)(REFIID, void **);
 
+// #142: with an uncapped GPU-heavy game in the foreground the network's work
+// is time-sliced away to the game - eval measured 200-650 ms on the GPU while
+// the CPU side stayed under 1 ms, and Alt-Tab alone brought it back to 11 ms.
+// A command queue's priority cannot help: NORMAL/HIGH rank queues inside ONE
+// process, and under hardware scheduling the value is ignored. The process's
+// GPU scheduling class is the documented lever across processes. Opt-in and
+// unmeasured on the reporter's machine, so it is an experiment:
+// NS_GPU_PRIORITY=above_normal|high (normal puts it back). The class is set
+// on this process only - another process's handle is refused with
+// STATUS_INVALID_PARAMETER (measured) - and read back into the log.
+static void ApplyGpuPriorityFromEnv()
+{
+    char want[24] = {};
+    const DWORD got = GetEnvironmentVariableA("NS_GPU_PRIORITY", want, sizeof(want));
+    if (got == 0 || got >= sizeof(want)) return;
+    struct { const char *name; int cls; } const classes[] = {
+        {"normal", 2}, {"above_normal", 3}, {"high", 4}};   // D3DKMT_SCHEDULINGPRIORITYCLASS
+    int cls = -1;
+    for (const auto &c : classes)
+        if (_stricmp(want, c.name) == 0) cls = c.cls;
+    if (cls < 0)
+    { Log("[gpu] NS_GPU_PRIORITY=%s is not normal, above_normal or high - ignored", want); return; }
+    using SetFn = LONG(APIENTRY *)(HANDLE, int);
+    using GetFn = LONG(APIENTRY *)(HANDLE, int *);
+    const HMODULE gdi = GetModuleHandleW(L"gdi32.dll");
+    const auto set = gdi ? reinterpret_cast<SetFn>(
+        GetProcAddress(gdi, "D3DKMTSetProcessSchedulingPriorityClass")) : nullptr;
+    const auto get = gdi ? reinterpret_cast<GetFn>(
+        GetProcAddress(gdi, "D3DKMTGetProcessSchedulingPriorityClass")) : nullptr;
+    if (set == nullptr || get == nullptr)
+    { Log("[gpu] GPU scheduling priority is not available on this system"); return; }
+    const LONG status = set(GetCurrentProcess(), cls);
+    int now = -1;
+    get(GetCurrentProcess(), &now);
+    Log("[gpu] GPU scheduling priority %s: 0x%08lX, the class reads back %d%s", want,
+        static_cast<unsigned long>(status), now,
+        now == cls ? "" : " - not applied (it may need elevation)");
+}
+
 // DRED breadcrumbs: when the device is removed (TDR on Win10, issue #1) the
 // reason code and the faulting command list are the only way to tell WHERE it
 // died. Without them the log says only "code 6" and the user cannot help. The
@@ -1271,6 +1310,7 @@ static bool InitDisguise()
     h.dev->CreateCommandQueue(&qd, __uuidof(ID3D12CommandQueue), reinterpret_cast<void **>(&h.queue));
     if (h.queue == nullptr) { Log("[host] queue creation failed"); return false; }
     Log("[pure] standalone D3D12 device ready; no swapchain or carrier modules");
+    ApplyGpuPriorityFromEnv();
 
     // Ring + internal fence for our own submissions.
     for (int i = 0; i < Host::kFrames; ++i)

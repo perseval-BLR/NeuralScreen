@@ -123,6 +123,16 @@ Scope and honesty notes:
   visible frame's size where that is smaller; on Windows 11 the two agree and
   nothing changes.
 
+* **`NS_GPU_PRIORITY` - an opt-in GPU priority for the worker (#142,
+  experimental).** With an uncapped GPU-heavy game in focus, NR fell to ~1 FPS:
+  the network's GPU time grew to hundreds of milliseconds while its CPU side
+  stayed under 1 ms, and Alt-Tab alone brought it back. A command queue's
+  priority - the reporter's suspicion - ranks queues inside one process and
+  is ignored under hardware scheduling, so it cannot help; the process's GPU
+  scheduling class can. `NS_GPU_PRIORITY=above_normal|high` sets the worker's
+  class at start and logs what Windows reads back. Off by default until it is
+  measured on such a machine.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

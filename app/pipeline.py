@@ -83,7 +83,11 @@ _LOG_ALWAYS = ("[host]", "[pure]", "[arch]", "[cap]", "[dda]", "[present]",
                "[z]",
                # The GPU recorder (native/gpu_recorder.cpp): which encoder
                # opened, what was refused, the frames written and dropped.
-               "[grec]")
+               "[grec]",
+               # NS_GPU_PRIORITY (#142): what the worker asked the GPU
+               # scheduler for and what Windows read back - the one line that
+               # says whether the experiment ran at all.
+               "[gpu]")
 #: [video] lines that are a heartbeat rather than a diagnostic: the "delivered
 #: frame N" line is printed every 30 frames and would bury the log.
 _LOG_SKIP = ("delivered frame",)
