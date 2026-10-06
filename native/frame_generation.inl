@@ -428,15 +428,28 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
             g_fg.module = LoadLibraryW(path);
         }
         if (!g_fg.module) { Log("[fg] nvngx_dlssg.dll load failed: %lu", GetLastError()); return false; }
+        // Any failure from here on unloads the runtime again. The module was
+        // the only "initialised" marker, so a half-done init (an export
+        // missing, AllocateParameters or Init_Ext refused) used to be kept:
+        // the next FG switch-on skipped this block and called create on a
+        // runtime never initialised, through params that could be null.
+        auto unload = [] {
+            if (g_fg.params) { NVSDK_NGX_D3D12_DestroyParameters(g_fg.params); g_fg.params = nullptr; }
+            g_fg.create = nullptr; g_fg.release = nullptr; g_fg_evaluate = nullptr;
+            FreeLibrary(g_fg.module); g_fg.module = nullptr;
+            return false;
+        };
         auto init = reinterpret_cast<PFN_NR_InitExt>(GetProcAddress(g_fg.module, "NVSDK_NGX_D3D12_Init_Ext"));
         g_fg.create = reinterpret_cast<PFN_NR_Create>(GetProcAddress(g_fg.module, "NVSDK_NGX_D3D12_CreateFeature"));
         g_fg.release = reinterpret_cast<PFN_NR_Release>(GetProcAddress(g_fg.module, "NVSDK_NGX_D3D12_ReleaseFeature"));
         g_fg_evaluate = reinterpret_cast<PFN_NR_Evaluate>(GetProcAddress(g_fg.module, "NVSDK_NGX_D3D12_EvaluateFeature"));
         if (!init || !g_fg.create || !g_fg.release || !g_fg_evaluate ||
-            NVSDK_NGX_FAILED(NVSDK_NGX_D3D12_AllocateParameters(&g_fg.params))) return false;
-        const auto result = init(0x1000000ULL, directory, h.dev, NVSDK_NGX_Version_API, g_fg.params);
+            NVSDK_NGX_FAILED(NVSDK_NGX_D3D12_AllocateParameters(&g_fg.params)))
+        { Log("[fg] the runtime is missing an entry point or parameters"); return unload(); }
+        auto result = init(0x1000000ULL, directory, h.dev, NVSDK_NGX_Version_API, g_fg.params);
+        if (TestFailureOnce("fg-init")) result = NVSDK_NGX_Result_Fail;
         Log("[fg] Init_Ext -> 0x%08X", result);
-        if (NVSDK_NGX_FAILED(result)) return false;
+        if (NVSDK_NGX_FAILED(result)) return unload();
         // Ask the runtime what it says its own multiplier ceiling is, and log
         // it. DLSSG.MultiFrameCountMax is 3 for 4x and 1 for a card that stops
         // at 2x. This is REPORT ONLY: the request is not clamped by it, since

@@ -162,6 +162,14 @@ Scope and honesty notes:
   darker. Window capture almost always hit it; 1920x1080, 2560x1440 and 4K
   did not.
 
+* **A Frame Generation start that fails is undone completely.** When the FG
+  runtime loaded but its initialisation failed (an older driver, a card below
+  Ada, a BYO runtime missing an entry point), it stayed loaded half-way, and
+  switching FG on again skipped the initialisation and went straight to
+  creating the feature on a runtime that was never set up - a refusal at
+  best, a crash of the worker at worst. The runtime is now unloaded on any
+  such failure and the next switch-on starts from scratch.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
