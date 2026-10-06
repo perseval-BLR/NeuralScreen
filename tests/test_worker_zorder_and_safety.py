@@ -369,10 +369,14 @@ def main() -> int:
                 failures.append("the first frame reaches "
                                 "SwizzleCaptureIntoColor without the flag being "
                                 "cleared - it is never consumed (#128a)")
-            elif guard.find("g_dda_first_frame = false") > guard.rfind("return false"):
-                failures.append("the first-frame flag is cleared after the guard "
-                                "returns - the frame is dropped, not consumed "
-                                "(#128a)")
+            elif guard.find("g_dda_first_frame = false") < guard.rfind("return false"):
+                # The flag is cleared only by a frame that carries the
+                # desktop: until then the surface was never written, and the
+                # pointer-only frames after an empty first one carry the same
+                # signature over the same black surface (pre-release audit).
+                failures.append("the first-frame flag is cleared before the empty "
+                                "guard - a pointer-only frame over the unwritten "
+                                "surface is shown (#128a)")
             if "return false" not in guard:
                 failures.append("an empty first frame is not answered as "
                                 "\"no frame\" - the consumer cannot tell it from "

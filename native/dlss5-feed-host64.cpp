@@ -4420,6 +4420,7 @@ static bool                    g_dda_ready = false;      // current frame is in 
 // by the first frame it actually produces. Desktop Duplication only: a WGC
 // frame pool carries frames the window has already produced.
 static bool                    g_dda_first_frame = true;
+static bool                    g_dda_empty_said = false;   // once per session
 // Bits per colour of the captured display's scan-out, read from IDXGIOutput6
 // when the capture opens. Above 8 the duplicated desktop alternates
 // FP16/BGRA8 through the legacy DuplicateOutput, so the capture is pinned to
@@ -5301,6 +5302,7 @@ static bool OpenDda(UINT w, UINT hgt)
     g_dda_w = w; g_dda_h = hgt; g_dda_active = true;
     g_capture_lost = false;
     g_dda_first_frame = true;   // the duplication has produced nothing yet
+    g_dda_empty_said = false;
     Log("[dda] capture %ux%u active", w, hgt);
     return true;
 }
@@ -5698,7 +5700,6 @@ static bool DdaGrab(VideoState &v)
     // (test_pixels_after_resize).
     if (g_dda_first_frame)
     {
-        g_dda_first_frame = false;
         // Only an EMPTY first surface is consumed. A session's first frame
         // that carries a picture IS the current desktop, and it is exactly
         // what the no-colour fallback reopens the capture to get: discarding
@@ -5708,12 +5709,23 @@ static bool DdaGrab(VideoState &v)
         // AccumulatedFrames = 0 and LastPresentTime = 0 and reads black,
         // while the frame carrying the desktop reports AccumulatedFrames >= 1
         // and a real LastPresentTime (probe_dda_pixels).
+        //
+        // And not only the very first: until a frame carries the desktop, the
+        // surface was never written. On a still desktop with the mouse moving
+        // the next frames are pointer-only updates - AccumulatedFrames 0,
+        // LastPresentTime 0, the same signature - over that same unwritten
+        // surface, and showing one put black on screen and in a screenshot
+        // until the desktop changed (after every reopen: a lock screen, an HDR
+        // switch). The session stays "first" until it has a picture.
         if (fi.AccumulatedFrames == 0 && fi.LastPresentTime.QuadPart == 0)
         {
-            Log("[cap] the duplication session's first frame is empty - "
-                "consumed, not shown");
+            if (!g_dda_empty_said)
+                Log("[cap] the duplication session's first frame is empty - "
+                    "consumed, not shown");
+            g_dda_empty_said = true;
             return false;
         }
+        g_dda_first_frame = false;
         Log("[cap] the duplication session's first frame carries the "
             "desktop - shown, not consumed");
     }
