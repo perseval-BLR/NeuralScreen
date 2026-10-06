@@ -152,6 +152,16 @@ Scope and honesty notes:
   flow, and the next real frame is measured against the last fresh one.
   `Motion: CPU` was the workaround; it is no longer needed for this.
 
+* **The motion map covers the whole picture at every resolution.** The
+  worker's gray downscale - what NVOFA, the CPU optical flow, the scene-cut
+  score and the adaptive exposure all read - left black columns and rows at
+  the right and bottom whenever the picture size did not divide by the map
+  size: 46 columns and 26 rows at 1366x768, 53 and 67 for #140's 799-wide
+  window, a few at 3440x1440. Motion there was measured against a black wall
+  (artefacts along those edges), scene cuts were diluted and exposure read
+  darker. Window capture almost always hit it; 1920x1080, 2560x1440 and 4K
+  did not.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

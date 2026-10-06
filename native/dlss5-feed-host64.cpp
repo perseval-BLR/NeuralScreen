@@ -4483,6 +4483,11 @@ static void BindDdaDescriptors(ID3D12Resource *src)
 // ---------------------------------------------------------------------------
 static ID3D12RootSignature  *g_gray_rs = nullptr;
 static ID3D12PipelineState  *g_gray_pso = nullptr;
+// Block edges are id * src / dst, not id * ceil(src / dst): with the ceiling
+// the last blocks of any size that does not divide started PAST the frame,
+// ran zero iterations and wrote 0 - 46 black columns at 1366 -> 320, 53 at a
+// 799-wide window. Optical flow, the scene score and the exposure all read
+// this map. Products stay below 7680 * 7680, inside a uint.
 static const char kGrayHlsl[] =
     "Texture2D<float4>   gSrc : register(t0);\n"
     "RWTexture2D<float>  gDst : register(u0);\n"
@@ -4491,10 +4496,9 @@ static const char kGrayHlsl[] =
     "void CSMain(uint3 id : SV_DispatchThreadID)\n"
     "{\n"
     "    if (id.x >= gDstW || id.y >= gDstH) return;\n"
-    "    uint bx = (gSrcW + gDstW - 1) / gDstW;\n"
-    "    uint by = (gSrcH + gDstH - 1) / gDstH;\n"
-    "    uint x0 = id.x * bx, y0 = id.y * by;\n"
-    "    uint x1 = min(x0 + bx, gSrcW), y1 = min(y0 + by, gSrcH);\n"
+    "    uint x0 = id.x * gSrcW / gDstW, y0 = id.y * gSrcH / gDstH;\n"
+    "    uint x1 = max(x0 + 1, (id.x + 1) * gSrcW / gDstW);\n"
+    "    uint y1 = max(y0 + 1, (id.y + 1) * gSrcH / gDstH);\n"
     "    float sum = 0.0f;\n"
     "    for (uint y = y0; y < y1; ++y)\n"
     "        for (uint x = x0; x < x1; ++x)\n"

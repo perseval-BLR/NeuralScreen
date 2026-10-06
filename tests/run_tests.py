@@ -264,6 +264,7 @@ ABOUT = {
     "test_driver_out_of_date.py": "an out-of-date NVIDIA driver is named as the reason, not reported as failed (#145)",
     "test_gpu_priority_env.py": "NS_GPU_PRIORITY sets the worker's GPU scheduling class and logs the read-back (#142)",
     "test_fg_mode_change.py": "a display mode change met by the FG presenter rebuilds the window once",
+    "test_gray_area.py": "the worker's gray map covers the whole frame at sizes that do not divide",
     "test_nvofa_still.py": "NVOFA gives an unchanged frame zero motion and runs no optical flow for it (#141)",
 }
 
@@ -470,6 +471,7 @@ TEST_GROUPS = {
         "test_gpu_priority_env.py",
         "test_fg_mode_change.py",
         "test_nvofa_still.py",
+        "test_gray_area.py",
         "test_hdr_resize.py",
         "test_hdr_recording.py",
         "test_worker_scene.py",
