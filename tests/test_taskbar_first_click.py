@@ -65,7 +65,7 @@ def _make_foreign(name: str):
         hinst = kernel32.GetModuleHandleW(None)
         wc = taskbar.WNDCLASSW()
         proc = taskbar.WNDPROC(
-            lambda h, m, w, l: user32.DefWindowProcW(h, m, w, l))
+            lambda h, m, w, l: taskbar.user32.DefWindowProcW(h, m, w, l))
         wc.lpfnWndProc = proc           # keep the reference: a collected
         wc.hInstance = hinst            # callback crashes the process
         wc.lpszClassName = cls
