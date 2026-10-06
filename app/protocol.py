@@ -1049,6 +1049,21 @@ class WorkerReader:
                 return payload
             if keep_frames and isinstance(got, int):
                 self._frames.append((got, payload))
+            else:
+                self._settle_orphan(got)
+
+    def _settle_orphan(self, got) -> None:
+        """An acknowledgement nobody waits for is dropped; if it is the late
+        answer a wait gave up on, that debt is paid here too.
+
+        A late ack usually lands while main is in recv or waiting for a
+        different tag. Dropped there without settling the count, the NEXT
+        prompt ack of the same kind was taken for the late one and its wait
+        sat out the whole timeout - and re-armed the count, so every later
+        WNDO/WGCW of that kind failed the same way for the worker's life.
+        """
+        if isinstance(got, str) and self._orphans.get(got, 0) > 0:
+            self._orphans[got] -= 1
 
     def wait_mack(self, timeout: float) -> None:
         """Wait for MACK - the acknowledgement of the motion field size (MOTS)."""
@@ -1151,3 +1166,4 @@ class WorkerReader:
                 self.last_scene = None
                 self.last_scene_cut = False
                 return payload
+            self._settle_orphan(got_index)

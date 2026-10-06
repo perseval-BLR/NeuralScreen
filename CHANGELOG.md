@@ -46,6 +46,15 @@ Scope and honesty notes:
   system manage" call on both processes, the status is read back from the OS,
   and a refusing system is logged once instead of every 30 frames.
 
+* **One late answer from the worker no longer breaks every later command of
+  its kind (#148).** When a wait gave up (a WNDO during a slow NGX start, for
+  example), its late acknowledgement is remembered as owed. It usually arrives
+  while the main thread waits for something else - another acknowledgement or
+  a frame - and was dropped there without settling the debt. The next prompt
+  acknowledgement of that kind was then taken for the late one, its wait sat
+  out the full 15 s and failed, and the debt was re-armed: after NR off/on the
+  picture fell back to the slow path on every resume for the worker's life.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

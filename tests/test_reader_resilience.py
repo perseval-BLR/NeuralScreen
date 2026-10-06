@@ -9,7 +9,9 @@ Driven through a real pipe, the way the worker writes, with no GPU:
   recv - it used to be dropped, recv then timed out and the worker was
   restarted (a hotkey during a frame);
 * an ack that arrives after its wait gave up is not taken as the answer to
-  the next command of the same kind;
+  the next command of the same kind - and when it lands while main waits for
+  something else (another ack, or a frame), it still settles that debt: the
+  next prompt ack of its kind is not swallowed as "the late one" (#148);
 * a protocol error does not leave the worker blocked on a full pipe: the rest
   of the stream is drained, and the reader stops reporting the worker alive.
 
@@ -30,7 +32,8 @@ sys.path.insert(0, str(BASE / "app"))  # the modules live in app/
 import protocol  # noqa: E402
 from protocol import (DDA_ACK_FMT, DDA_ACK_MAGIC, MOTION_ACK_FMT,  # noqa: E402
                       MOTION_ACK_MAGIC, OUT_FMT, OUT_MAGIC, OUT_STATUS_OK,
-                      WGC_ACK_FMT, WGC_ACK_MAGIC, WorkerReader)
+                      WGC_ACK_FMT, WGC_ACK_MAGIC, WINDOW_ACK_FMT,
+                      WINDOW_ACK_MAGIC, WorkerReader)
 
 
 class _Pipe:
@@ -114,6 +117,44 @@ def main() -> int:
             reader.wait_mack(1.0)                            # its own, after the orphan
         except Exception as exc:
             failures.append(f"a MACK after the orphan did not arrive: {exc!r}")
+
+        # 3b. the late ack lands while main waits for a DIFFERENT ack (#148:
+        # WNDO gave up during a slow NGX init, its WACK came during WGCW).
+        wack = struct.pack(WINDOW_ACK_FMT, WINDOW_ACK_MAGIC, 1, 0, 0, 0)
+        try:
+            reader.wait_wack(0.2)
+            failures.append("wait_wack returned with no WACK sent")
+        except TimeoutError:
+            pass
+        pipe.write(wack)                                     # the late one
+        pipe.write(struct.pack(WGC_ACK_FMT, WGC_ACK_MAGIC, 1, 640, 480, 0))
+        reader.wait_wgak(3.0)
+        pipe.write(wack)                                     # the next WNDO's own
+        try:
+            reader.wait_wack(1.0)
+        except TimeoutError:
+            failures.append("a late WACK dropped during another wait left its "
+                            "debt behind - the next WNDO's prompt WACK was "
+                            "swallowed and its wait timed out")
+
+        # 3c. ...or while main waits for a frame.
+        try:
+            reader.wait_wack(0.2)
+            failures.append("wait_wack returned with no WACK sent")
+        except TimeoutError:
+            pass
+        pipe.write(wack)                                     # the late one
+        pipe.write(_out(9))
+        try:
+            reader.recv(9, 3.0)
+        except TimeoutError:
+            failures.append("the frame behind a late WACK was not delivered")
+        pipe.write(wack)
+        try:
+            reader.wait_wack(1.0)
+        except TimeoutError:
+            failures.append("a late WACK dropped by recv left its debt behind - "
+                            "the next WNDO's prompt WACK was swallowed")
     finally:
         pipe.close()
         reader._thread.join(timeout=2.0)
