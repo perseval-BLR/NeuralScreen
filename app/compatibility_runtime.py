@@ -376,7 +376,7 @@ def create_support_bundle(st, *, stage: str | None = None) -> Path:
     while candidate.exists():
         candidate = SUPPORT_DIR / f"NeuralScreen-diagnostics-{stamp}-{serial}.zip"
         serial += 1
-    return create_diagnostic_bundle(candidate, DiagnosticBundleRequest(
+    bundle = create_diagnostic_bundle(candidate, DiagnosticBundleRequest(
         failure_stage=failure_stage,
         failure_details=details,
         app_version=APP_VERSION,
@@ -387,6 +387,32 @@ def create_support_bundle(st, *, stage: str | None = None) -> Path:
         previous_log_path=BASE_DIR / "NeuralScreen.log.1",
         settings=settings_snapshot(st),
     ))
+    _prune_support_bundles(bundle)
+    return bundle
+
+
+#: Bundles kept in support-bundles/. Every blocked start writes one (and a
+#: Retry that fails again writes another), and nothing removed them: the
+#: folder grew for the life of the install. The newest few are what a
+#: report needs.
+SUPPORT_KEEP = 10
+
+
+def _prune_support_bundles(keep: Path) -> None:
+    """Delete all but the newest SUPPORT_KEEP bundles; never ``keep``."""
+    try:
+        bundles = [path for path in SUPPORT_DIR.glob("NeuralScreen-diagnostics-*.zip")
+                   if path.is_file()]
+        bundles.sort(key=lambda path: (path.stat().st_mtime, path.name), reverse=True)
+    except OSError:
+        return
+    for path in bundles[SUPPORT_KEEP:]:
+        if path == keep:
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 def settings_snapshot(st) -> dict:

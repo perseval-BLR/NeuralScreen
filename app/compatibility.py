@@ -27,6 +27,10 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 
 CACHE_SCHEMA = "neuralscreen.compatibility/v1"
 DEFAULT_COOLDOWN_SECONDS = 30 * 60
+#: Verdicts kept in compatibility-cache.json, newest first. Only the current
+#: key is ever read; the rest are a short history (a rollback to the previous
+#: driver finds its verdict), not an archive.
+CACHE_MAX_ENTRIES = 32
 _SHA256_HEX_LENGTH = 64
 
 
@@ -472,7 +476,39 @@ class CompatibilityCache:
                 "quarantine_until": result.quarantine_until,
                 "created_at": float(self.clock()),
             }
+            self._prune(document["entries"])
             self._save(document)
+
+    def _prune(self, entries: dict[str, Any]) -> None:
+        """Drop expired quarantines and keep the newest CACHE_MAX_ENTRIES.
+
+        Every driver, app or runtime update is a new key, and nothing ever
+        removed an old one: an expired quarantine was only dropped when its
+        own key was read again, which after an update it never is. The file
+        grew by an entry per update for the life of the install.
+        """
+        now = self.clock()
+        for digest, entry in list(entries.items()):
+            if not isinstance(entry, dict):
+                del entries[digest]
+                continue
+            until = entry.get("quarantine_until")
+            if entry.get("status") == CompatibilityStatus.QUARANTINED.value:
+                try:
+                    expired = until is not None and now >= float(until)
+                except (TypeError, ValueError):
+                    expired = True
+                if expired:
+                    del entries[digest]
+
+        def created(digest: str) -> float:
+            try:
+                return float(entries[digest].get("created_at") or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        for digest in sorted(entries, key=created)[:-CACHE_MAX_ENTRIES]:
+            del entries[digest]
 
     def reset(self, key: CompatibilityKey) -> bool:
         """Clear one cached verdict for an explicit manual retry."""
