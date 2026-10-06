@@ -304,6 +304,94 @@ def _working_card_name(cfg: dict) -> str:
     return adapters[0][1]
 
 
+_DISPLAY_CLASS = "{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+
+def _present_display_drivers(winreg) -> set:
+    """The display-class subkeys ("0012") of the adapters running right now.
+
+    HARDWARE\\DEVICEMAP\\VIDEO is rebuilt at every boot and lists only the
+    started adapters, each as a path to its Control\\Video\\{GUID}\\NNNN key;
+    the sibling "Video" key's Driver value names its display-class subkey.
+    Empty when any of it cannot be read - the caller then has no presence
+    to go by, not an answer that nothing is present.
+    """
+    present = set()
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"HARDWARE\DEVICEMAP\VIDEO") as devicemap:
+            index = 0
+            while True:
+                try:
+                    name, target, _ = winreg.EnumValue(devicemap, index)
+                except OSError:
+                    break
+                index += 1
+                if not str(name).startswith("\\Device\\Video"):
+                    continue
+                # \Registry\Machine\System\CurrentControlSet\Control\Video\{GUID}\0000
+                match = re.search(r"\\(Control\\Video\\\{[^}\\]+\})\\\d{4}$",
+                                  str(target), re.IGNORECASE)
+                if not match:
+                    continue
+                try:
+                    with winreg.OpenKey(
+                            winreg.HKEY_LOCAL_MACHINE,
+                            f"SYSTEM\\CurrentControlSet\\{match.group(1)}\\Video") as key:
+                        driver, _ = winreg.QueryValueEx(key, "Driver")
+                except OSError:
+                    continue
+                cls, _, sub = str(driver).rpartition("\\")
+                if cls.casefold() == _DISPLAY_CLASS and re.fullmatch(r"\d{4}", sub):
+                    present.add(sub)
+    except OSError:
+        return set()
+    return present
+
+
+def _driver_version(card_name: str) -> str:
+    """The driver version of the adapter the worker runs on, or "".
+
+    Read-only, from the display-class registry key. It used to be the first
+    NVIDIA DriverDesc among subkeys 0000-0009, and a machine keeps a subkey
+    for every card it ever had: a GTX 1060 swapped out years ago sits at
+    0000 with its old driver, and the card in use can be 0012. That version
+    goes into the compatibility key and into the "driver out of date" dialog
+    (#145), which then named a driver the machine does not run. Every
+    subkey is read now; a running adapter wins over a ghost, and among
+    those the one whose DriverDesc is the DXGI name of the working card.
+    A tie goes to the later subkey - a ghost is an earlier install.
+    """
+    import winreg
+    base = f"SYSTEM\\CurrentControlSet\\Control\\Class\\{_DISPLAY_CLASS}"
+    wanted = str(card_name or "").strip().casefold()
+    present = _present_display_drivers(winreg)
+    best, best_rank = "", None
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as root:
+        index = 0
+        while True:
+            try:
+                sub = winreg.EnumKey(root, index)
+            except OSError:
+                break
+            index += 1
+            if not re.fullmatch(r"\d{4}", sub):
+                continue
+            try:
+                with winreg.OpenKey(root, sub) as key:
+                    desc, _ = winreg.QueryValueEx(key, "DriverDesc")
+                    ver, _ = winreg.QueryValueEx(key, "DriverVersion")
+            except OSError:
+                continue
+            if "NVIDIA" not in str(desc):
+                continue
+            rank = (sub in present, str(desc).strip().casefold() == wanted,
+                    int(sub))
+            if best_rank is None or rank > best_rank:
+                best, best_rank = str(ver), rank
+    return best
+
+
 #: What _log_environment found, kept for the About block. The log header
 #: is what users are asked to paste into an issue, and the same four facts
 #: belong where a user can read them without finding the log first.
@@ -342,21 +430,10 @@ def _log_environment(cfg: dict) -> None:
     except Exception:
         pass
     try:
-        # The NVIDIA driver version from the display-class registry key.
-        import winreg
-        base = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
-        for idx in range(10):
-            try:
-                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                                    f"{base}\\{idx:04d}") as key:
-                    desc, _ = winreg.QueryValueEx(key, "DriverDesc")
-                    if "NVIDIA" in str(desc):
-                        ver, _ = winreg.QueryValueEx(key, "DriverVersion")
-                        ENVIRONMENT["driver"] = str(ver)
-                        print(f"[env] driver: {ver}")
-                        break
-            except OSError:
-                continue
+        ver = _driver_version(_working_card_name(cfg))
+        if ver:
+            ENVIRONMENT["driver"] = ver
+            print(f"[env] driver: {ver}")
     except Exception:
         pass
     try:
