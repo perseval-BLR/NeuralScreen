@@ -39,6 +39,38 @@ W, H = 640, 360
 GW, GH = 160, 90
 
 
+def _overlay_rect(pid: int):
+    """The worker's NeuralScreenPresent window rect, or None."""
+    from ctypes import wintypes
+    user32 = ctypes.WinDLL("user32")
+    user32.FindWindowExW.restype = wintypes.HWND
+    user32.FindWindowExW.argtypes = [wintypes.HWND, wintypes.HWND,
+                                     wintypes.LPCWSTR, wintypes.LPCWSTR]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND,
+                                                ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    hwnd = None
+    while True:
+        hwnd = user32.FindWindowExW(None, hwnd, "NeuralScreenPresent", None)
+        if not hwnd:
+            return None
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid:
+            r = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(r))
+            return (r.left, r.top, r.right, r.bottom)
+
+
+def _frame_rect(hwnd):
+    from ctypes import wintypes
+    r = wintypes.RECT()
+    if ctypes.windll.dwmapi.DwmGetWindowAttribute(
+            wintypes.HWND(hwnd), 9, ctypes.byref(r), ctypes.sizeof(r)) != 0:
+        return None
+    return (r.left, r.top, r.right, r.bottom)
+
+
 def main() -> int:
     if not WORKER_EXE.is_file():
         print("SKIP: native/nvngx.dll is not built - the worker cannot run")
@@ -80,6 +112,16 @@ def main() -> int:
         send_window(worker, W, H)
         reader.wait_wack(10)
         run(6.0, True)
+        # Window mode: the rebuilt picture window must sit on the target,
+        # not where a new window opens (NS_WINDOW_POS) - the follower only
+        # moves it when the target moves, and this target does not.
+        placed = _overlay_rect(worker.pid)
+        frame = _frame_rect(target.hwnd)
+        if placed is None:
+            failures.append("no picture window after the rebuild")
+        elif frame is not None and placed[:2] != frame[:2]:
+            failures.append(f"the rebuilt picture window is at {placed[:2]}, "
+                            f"the target at {frame[:2]}")
     except Exception as exc:
         failures.append(f"the run raised {type(exc).__name__}: {exc}")
     finally:

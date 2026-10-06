@@ -178,6 +178,14 @@ Scope and honesty notes:
   a driver or program update. It now has the same 45 s budget as the live
   pipeline.
 
+* **After a display mode change in window mode, the picture stays on the
+  window.** The picture window is rebuilt when the display mode changes under
+  it, and a new window opens at the monitor's corner; the follower places it
+  on the captured window only when that window moves, and it remembered the
+  old position across the rebuild. So the processed picture sat in the
+  corner, with the real window unprocessed under the panel, until the window
+  was moved.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is

@@ -2612,6 +2612,11 @@ static void ClosePresent()
     g_present_revealed = false;
     g_present_mismatch = false;
     g_present_reshow = false;
+    // ...and a fresh window is not where the target is: it opens at
+    // NS_WINDOW_POS. Forget the target's last rect, or a follower that sees
+    // an unmoved target never places the new window - after a mode-change
+    // rebuild the picture sat in the monitor's corner until the target moved.
+    g_present_follow = RECT{};
     // A fresh swap chain knows nothing about its colour space either.
     g_present_space_set = false;
     g_present_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
