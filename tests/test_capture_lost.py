@@ -59,9 +59,18 @@ def main() -> int:
         reader.wait_dack(15)
         pipe.send_motion_size(worker, GW, GH)
         reader.wait_mack(10)
-        end = time.perf_counter() + 5.0
+        # The loss is injected after 30 acquires, and on a still desktop each
+        # acquire waits its full 100 ms - so it can come seconds in. Run until
+        # the desktop is back and a few frames went through after it, not for
+        # a fixed time that a still screen used up before the loss.
+        end = time.perf_counter() + 20.0
+        back_at = None
         i = 0
         while time.perf_counter() < end:
+            if back_at is None and any("desktop is back" in ln for ln in list(logs)):
+                back_at = i
+            if back_at is not None and i >= back_at + 20:
+                break
             # CAP1 then the frame that consumes it, as the client's CPU path
             # does; both end the worker if the capture counts as gone.
             pipe.prepare_capture(worker, reader, i, i)
