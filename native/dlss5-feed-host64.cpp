@@ -5443,7 +5443,14 @@ static StageResult StageCapturedFrame(ID3D11Texture2D *frame, UINT *out_w, UINT 
         }
     }
     if (g_dda_signal->GetCompletedValue() < want)
-    { Log("[cap] signal fence timeout"); return StageResult::Failed; }
+    {
+        // Move past the value anyway: the copy may still finish, and the next
+        // frame's wait for the SAME value would then pass at once - before
+        // its own copy - and read a half-written texture.
+        ++g_dda_fence_value;
+        Log("[cap] signal fence timeout");
+        return StageResult::Failed;
+    }
     ++g_dda_fence_value;
     return StageResult::Ok;
 fail_capture:
