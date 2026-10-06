@@ -292,7 +292,7 @@ WORKER_STARTUP_TIMEOUT_S = 45.0
 
 def _negotiate_shm(worker: subprocess.Popen, reader: "WorkerReader",
                    shm: SharedFrameBuffer, timeout: float = 10.0,
-                   startup_timeout: float = WORKER_STARTUP_TIMEOUT_S) -> None:
+                   startup_timeout: float | None = None) -> None:
     """Hand the shared memory name to the worker (SHMI) and wait for SACK.
 
     The worker reads SHMI only from its command loop, after NGX init and the
@@ -304,14 +304,26 @@ def _negotiate_shm(worker: subprocess.Popen, reader: "WorkerReader",
 
     A refusal is not fatal: if the worker could not open the mapping we stay
     on sending the frame down the pipe - that path is still there and works.
+
+    A worker that never STARTS is another matter, and it raises. The startup
+    wait used to sit inside the same catch-all as the refusal, so a worker
+    hung in its init (no CACK within the budget) or dead in it (EOF) was
+    reported as "shared memory unavailable" and handed back as a running
+    worker - and the first frame then went down the pipe inline, 33 MB into
+    a process that reads nothing, and the write blocked the program for
+    good. Raised, it reaches start_worker, which reaps the process; the
+    callers treat it as the failed start it is.
     """
+    if startup_timeout is None:
+        # Read here, not bound as the default: the budget is a module setting.
+        startup_timeout = WORKER_STARTUP_TIMEOUT_S
     shm.negotiated = False
+    worker.stdin.write(struct.pack(
+        SHM_FMT, SHM_MAGIC, shm.color_capacity, shm.motion_capacity, 0, 0,
+        shm.name.encode("ascii")))
+    worker.stdin.flush()
+    reader.wait_create_ack(startup_timeout)
     try:
-        worker.stdin.write(struct.pack(
-            SHM_FMT, SHM_MAGIC, shm.color_capacity, shm.motion_capacity, 0, 0,
-            shm.name.encode("ascii")))
-        worker.stdin.flush()
-        reader.wait_create_ack(startup_timeout)
         reader.wait_sack(timeout)
         shm.negotiated = True
         print(f"[main] shared memory agreed: {shm.size / 1e6:.1f} MB, "
