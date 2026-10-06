@@ -447,6 +447,20 @@ class _Engine:
         return self.reader.recv(index, timeout=FRAME_TIMEOUT_S)
 
 
+def _network_ran(engine) -> bool:
+    """Whether the network evaluated the frame the engine just handed back.
+
+    The worker sends the NGX result of its last evaluation with every frame,
+    and 0 means it has not evaluated one at all: the picture came back as it
+    went in (main.py's "NR ON but not evaluating" check reads the same
+    value). An engine without a worker reader has nothing to say otherwise.
+    """
+    reader = getattr(engine, "reader", None)
+    if reader is None or not hasattr(reader, "last_ngx_result"):
+        return True
+    return int(reader.last_ngx_result or 0) != 0
+
+
 def _zero_motion(work_w: int, work_h: int) -> np.ndarray:
     """The motion field the worker reads exactly work_w*work_h*4 bytes of."""
     return np.zeros((work_h, work_w, 2), dtype=np.float16)
@@ -673,8 +687,13 @@ def convert_image(source: Path, output: Path, params: dict, *,
         # depends on whether it took the MOTS channel.
         pixels = engine.evaluate(0, frame, _zero_motion(*engine.motion_size),
                                  True)
+        ran = pixels is not None and _network_ran(engine)
     if pixels is None:
         raise ConversionError("process", "the worker returned no pixels")
+    if not ran:
+        # The still would be written exactly as it came in and called
+        # converted.
+        raise ConversionError("process", "the network did not process the image")
     _check(cancel)
 
     say("writing", 1, 1, output.name)
@@ -1358,6 +1377,9 @@ def convert_video(source: Path, output: Path, params: dict, *,
                 if pixels is None:
                     counted["skipped"] += 1
                     pixels = rgba
+                elif not _network_ran(engine):
+                    # It came back, but as it went in: not converted either.
+                    counted["skipped"] += 1
                 emit(("video", pixels, when))
                 counted["done"] += 1
                 say("processing", counted["done"],
@@ -1377,6 +1399,14 @@ def convert_video(source: Path, output: Path, params: dict, *,
 
         if done == 0:
             raise ConversionError("decode", "no frames could be decoded")
+        if skipped >= done:
+            # Every frame went out as it came in: a copy of the source,
+            # re-encoded, is not a conversion and must not be reported as one.
+            raise ConversionError(
+                "process", f"the network processed none of the {done} frames")
+        if skipped:
+            notes.append(f"{skipped} of {done} frames were not processed by "
+                         f"the network and are left as they were")
 
         stage = "encode"
         say("writing", done, max(total, done), output.name)

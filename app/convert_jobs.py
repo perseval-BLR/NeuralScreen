@@ -91,6 +91,8 @@ class ConvertJob:
     seconds: float = 0.0
     codec: str = ""
     audio: str = ""
+    #: Frames the network did not process - written as they came in.
+    skipped: int = 0
     notes: list = field(default_factory=list)
     started_at: float = 0.0
     #: When the first frame went through - the rate is measured from here,
@@ -122,6 +124,7 @@ class ConvertJob:
             "seconds": self.seconds,
             "codec": self.codec,
             "audio": self.audio,
+            "skipped": self.skipped,
             "notes": list(self.notes),
         }
 
@@ -244,6 +247,10 @@ def status_line(row: dict, s: dict) -> tuple[str, str]:
             parts.append(s.get("convert_audio_aac", "audio as AAC"))
         elif audio == "dropped":
             parts.append(s.get("convert_audio_dropped", "no audio"))
+        skipped = int(row.get("skipped") or 0)
+        if skipped:
+            parts.append(s.get("convert_unprocessed",
+                               "{n} frames not processed").format(n=skipped))
         return " · ".join(parts), "ok"
     if status == FAILED:
         reason = s.get(f"convert_err_{row.get('error') or 'unknown'}",
@@ -548,6 +555,7 @@ class ConvertQueue:
                     job.codec = str(result.codec or "")
                     job.audio = str(result.audio or "")
                     job.notes = list(result.notes or [])
+                    job.skipped = int(getattr(result, "skipped", 0) or 0)
                     job.done = max(job.done, int(result.frames or 0))
                     if job.kind == "video" and job.seconds > 0 and result.frames:
                         job.fps = result.frames / job.seconds
