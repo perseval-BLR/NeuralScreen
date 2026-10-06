@@ -268,6 +268,28 @@ Scope and honesty notes:
   * A screenshot named with a dot ("скрин 06.10.2026") is saved instead of
     lost, and a failed write no longer leaves a truncated picture.
 
+* **Panel, hotkey and tray fixes.**
+  * Keys typed after closing the menu no longer land in NeuralScreen and
+    replay on the next open (a Space toggling NR, an Esc closing the menu
+    again); the window you were in gets the keyboard back.
+  * A letter, digit, arrow or navigation key without Ctrl/Alt can no longer
+    be bound as a global hotkey - it stopped typing in every program.
+    Shift+numpad digits, which could never fire, are refused too. A config
+    that stored such a key falls back to that command's default.
+  * A hotkey another program holds no longer fires in NeuralScreen as well,
+    one press can no longer be delivered twice, and two hotkeys on the same
+    key with different modifiers (Num1 and Ctrl+Num1) both work in games
+    that swallow hotkeys.
+  * The panel, HUD and alerts resize when the resolution changes or the
+    program moves to another monitor; on a narrow portrait screen the panel
+    no longer runs off the edge. Alerts that show a file path are shortened
+    in the middle so they fit and keep the file name.
+  * The tray menu is fully translated and follows a language change.
+  * A second launch no longer starts next to a copy running as
+    administrator, and that copy can still be asked to show its menu.
+  * Window and monitor lists no longer come back short on systems that hand
+    out large window or monitor handles.
+
 ## v2.1.9 - 2026-09-29 - Three tracker reports: full speed when hidden, the Windows 10 window mode, and a panel that opened itself
 
 * **Full speed while the window is hidden (#137).** The report: the picture is
