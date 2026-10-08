@@ -925,6 +925,10 @@ def apply_menu_action(st, action: tuple) -> None:
                 "style": int(seeded.get("style", 1)),
                 **{k: float(seeded.get(k, 0.0)) for k in
                    settings_io.PER_PASS_KEYS},
+                # What passes 2+ ran with until now: the main set without its
+                # local tone, which darkens again on every pass. Switching
+                # the set on must not change the picture by itself.
+                "local_tone": 0.0,
             }
             st.cfg["nr_pass_params"] = dict(st.nr_pass_params)
             print(f"[main] per-pass parameters on, seeded from the main set: "

@@ -32,6 +32,14 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **Extra NR passes no longer darken the picture pass after pass.** Passes 2+
+  repeated the whole profile, local tone included, and Natural's local tone
+  darkens a little every time it runs: against the input, the picture's mean
+  brightness was 0.988 with one pass, 0.978 with two and 0.970 with three.
+  Without a per-pass set of their own, passes 2+ now run with tone 0 - three
+  passes keep 0.988 and still work on detail - and switching a per-pass set
+  on starts it from those same numbers.
+
 * **The "adaptive exposure" is gone, because the network never used it.** It
   mapped the picture's average brightness into DLSS.Exposure.Scale to lift dark
   scenes, and the log announced it in every desktop session. The neural

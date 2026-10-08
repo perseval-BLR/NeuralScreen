@@ -6466,7 +6466,14 @@ static NVSDK_NGX_Result EvalNrPass(VideoState &v, NVSDK_NGX_Handle *feature,
     // recreated when the set changes.
     const bool own = (pass > 0) && g_per_pass_set;
     const float p_intensity = own ? g_per_pass.intensity : g_video_options.intensity;
-    const float p_tone = own ? g_per_pass.local_tone : g_video_options.local_tone;
+    // Without a set of their own, passes 2+ repeat the profile but NOT its
+    // local tone: Natural's tone darkens a little on every pass, and the
+    // cascade stacked it - the frame's mean luminance against the input went
+    // 0.988 -> 0.978 -> 0.970 for 1, 2, 3 passes, while tone 0 on passes 2+
+    // keeps 0.988 at any count and still lets them work on detail
+    // (measured 2026-10-08, Natural, 832x468 work).
+    const float p_tone = own ? g_per_pass.local_tone
+                             : (pass > 0 ? 0.0f : g_video_options.local_tone);
     const float p_structure = own ? g_per_pass.local_structure : g_video_options.local_structure;
     const float p_skin = own ? g_per_pass.skin_structure : g_video_options.skin_structure;
     const unsigned p_auto_mask = own ? g_per_pass.auto_mask : g_video_options.auto_mask;

@@ -700,6 +700,14 @@ cost rather than a number to quote. An earlier draft of this document said
 "about 440 MB", which came from the same estimate that said two passes would
 cost half the frame rate; both were guesses, and both were wrong.
 
+Passes 2+ run with the profile's numbers **except its local tone, which is
+0** unless a per-pass set says otherwise. The local tone darkens a little on
+every pass, and repeated it stacks: the frame's mean luminance against the
+input measured 0.988, 0.978 and 0.970 for one, two and three passes on
+Natural; with tone 0 on the later passes it stays at 0.988 for any count,
+and those passes still change detail. Turning a per-pass set on starts it
+from the same numbers, tone 0 included.
+
 The passes ping-pong between two work-resolution scratch buffers, `nr_out`
 and `nr_alt`, and `nr_in` - the composite's anchor - is never written. Which
 buffer pass 0 starts on is chosen by the **parity** of the pass count, so the
