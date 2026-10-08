@@ -5988,6 +5988,15 @@ static bool OpenWgc(HWND hwnd)
         // window anyway.
         try { s->session.IsBorderRequired(false); }
         catch (winrt::hresult_error const &) { Log("[wgc] capture border stays on"); }
+        // Without a minimum update interval current Windows 11 delivers the
+        // window at most ~60 times a second, whatever it draws: one-window
+        // mode lost 40% against desktop capture of the same game (#155,
+        // 49 -> 63 NR frames/s with 4 ms on the reporter's machine; measured
+        // here 60.0 -> 120.0 for a window drawing 240 on 120 Hz). 0 ms
+        // bought nothing more in the reporter's test. Windows without the
+        // property keep the default.
+        try { s->session.MinUpdateInterval(std::chrono::milliseconds(4)); }
+        catch (winrt::hresult_error const &) { Log("[wgc] update interval stays at the default"); }
         s->session.StartCapture();
         g_wgc = s;
         g_wgc_hwnd = hwnd;

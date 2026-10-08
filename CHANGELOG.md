@@ -32,6 +32,13 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **One-window mode is no longer held at 60 frames a second (#155).** Window
+  capture was opened without a minimum update interval, and current Windows 11
+  then delivers a window at most ~60 times a second whatever it draws - the
+  reporter's game lost 40% of its NR frame rate in a window against fullscreen.
+  The interval is now 4 ms: measured here 60 -> 120 fresh frames a second on a
+  120 Hz monitor, and 49 -> 63 on the reporter's machine.
+
 * **A desktop capture that keeps changing format is pinned after the first
   change (#151).** An SDR display is captured through the older duplication
   call because it hands the desktop over as 8-bit - but one driver alternated
