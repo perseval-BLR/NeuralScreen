@@ -7099,6 +7099,16 @@ static unsigned g_ph_bins[6];
 static unsigned g_ph_requests;
 static unsigned g_ph_fresh_sources;
 static unsigned g_ph_evaluated;
+// A capture that has not changed is evaluated a few times (the network's
+// history settles on it) and then left alone: the last result stays on
+// screen. On identical input the network's output never settles - it moves
+// by ~0.26 of 255 on average and up to 3 every frame (measured 2026-10-08) -
+// so a still desktop shimmered and kept the GPU busy for nothing. Any command
+// (parameters, passes, resize, ...), a frame flag change (the wipe, a
+// screenshot), a reset or new content brings the evaluation back.
+static constexpr unsigned kStillEvaluations = 4;
+static unsigned g_still_evals = 0;
+static uint32_t g_still_flags = 0;
 static unsigned g_ph_fresh_evaluated;
 static unsigned g_ph_processed;
 static unsigned g_ph_idle;
@@ -7356,6 +7366,7 @@ static int RunVideo()
         // frame. Missing it here sent every PPRM through the "not prepared"
         // path and threw away the frame that was ready.
         if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13) prepared = false;
+        if (msg != 1) g_still_evals = 0;   // a command may change what the network makes
         if (msg < 0) return 11;   // protocol desync: not a clean end of input
         if (msg == 0)
         {
@@ -8088,7 +8099,12 @@ static int RunVideo()
             Log("[reset] capture resumed after %lu ms - NR and FG history reset",
                 stall_gap_ms);
         }
-        if (!bypass)
+        const bool still_frame = !source_fresh && !g_fg_reset && fh.reset == 0 &&
+                                 fh.reserved == g_still_flags;
+        g_still_evals = still_frame ? g_still_evals + 1 : 0;
+        g_still_flags = fh.reserved;
+        const bool keep_result = !bypass && still_frame && g_still_evals > kStillEvaluations;
+        if (!bypass && !keep_result)
         {
             const double t_eval = PhaseNow();
             const bool ev_ok = EvaluateVideo(v, (frame == 0 || fh.reset != 0) ? 1 : 0,
@@ -8141,8 +8157,8 @@ static int RunVideo()
             {
                 if (present_done <= eval_done)
                 { Log("[video] tail token order failed: eval=%llu present=%llu", eval_done, present_done); return 9; }
-                ++g_eval_count;
-                if (phase_on)
+                if (!keep_result) ++g_eval_count;
+                if (phase_on && !keep_result)
                 {
                     ++g_ph_evaluated;
                     if (source_fresh) ++g_ph_fresh_evaluated;

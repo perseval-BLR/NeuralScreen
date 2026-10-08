@@ -32,6 +32,14 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **A still desktop or window no longer shimmers or keeps the GPU busy.** The
+  network was run on every frame, also when the capture had not changed - and
+  on identical input its output never settles: it moves by about a quarter of
+  a level on average and up to 3 levels every frame. An unchanged capture is
+  now evaluated a few times, until the network's history has it, and the last
+  result stays on screen. New content, a parameter, pass or size change, the
+  comparison wipe and a screenshot all bring the evaluation back at once.
+
 * **Extra NR passes no longer darken the picture pass after pass.** Passes 2+
   repeated the whole profile, local tone included, and Natural's local tone
   darkens a little every time it runs: against the input, the picture's mean
