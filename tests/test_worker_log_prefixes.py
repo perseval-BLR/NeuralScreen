@@ -46,11 +46,13 @@ import pipeline  # noqa: E402
 #: Behind NS_PHASE=1 on purpose: one line per frame would bury the log.
 GATED = {"[phase]", "[pw]"}
 
-#: The worker's sources. The .inl files are compiled into the same binary and
-#: log through the same function, so they count.
-SOURCES = ("native/dlss5-feed-host64.cpp", "native/frame_generation.inl",
-           "native/hdr_present.inl", "native/spout_bridge.cpp",
-           "native/gpu_recorder.cpp")
+#: The worker's sources: every .cpp/.inl/.h directly under native/ (the .inl
+#: files are compiled into the same binary and log through the same function).
+#: A fixed list missed nvofa.inl and, when it arrived, stabilizer.inl - whose
+#: "[stab]" lines, a shader compile failure among them, reached no log.
+SOURCES = tuple(sorted(str(p.relative_to(BASE)).replace("\\", "/")
+                       for pattern in ("*.cpp", "*.inl", "*.h")
+                       for p in (BASE / "native").glob(pattern)))
 
 PREFIX = re.compile(r'Log(?:Once)?\(\s*"(\[[a-z]+\])')
 

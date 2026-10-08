@@ -41,7 +41,8 @@ Scope and honesty notes:
   of the edit about halved on a pan (-43%), a moving object (-45%) and still
   content (-49%), the shimmer around a moving object with NVOFA-like vectors
   -57%, the strength of the effect kept within 2%, no ghosting when the
-  vectors are wrong. Costs about 0.1-0.3 ms a frame. `NS_STAB=0` turns it off.
+  vectors are wrong. Costs about 0.1-0.3 ms a frame. `NS_STAB=0` turns it off. Its log lines (`[stab]`)
+  reach NeuralScreen.log and the diagnostic package.
 
 * **Scene cuts are judged on the picture, not on how much it moved.** On a cut
   the network's history is thrown away and the picture pops; a missed cut
