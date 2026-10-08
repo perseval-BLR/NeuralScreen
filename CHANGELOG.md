@@ -32,6 +32,13 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **Building the worker no longer destroys the working one when the build
+  fails** (developer builds only; nothing shipped changes). build-host.bat
+  linked straight to native\nvngx.dll, and the MSVC linker deletes its output
+  when a link fails - one unresolved symbol and the worker was gone. It now
+  links to a temporary name and moves it into place after a successful link,
+  as build-clang.bat already did.
+
 * **A neural runtime that "works" without changing anything is now caught at
   startup.** The compatibility check counted an evaluation as passed when it
   answered success and returned a frame of the right size - so a card or a
