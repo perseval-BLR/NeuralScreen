@@ -13,6 +13,9 @@ measured on #141's static frames - which NR then warped its history by.
 Checked on the worker with NVOFA and a captured window: while the window
 does not change, every motion field the worker builds is exactly zero and
 no optical flow is run for it; once it animates, flow is measured again.
+(The target's animation steps one bar's shade - a change, not a movement - so
+the zero-motion test rightly leaves those fields at zero: what is checked is
+that optical flow runs again, test_nvofa_zero_motion covers real motion.)
 Nothing shows: the overlay is far off every monitor and the target is a
 ghost. Needs an RTX GPU with the Optical Flow Accelerator.
 
@@ -140,12 +143,12 @@ def main() -> int:
                         f"{len(still_files)} frames of an unchanged window")
     lo, hi = phases.get("moving", (0, 0))
     for path in motions[max(0, lo - skipped):max(0, hi - skipped)]:
-        if np.any(np.fromfile(path, np.float16) != 0):
+        if path.name.split("-")[1] in flows:
             moving_vectors += 1
     if motions and moving_vectors == 0:
-        failures.append("no motion was measured once the window moved again")
+        failures.append("optical flow did not run once the window changed again")
     print(f"    {len(motions)} motion fields, {len(flows)} flows, "
-          f"{len(still_files)} checked still, {moving_vectors} moving with vectors")
+          f"{len(still_files)} checked still, {moving_vectors} changing with flow")
     shutil.rmtree(dump, ignore_errors=True)
 
     if failures:

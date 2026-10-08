@@ -115,22 +115,59 @@ static bool NvofaSupportsFormat(NV_OF_BUFFER_USAGE usage, DXGI_FORMAT format)
     return std::find(formats.begin(), formats.end(), format) != formats.end();
 }
 
+// The zero-motion test (zero != 0): a vector is kept only where it explains
+// the pixel's 3x3 neighbourhood better than no motion at all; a tie goes to
+// zero. NVOFA's 4x4-block field, stretched over the frame, carried a moving
+// object's vector onto the still background around it - measured on the
+// worker with a supplied grid-4-like field, the background next to a moving
+// object shimmered 45-70% more than with no vectors at all - and the driver
+// answers small vectors on ~47% of still pixels by itself (2600th, RTX 4080S).
+// Compared on the grey pair the flow was measured on: cur is this frame, prev
+// the reference, and current -> previous means prev(x + v) should look like
+// cur(x). The margin is one grey level per pixel.
 static const char kNvofaExpand[] = R"(
 Texture2D<int2> flow : register(t0);
+Texture2D<float> cur : register(t1);
+Texture2D<float> prev : register(t2);
 RWTexture2D<float2> motion : register(u0);
-cbuffer Params : register(b0) { uint w,h,iw,ih,grid,reset; };
+cbuffer Params : register(b0) { uint w,h,iw,ih,grid,reset,zero; };
+float PrevAt(float2 g) {
+    int2 a=int2(floor(g)); float2 t=frac(g); int2 limit=int2(iw-1,ih-1);
+    return lerp(lerp(prev.Load(int3(clamp(a,0,limit),0)),prev.Load(int3(clamp(a+int2(1,0),0,limit),0)),t.x),
+                lerp(prev.Load(int3(clamp(a+int2(0,1),0,limit),0)),prev.Load(int3(clamp(a+1,0,limit),0)),t.x),t.y);
+}
 [numthreads(8,8,1)] void CSMain(uint3 p : SV_DispatchThreadID) {
     if(p.x>=w || p.y>=h) return;
     uint fw,fh; flow.GetDimensions(fw,fh);
-    float2 q=(float2(p.xy)+.5)*float2(iw,ih)/float2(w,h)/grid-.5;
+    float2 g=(float2(p.xy)+.5)*float2(iw,ih)/float2(w,h)-.5;
+    float2 q=(g+.5)/grid-.5;
     int2 a=int2(floor(q)); float2 t=frac(q); int2 limit=int2(fw-1,fh-1);
     float2 v=lerp(lerp(float2(flow.Load(int3(clamp(a,0,limit),0))),
                        float2(flow.Load(int3(clamp(a+int2(1,0),0,limit),0))),t.x),
                   lerp(float2(flow.Load(int3(clamp(a+int2(0,1),0,limit),0))),
                        float2(flow.Load(int3(clamp(a+1,0,limit),0))),t.x),t.y);
-    v=v/32.0*float2(w,h)/float2(iw,ih);
-    motion[p.xy]=reset || dot(v,v)<.25 ? float2(0,0) : v;
+    float2 vg=v/32.0;
+    bool keep=reset==0;
+    if(keep && zero!=0 && dot(vg,vg)>0.0) {
+        int2 c=clamp(int2(round(g)),int2(1,1),int2(iw-2,ih-2));
+        float moved=0, unmoved=0;
+        [unroll] for(int y=-1;y<=1;++y) [unroll] for(int x=-1;x<=1;++x) {
+            float now=cur.Load(int3(c+int2(x,y),0));
+            moved+=abs(now-PrevAt(float2(c+int2(x,y))+vg));
+            unmoved+=abs(now-prev.Load(int3(c+int2(x,y),0)));
+        }
+        keep = moved + 9.0/255.0 < unmoved;
+    }
+    v=vg*float2(w,h)/float2(iw,ih);
+    motion[p.xy]=!keep || dot(v,v)<.25 ? float2(0,0) : v;
 })";
+
+// NS_NVOFA_ZERO_TEST=0 turns the zero-motion test off - for an A/B only.
+static bool NvofaZeroTest()
+{
+    char buf[8] = {};
+    return !(GetEnvironmentVariableA("NS_NVOFA_ZERO_TEST", buf, sizeof(buf)) && buf[0] == '0');
+}
 
 static bool EnsureNvofa(UINT width, UINT height)
 {
@@ -212,9 +249,9 @@ static bool EnsureNvofa(UINT width, UINT height)
                             "nvofa-register"))
             return NvofaError("register fence", NV_OF_ERR_GENERIC);
     }
-    D3D12_DESCRIPTOR_RANGE ranges[2] = {{D3D12_DESCRIPTOR_RANGE_TYPE_SRV,1,0,0,0}, {D3D12_DESCRIPTOR_RANGE_TYPE_UAV,1,0,0,1}};
+    D3D12_DESCRIPTOR_RANGE ranges[2] = {{D3D12_DESCRIPTOR_RANGE_TYPE_SRV,3,0,0,0}, {D3D12_DESCRIPTOR_RANGE_TYPE_UAV,1,0,0,3}};
     D3D12_ROOT_PARAMETER roots[2] = {};
-    roots[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS; roots[0].Constants = {0,0,6};
+    roots[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS; roots[0].Constants = {0,0,7};
     roots[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE; roots[1].DescriptorTable = {2,ranges};
     D3D12_ROOT_SIGNATURE_DESC rd = {2,roots,0,nullptr,D3D12_ROOT_SIGNATURE_FLAG_NONE};
     winrt::com_ptr<ID3DBlob> code, errors;
@@ -225,11 +262,12 @@ static bool EnsureNvofa(UINT width, UINT height)
     if (FAILED(D3DCompile(kNvofaExpand, sizeof(kNvofaExpand)-1, nullptr, nullptr, nullptr, "CSMain", "cs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, code.put(), errors.put())))
         return NvofaError("expand shader", NV_OF_ERR_GENERIC);
     D3D12_COMPUTE_PIPELINE_STATE_DESC pd{}; pd.pRootSignature = f.root.get(); pd.CS = {code->GetBufferPointer(),code->GetBufferSize()};
-    D3D12_DESCRIPTOR_HEAP_DESC hd = {D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,2,D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,0};
+    D3D12_DESCRIPTOR_HEAP_DESC hd = {D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,4,D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,0};
     if (FAILED(h.dev->CreateComputePipelineState(&pd, IID_PPV_ARGS(f.expand.put()))) ||
         FAILED(h.dev->CreateDescriptorHeap(&hd, IID_PPV_ARGS(f.heap.put())))) return NvofaError("expand pipeline", NV_OF_ERR_GENERIC);
     f.width = width; f.height = height;
-    Log("[nvofa] active: %ux%u, grid=%u, cost=8-bit; driver D3D12 API", width, height, f.grid);
+    Log("[nvofa] active: %ux%u, grid=%u, cost=8-bit, zero-motion test %s; driver D3D12 API",
+        width, height, f.grid, NvofaZeroTest() ? "on" : "off");
     return true;
 }
 
@@ -297,20 +335,33 @@ static bool RunNvofa(VideoState &v, bool reset, UINT64 *submitted, bool still = 
 expand:
     if (!BeginCommands())
         return NvofaError("wait for optical flow", NV_OF_ERR_GENERIC);
+    // The grey pair the flow was measured on: inputs[current] is this frame,
+    // the other one the reference (the swap below happens after the dispatch).
+    ID3D12Resource *gray_cur = f.inputs[f.current].get();
+    ID3D12Resource *gray_prev = f.inputs[1 - f.current].get();
     barrier(f.flow.get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    barrier(gray_cur, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    barrier(gray_prev, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     barrier(v.mv.tex, v.inputs_ready ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     auto cpu=f.heap->GetCPUDescriptorHandleForHeapStart();
+    const UINT step=h.dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     D3D12_SHADER_RESOURCE_VIEW_DESC sd{}; sd.Format=DXGI_FORMAT_R16G16_SINT;sd.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D;sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;sd.Texture2D.MipLevels=1;
-    h.dev->CreateShaderResourceView(f.flow.get(),&sd,cpu);cpu.ptr+=h.dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    h.dev->CreateShaderResourceView(f.flow.get(),&sd,cpu);cpu.ptr+=step;
+    sd.Format=DXGI_FORMAT_R8_UNORM;
+    h.dev->CreateShaderResourceView(gray_cur,&sd,cpu);cpu.ptr+=step;
+    h.dev->CreateShaderResourceView(gray_prev,&sd,cpu);cpu.ptr+=step;
     D3D12_UNORDERED_ACCESS_VIEW_DESC ud{};ud.Format=DXGI_FORMAT_R16G16_FLOAT;ud.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2D;
     h.dev->CreateUnorderedAccessView(v.mv.tex,nullptr,&ud,cpu);
     ID3D12DescriptorHeap *heaps[]={f.heap.get()};h.list->SetDescriptorHeaps(1,heaps);
     h.list->SetComputeRootSignature(f.root.get());h.list->SetPipelineState(f.expand.get());
-    UINT constants[]={v.w,v.hgt,f.width,f.height,f.grid,UINT(reset || !f.valid || still)};
-    h.list->SetComputeRoot32BitConstants(0,6,constants,0);h.list->SetComputeRootDescriptorTable(1,f.heap->GetGPUDescriptorHandleForHeapStart());
+    static const bool zero_test = NvofaZeroTest();
+    UINT constants[]={v.w,v.hgt,f.width,f.height,f.grid,UINT(reset || !f.valid || still),UINT(zero_test)};
+    h.list->SetComputeRoot32BitConstants(0,7,constants,0);h.list->SetComputeRootDescriptorTable(1,f.heap->GetGPUDescriptorHandleForHeapStart());
     h.list->Dispatch((v.w+7)/8,(v.hgt+7)/8,1);
     barrier(v.mv.tex,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     barrier(f.flow.get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_COMMON);
+    barrier(gray_cur,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_COMMON);
+    barrier(gray_prev,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_COMMON);
     const UINT64 done=EndCommands();if(!done)return NvofaError("submit expansion", NV_OF_ERR_GENERIC);
     v.inputs_ready=true;
     if (!still) { f.valid=true; f.current=1-f.current; }

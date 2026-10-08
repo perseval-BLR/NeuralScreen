@@ -313,6 +313,7 @@ ABOUT = {
     "test_fg_init_retry.py": "a failed FG start is undone and the next switch-on initialises afresh",
     "test_gray_area.py": "the worker's gray map covers the whole frame at sizes that do not divide",
     "test_nvofa_still.py": "NVOFA gives an unchanged frame zero motion and runs no optical flow for it (#141)",
+    "test_nvofa_zero_motion.py": "NVOFA keeps a moving object's vector on the object, not on the still background (#151)",
 }
 
 
@@ -553,6 +554,7 @@ TEST_GROUPS = {
         "test_gpu_priority_env.py",
         "test_fg_mode_change.py",
         "test_nvofa_still.py",
+        "test_nvofa_zero_motion.py",
         "test_gray_area.py",
         "test_fg_init_retry.py",
         "test_panel_raise_async.py",

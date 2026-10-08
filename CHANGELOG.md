@@ -32,6 +32,17 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **NVOFA "jelly": still parts of the picture no longer get motion (#151, #141,
+  #95).** NVOFA measures one vector per 4x4 block of a small grey copy of the
+  frame, and the field is stretched over the picture - so the vectors of
+  anything moving spread onto the still background around it, and the driver
+  also answers small vectors on still pixels by itself. The network then
+  warped its history by them. Each vector is now kept only where it explains
+  its neighbourhood better than no motion at all. Measured on a moving
+  textured square over a still background: the background rows around it
+  carried motion on 91.7% of their pixels before and 0% after, while the
+  square kept its motion (56% -> 64% of it pointing the right way).
+
 * **A still desktop or window no longer shimmers or keeps the GPU busy.** The
   network was run on every frame, also when the capture had not changed - and
   on identical input its output never settles: it moves by about a quarter of
