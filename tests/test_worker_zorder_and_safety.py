@@ -319,7 +319,7 @@ def main() -> int:
     if "stall_pending = true" not in detector:
         failures.append("the pause detector no longer marks a long silence")
     consumer = _code(cpp[cpp.index("const bool stall_reset = "):])
-    consumer = consumer[:consumer.index("if (!bypass)")]
+    consumer = consumer[:consumer.index("const bool still_frame")]
     if "stall_pending = false" not in consumer or "fh.reset = 1" not in consumer:
         failures.append("the stall reset is not consumed where NR and FG read "
                         "it - nothing is reset after a capture pause (#130)")
