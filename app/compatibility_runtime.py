@@ -473,6 +473,8 @@ def startup_gate(st) -> bool:
             # first, with the driver this machine has.
             driver = str(getattr(st, "environment", {}).get("driver", "?"))
             message = text["compat_driver_old"].format(driver=driver) + "\n\n" + message
+        elif result is not None and result.reason == StageStatus.NO_EFFECT.value:
+            message = text["compat_no_effect"] + "\n\n" + message
         retry = 4  # IDRETRY
         try:
             answer = ctypes.windll.user32.MessageBoxW(

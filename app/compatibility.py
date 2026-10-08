@@ -293,6 +293,10 @@ class StageStatus(str, Enum):
     # The create failed and the runtime had said the driver is out of date:
     # a verdict about this driver (the key carries its version), not a fault.
     DRIVER_OUT_OF_DATE = "driver_out_of_date"
+    # Every evaluate answered success and the picture came back unchanged (or
+    # black): the runtime accepts the card and does nothing with it. A verdict
+    # about this card and runtime, like UNSUPPORTED - not a passing check.
+    NO_EFFECT = "no_effect"
 
 
 @dataclass(frozen=True)
@@ -563,6 +567,21 @@ def _call(call: Callable[[], StageOutcome]) -> StageOutcome:
         return StageOutcome(_exception_status(exc))
 
 
+def _changed_share(outcome: StageOutcome, frame: SyntheticFrame) -> float:
+    """How much of the frame the network changed, 0..1; black output counts as none.
+
+    The real runtime changes 96-99% of the synthetic frames' pixels by 8-21
+    levels on every profile (measured 2026-10-08); a runtime that returns the
+    input untouched - or a black frame for a lit one - is not running.
+    """
+    import numpy as np
+    src = np.frombuffer(bytes(frame.pixels), np.uint8).reshape(-1, 4)[:, :3]
+    out = np.frombuffer(bytes(outcome.output_pixels), np.uint8).reshape(-1, 4)[:, :3]
+    if float(out.mean()) < 4.0 and float(src.mean()) > 40.0:
+        return 0.0
+    return float(np.any(out != src, axis=1).mean())
+
+
 def _valid_frame(outcome: StageOutcome, frame: SyntheticFrame) -> bool:
     if _normalise_status(outcome.status) is not StageStatus.SUCCESS:
         return False
@@ -610,7 +629,7 @@ class CompatibilityPreflight:
         # would leave the key unchanged and the cached block in place until a
         # manual Retry. Unknown, it stays a failure, re-checked every launch.
         driver_known = str(key.driver_version).strip().lower() not in ("", "unknown", "?")
-        if status is StageStatus.UNSUPPORTED or (
+        if status in (StageStatus.UNSUPPORTED, StageStatus.NO_EFFECT) or (
                 status is StageStatus.DRIVER_OUT_OF_DATE and driver_known):
             verdict = CompatibilityStatus.UNSUPPORTED
             until = None
@@ -655,6 +674,7 @@ class CompatibilityPreflight:
         if create_status is not StageStatus.SUCCESS:
             result = self._failure(key, create_status, "create", passed, attempted)
         else:
+            changed = []
             for frame in self.frames:
                 attempted += 1
                 outcome = _call(lambda frame=frame: runner.evaluate(
@@ -663,6 +683,7 @@ class CompatibilityPreflight:
                 status = _normalise_status(outcome.status)
                 if status is StageStatus.SUCCESS and _valid_frame(outcome, frame):
                     passed += 1
+                    changed.append(_changed_share(outcome, frame))
                     continue
                 if status is StageStatus.SUCCESS:
                     status = StageStatus.ERROR
@@ -670,6 +691,11 @@ class CompatibilityPreflight:
                     key, status, f"evaluate[{frame.index}]", passed, attempted,
                 )
                 break
+            if result is None and changed and max(changed) < 0.01:
+                # Success on every frame and nothing done with any of them.
+                result = self._failure(
+                    key, StageStatus.NO_EFFECT, "effect", passed, attempted,
+                )
 
         if result is None:
             result = CompatibilityResult(

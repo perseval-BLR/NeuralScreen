@@ -3373,6 +3373,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "the check did not run",
         "compat_bundle_failed": "could not be created; details in NeuralScreen.log",
         "compat_driver_old": "The NVIDIA driver on this computer ({driver}) is too old for the neural renderer: the runtime reported it out of date before the check failed. Install the current NVIDIA driver, then press Retry.",
+        "compat_no_effect": "The neural renderer answered every check with success but did not change the picture at all: on this graphics card (or with this runtime) it does not run. NeuralScreen needs an RTX 30, 40 or 50 card and the bundled runtime.",
     },
     "ru": {
         "action_failed": "Не получилось - подробности в NeuralScreen.log",
@@ -3392,6 +3393,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "проверка не запустилась",
         "compat_bundle_failed": "создать не удалось; подробности в NeuralScreen.log",
         "compat_driver_old": "Драйвер NVIDIA на этом компьютере ({driver}) слишком старый для нейрорендера: среда выполнения сообщила, что он устарел, перед тем как проверка не прошла. Установите актуальный драйвер NVIDIA и нажмите «Повторить».",
+        "compat_no_effect": "Нейрорендер ответил успехом на каждую проверку, но картинку не изменил вовсе: на этой видеокарте (или с этой средой выполнения) он не работает. NeuralScreen нужна карта RTX 30, 40 или 50 и среда выполнения из комплекта.",
     },
     "fr": {
         "action_failed": "Cela n'a pas fonctionné - les détails sont dans NeuralScreen.log",
@@ -3411,6 +3413,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "la vérification n'a pas pu démarrer",
         "compat_bundle_failed": "impossible à créer ; détails dans NeuralScreen.log",
         "compat_driver_old": "Le pilote NVIDIA de cet ordinateur ({driver}) est trop ancien pour le rendu neuronal : le runtime l'a signalé comme obsolète avant l'échec de la vérification. Installez le pilote NVIDIA actuel, puis cliquez sur Réessayer.",
+        "compat_no_effect": "Le rendu neuronal a répondu par un succès à chaque vérification mais n'a absolument pas modifié l'image : sur cette carte graphique (ou avec ce runtime), il ne fonctionne pas. NeuralScreen a besoin d'une carte RTX 30, 40 ou 50 et du runtime fourni.",
     },
     "de": {
         "action_failed": "Das hat nicht funktioniert - Details in NeuralScreen.log",
@@ -3430,6 +3433,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "die Prüfung konnte nicht starten",
         "compat_bundle_failed": "konnte nicht erstellt werden; Details in NeuralScreen.log",
         "compat_driver_old": "Der NVIDIA-Treiber auf diesem Computer ({driver}) ist für den neuronalen Renderer zu alt: Die Laufzeit hat ihn vor dem Fehlschlag der Prüfung als veraltet gemeldet. Installieren Sie den aktuellen NVIDIA-Treiber und klicken Sie dann auf Wiederholen.",
+        "compat_no_effect": "Der neuronale Renderer hat jede Prüfung mit Erfolg beantwortet, das Bild aber überhaupt nicht verändert: Auf dieser Grafikkarte (oder mit dieser Laufzeit) läuft er nicht. NeuralScreen benötigt eine RTX-30-, 40- oder 50-Karte und die mitgelieferte Laufzeit.",
     },
     "es": {
         "action_failed": "No ha funcionado - los detalles están en NeuralScreen.log",
@@ -3449,6 +3453,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "la comprobación no se pudo iniciar",
         "compat_bundle_failed": "no se pudo crear; detalles en NeuralScreen.log",
         "compat_driver_old": "El controlador NVIDIA de este equipo ({driver}) es demasiado antiguo para el renderizador neuronal: el runtime lo indicó como obsoleto antes de que fallara la comprobación. Instale el controlador NVIDIA actual y pulse Reintentar.",
+        "compat_no_effect": "El renderizador neuronal respondió con éxito a cada comprobación pero no cambió la imagen en absoluto: en esta tarjeta gráfica (o con este runtime) no funciona. NeuralScreen necesita una tarjeta RTX 30, 40 o 50 y el runtime incluido.",
     },
     "it": {
         "action_failed": "Non ha funzionato - i dettagli sono in NeuralScreen.log",
@@ -3468,6 +3473,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "la verifica non è partita",
         "compat_bundle_failed": "non è stato possibile crearlo; dettagli in NeuralScreen.log",
         "compat_driver_old": "Il driver NVIDIA di questo computer ({driver}) è troppo vecchio per il renderer neurale: il runtime lo ha segnalato come obsoleto prima che il controllo fallisse. Installa il driver NVIDIA attuale, poi premi Riprova.",
+        "compat_no_effect": "Il renderer neurale ha risposto con successo a ogni controllo ma non ha modificato affatto l'immagine: su questa scheda grafica (o con questo runtime) non funziona. NeuralScreen richiede una scheda RTX 30, 40 o 50 e il runtime incluso.",
     },
     "pt": {
         "action_failed": "Não funcionou - os detalhes estão em NeuralScreen.log",
@@ -3487,6 +3493,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "a verificação não iniciou",
         "compat_bundle_failed": "não foi possível criar; detalhes em NeuralScreen.log",
         "compat_driver_old": "O driver NVIDIA deste computador ({driver}) é antigo demais para o renderizador neural: o runtime o indicou como desatualizado antes de a verificação falhar. Instale o driver NVIDIA atual e clique em Repetir.",
+        "compat_no_effect": "O renderizador neural respondeu com sucesso a todas as verificações, mas não alterou a imagem em nada: nesta placa de vídeo (ou com este runtime) ele não funciona. O NeuralScreen precisa de uma placa RTX 30, 40 ou 50 e do runtime incluído.",
     },
     "pl": {
         "action_failed": "Nie udało się - szczegóły w NeuralScreen.log",
@@ -3505,6 +3512,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "test się nie uruchomił",
         "compat_bundle_failed": "nie udało się utworzyć; szczegóły w NeuralScreen.log",
         "compat_driver_old": "Sterownik NVIDIA na tym komputerze ({driver}) jest za stary dla renderera neuronowego: środowisko uruchomieniowe zgłosiło go jako nieaktualny, zanim sprawdzenie się nie powiodło. Zainstaluj aktualny sterownik NVIDIA i kliknij Ponów.",
+        "compat_no_effect": "Renderer neuronowy odpowiedział sukcesem na każdą kontrolę, ale w ogóle nie zmienił obrazu: na tej karcie graficznej (lub z tym środowiskiem uruchomieniowym) nie działa. NeuralScreen wymaga karty RTX 30, 40 lub 50 i dołączonego środowiska.",
     },
     "uk": {
         "action_failed": "Не вдалося - подробиці в NeuralScreen.log",
@@ -3524,6 +3532,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "перевірка не запустилася",
         "compat_bundle_failed": "створити не вдалося; подробиці в NeuralScreen.log",
         "compat_driver_old": "Драйвер NVIDIA на цьому комп'ютері ({driver}) застарий для нейрорендера: середовище виконання повідомило, що він застарів, перш ніж перевірка не пройшла. Встановіть актуальний драйвер NVIDIA і натисніть «Повторити».",
+        "compat_no_effect": "Нейрорендер відповів успіхом на кожну перевірку, але зовсім не змінив зображення: на цій відеокарті (або з цим середовищем виконання) він не працює. NeuralScreen потрібна карта RTX 30, 40 або 50 і середовище виконання з комплекту.",
     },
     "zh": {
         "action_failed": "操作未成功 - 详情见 NeuralScreen.log",
@@ -3541,6 +3550,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "检查未能启动",
         "compat_bundle_failed": "无法创建；详情见 NeuralScreen.log",
         "compat_driver_old": "此电脑上的 NVIDIA 驱动（{driver}）对神经渲染器来说太旧：检查失败前运行时已报告其已过时。请安装最新的 NVIDIA 驱动，然后点击“重试”。",
+        "compat_no_effect": "神经渲染器对每项检查都返回成功，但完全没有改变画面：在这块显卡上（或使用此运行时）它无法工作。NeuralScreen 需要 RTX 30、40 或 50 系列显卡以及随附的运行时。",
     },
     "ja": {
         "action_failed": "うまくいきませんでした - 詳細は NeuralScreen.log にあります",
@@ -3559,6 +3569,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "チェックを開始できませんでした",
         "compat_bundle_failed": "作成できませんでした。詳細は NeuralScreen.log にあります",
         "compat_driver_old": "このコンピューターの NVIDIA ドライバー（{driver}）はニューラルレンダラーには古すぎます。チェックが失敗する前に、ランタイムが古いと報告しました。最新の NVIDIA ドライバーをインストールしてから「再試行」を押してください。",
+        "compat_no_effect": "ニューラルレンダラーはすべてのチェックに成功を返しましたが、画像をまったく変更しませんでした。このグラフィックカード（またはこのランタイム）では動作しません。NeuralScreen には RTX 30・40・50 シリーズのカードと付属のランタイムが必要です。",
     },
     "ko": {
         "action_failed": "작업이 실패했습니다 - 자세한 내용은 NeuralScreen.log 에 있습니다",
@@ -3577,6 +3588,7 @@ _AUDIT_STRINGS = {
         "compat_not_run": "검사를 시작하지 못했습니다",
         "compat_bundle_failed": "만들지 못했습니다. 자세한 내용은 NeuralScreen.log 에 있습니다",
         "compat_driver_old": "이 컴퓨터의 NVIDIA 드라이버({driver})는 뉴럴 렌더러에 비해 너무 오래되었습니다. 검사가 실패하기 전에 런타임이 오래된 드라이버라고 보고했습니다. 최신 NVIDIA 드라이버를 설치한 뒤 다시 시도를 누르세요.",
+        "compat_no_effect": "뉴럴 렌더러가 모든 검사에 성공으로 응답했지만 화면을 전혀 바꾸지 않았습니다. 이 그래픽 카드(또는 이 런타임)에서는 작동하지 않습니다. NeuralScreen에는 RTX 30, 40 또는 50 카드와 함께 제공되는 런타임이 필요합니다.",
     },
 }
 for _lang, _extra in _AUDIT_STRINGS.items():

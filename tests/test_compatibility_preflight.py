@@ -80,7 +80,17 @@ class FakeRunner:
         if isinstance(outcome, BaseException):
             raise outcome
         if outcome == "frame":
+            # What the network does: every pixel moves a little.
+            changed = bytes(value ^ 0x08 if (i % 4) != 3 else value
+                            for i, value in enumerate(request.frame.pixels))
+            return StageOutcome.frame(request.frame, changed)
+        if outcome == "echo":
+            # A runtime that answers success and hands the input back.
             return StageOutcome.frame(request.frame, bytes(request.frame.pixels))
+        if outcome == "black":
+            black = bytes(0 if (i % 4) != 3 else 255
+                          for i in range(len(request.frame.pixels)))
+            return StageOutcome.frame(request.frame, black)
         return outcome
 
     def close(self):
@@ -155,6 +165,31 @@ class CompatibilityPreflightTests(unittest.TestCase):
         variants.append(make_key(self.fs, runtime=b"runtime-v2"))
         variants.append(make_key(self.fs, worker=b"worker-v2"))
         self.assertTrue(all(item.digest != self.key.digest for item in variants))
+
+    def test_success_without_any_change_is_not_a_pass(self):
+        # A runtime that answers success and returns the picture untouched is
+        # not running on this card (an unsupported card on a patched runtime
+        # "starts without processing the picture"). It is a verdict, cached
+        # like UNSUPPORTED - not a pass.
+        for outcome in ("echo", "black"):
+            with self.subTest(outcome=outcome):
+                cache = CompatibilityCache(
+                    f"compat-{outcome}.json", filesystem=self.fs, clock=self.clock)
+                runner = FakeRunner(evaluations=[outcome, outcome, outcome])
+                preflight = CompatibilityPreflight(
+                    cache, RunnerFactory([runner]), clock=self.clock)
+                result = preflight.run(self.key)
+                self.assertFalse(result.is_pass)
+                self.assertEqual(result.status, CompatibilityStatus.UNSUPPORTED)
+                self.assertEqual(result.reason, StageStatus.NO_EFFECT.value)
+                self.assertEqual(result.stage, "effect")
+                self.assertTrue(runner.closed)
+
+    def test_one_changed_frame_is_enough_for_a_pass(self):
+        runner = FakeRunner(evaluations=["echo", "frame", "echo"])
+        preflight, _ = self.preflight([runner])
+        result = preflight.run(self.key)
+        self.assertTrue(result.is_pass)
 
     def test_pass_requires_every_real_evaluate_frame_and_is_cached(self):
         runner = FakeRunner(evaluations=["frame", "frame", "frame"])

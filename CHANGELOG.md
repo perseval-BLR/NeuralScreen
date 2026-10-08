@@ -32,6 +32,16 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **A neural runtime that "works" without changing anything is now caught at
+  startup.** The compatibility check counted an evaluation as passed when it
+  answered success and returned a frame of the right size - so a card or a
+  runtime that accepts the work and hands the picture back untouched (an
+  unsupported card on a patched runtime "starts without processing the
+  picture") passed, and NR then ran doing nothing. The real runtime changes
+  96-99% of the check's synthetic pixels; a check where no frame changes (or
+  the output is black) now ends with a clear message, in the user's language,
+  that the renderer does not run on this card.
+
 * **NVOFA "jelly": still parts of the picture no longer get motion (#151, #141,
   #95).** NVOFA measures one vector per 4x4 block of a small grey copy of the
   frame, and the field is stretched over the picture - so the vectors of
