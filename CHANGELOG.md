@@ -30,6 +30,15 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **A game controller that connects and drops again no longer closes the
+  program (#152).** The interface library starts the joystick subsystem with
+  everything else, and it fails on the "device removed" event of a controller
+  it never saw arrive - a virtual gamepad, Steam Input or a wireless pad waking
+  up. The main loop ended on it at startup. NeuralScreen does not read
+  controllers, so their events are no longer queued at all.
+
 ## v2.1.10 - 2026-10-06 - A full audit: the open tracker reports, HDR early reply, and a capture that survives the secure desktop
 
 * **Taking every hotkey off the keyboard now survives a restart (#134).** With

@@ -407,6 +407,19 @@ class Display:
         except Exception:
             pass
         pygame.init()
+        # pygame.init() also starts SDL's joystick subsystem, and pygame 2.6
+        # fails inside event.get() (SystemError from KeyError) on the "device
+        # removed" event of a controller it never saw arrive - a virtual
+        # gamepad or a wireless pad that connects and drops again. The main
+        # loop died on it at startup (#152). Nothing here reads controllers,
+        # so their events never enter the queue.
+        pygame.event.set_blocked([
+            pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED,
+            pygame.JOYAXISMOTION, pygame.JOYBALLMOTION, pygame.JOYHATMOTION,
+            pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP,
+            pygame.CONTROLLERDEVICEADDED, pygame.CONTROLLERDEVICEREMOVED,
+            pygame.CONTROLLERDEVICEREMAPPED, pygame.CONTROLLERAXISMOTION,
+            pygame.CONTROLLERBUTTONDOWN, pygame.CONTROLLERBUTTONUP])
         pygame.display.set_caption("NeuralScreen")
         # Borderless windowed instead of FULLSCREEN: a pygame fullscreen window
         # loses its rendering on click/focus (the screen freezes while the loop
