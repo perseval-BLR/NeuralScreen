@@ -32,7 +32,7 @@ from typing import Iterable, Sequence
 
 
 BASE = Path(__file__).resolve().parent
-VERSION = "2.1.10"
+VERSION = "2.2.0"
 EXPECTED_TAG = f"v{VERSION}"
 TARGET_ARCHS = (
     "RTX 30/40/50 (sm_86/89/120 kernels, spoof 0x1B0; "
