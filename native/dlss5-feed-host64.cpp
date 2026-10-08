@@ -1094,13 +1094,17 @@ static void ApplyGpuPriorityFromEnv()
     char want[24] = {};
     const DWORD got = GetEnvironmentVariableA("NS_GPU_PRIORITY", want, sizeof(want));
     if (got == 0 || got >= sizeof(want)) return;
+    // realtime (5) needs the process started as administrator; #142's A/B
+    // (06.10) showed high changes nothing under hardware GPU scheduling, so
+    // the class that may still reach that scheduler is offered as well.
     struct { const char *name; int cls; } const classes[] = {
-        {"normal", 2}, {"above_normal", 3}, {"high", 4}};   // D3DKMT_SCHEDULINGPRIORITYCLASS
+        {"normal", 2}, {"above_normal", 3}, {"high", 4},
+        {"realtime", 5}};   // D3DKMT_SCHEDULINGPRIORITYCLASS
     int cls = -1;
     for (const auto &c : classes)
         if (_stricmp(want, c.name) == 0) cls = c.cls;
     if (cls < 0)
-    { Log("[gpu] NS_GPU_PRIORITY=%s is not normal, above_normal or high - ignored", want); return; }
+    { Log("[gpu] NS_GPU_PRIORITY=%s is not normal, above_normal, high or realtime - ignored", want); return; }
     using SetFn = LONG(APIENTRY *)(HANDLE, int);
     using GetFn = LONG(APIENTRY *)(HANDLE, int *);
     const HMODULE gdi = GetModuleHandleW(L"gdi32.dll");
@@ -1332,8 +1336,43 @@ static bool InitDisguise()
     if (FAILED(hr)) { Log("[host] D3D12CreateDevice failed 0x%08X", hr); return false; }
 
     factory->Release();
+    // NS_GPU_QUEUE_PRIORITY=high|realtime: the priority of the queue the
+    // network runs on - an experiment for #142, off by default. Under
+    // hardware GPU scheduling the scheduler is said to honour queue
+    // priorities, which the process class evidently does not reach (the
+    // reporter's A/B). The system limits GLOBAL_REALTIME (refused with
+    // 0x887A002B on the bench, elevated); a queue it refuses falls back to a
+    // normal one and says so.
     D3D12_COMMAND_QUEUE_DESC qd = {};
-    h.dev->CreateCommandQueue(&qd, __uuidof(ID3D12CommandQueue), reinterpret_cast<void **>(&h.queue));
+    {
+        char want[16] = {};
+        const DWORD got = GetEnvironmentVariableA("NS_GPU_QUEUE_PRIORITY", want, sizeof(want));
+        if (got > 0 && got < sizeof(want))
+        {
+            if (_stricmp(want, "high") == 0)
+                qd.Priority = D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
+            else if (_stricmp(want, "realtime") == 0)
+                qd.Priority = D3D12_COMMAND_QUEUE_PRIORITY_GLOBAL_REALTIME;
+            else
+                Log("[gpu] NS_GPU_QUEUE_PRIORITY=%s is not high or realtime - ignored", want);
+            if (qd.Priority != D3D12_COMMAND_QUEUE_PRIORITY_NORMAL)
+            {
+                const HRESULT qr = h.dev->CreateCommandQueue(
+                    &qd, __uuidof(ID3D12CommandQueue), reinterpret_cast<void **>(&h.queue));
+                if (SUCCEEDED(qr) && h.queue != nullptr)
+                    Log("[gpu] command queue priority %s", want);
+                else
+                {
+                    Log("[gpu] command queue priority %s refused 0x%08X - a normal queue "
+                        "instead (the system limits realtime queues)", want, (unsigned)qr);
+                    h.queue = nullptr;
+                    qd.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
+                }
+            }
+        }
+    }
+    if (h.queue == nullptr)
+        h.dev->CreateCommandQueue(&qd, __uuidof(ID3D12CommandQueue), reinterpret_cast<void **>(&h.queue));
     if (h.queue == nullptr) { Log("[host] queue creation failed"); return false; }
     Log("[pure] standalone D3D12 device ready; no swapchain or carrier modules");
     ApplyGpuPriorityFromEnv();

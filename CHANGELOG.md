@@ -32,6 +32,14 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **Two more GPU-priority experiments for #142, off by default.** The
+  reporter's A/B showed `NS_GPU_PRIORITY=high` changes nothing while hardware
+  GPU scheduling (HAGS) is on - the practical answer there is HAGS off. For
+  the next measurement `NS_GPU_PRIORITY=realtime` (needs NeuralScreen started
+  as administrator) and `NS_GPU_QUEUE_PRIORITY=high|realtime` (the priority of
+  the queue the network runs on) are available; each says in the log what it
+  got, and a queue Windows refuses falls back to a normal one.
+
 * **Building the worker no longer destroys the working one when the build
   fails** (developer builds only; nothing shipped changes). build-host.bat
   linked straight to native\nvngx.dll, and the MSVC linker deletes its output

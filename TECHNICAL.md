@@ -555,6 +555,18 @@ the process's GPU scheduling class does. `NS_GPU_PRIORITY=above_normal` or
 (`[gpu] GPU scheduling priority ...`). Off by default and not yet measured
 against such a game: it can take time from the game as well.
 
+The #142 reporter's A/B settled the first round: with hardware-accelerated
+GPU scheduling (HAGS) on, `high` was accepted and changed nothing - eval
+still waited hundreds of milliseconds - while HAGS off brought it to 5-7 ms
+with or without the class. So with an uncapped game in focus, HAGS off is the
+practical answer (Frame Generation needs HAGS on). Two more levers are there
+for the next measurement, both off by default: `NS_GPU_PRIORITY=realtime`
+(the realtime class; it needs NeuralScreen started as administrator) and
+`NS_GPU_QUEUE_PRIORITY=high|realtime` (the priority of the D3D12 queue the
+network runs on - the scheduler under HAGS is said to honour it; Windows
+limits realtime queues, and a refused queue falls back to a normal one with
+`[gpu] command queue priority ... refused` in the log).
+
 ### work_scale costs nothing (in upscale mode)
 
 In the legacy upscale mode (nr_small off) NGX evaluation time does not depend
