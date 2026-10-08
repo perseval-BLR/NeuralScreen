@@ -32,6 +32,19 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **Scene cuts are judged on the picture, not on how much it moved.** On a cut
+  the network's history is thrown away and the picture pops; a missed cut
+  smears one picture into the next. The old rule - the average change between
+  two frames above a fixed 0.24 - fired on every frame of a fast pan in
+  cel-shaded animation (another project counted 42 resets in 120 frames of an
+  anime clip run through NeuralScreen) and missed cuts between two dark or two
+  text-heavy pictures. The new rule first lines the frames up (a global shift
+  of up to 48 px at the 320x180 analysis size, and the same brightness and
+  contrast), then asks whether what is left is still a different picture. On
+  the evaluation set: false resets 4.8% -> 0.6%, missed cuts 39% -> 1.3%; the
+  anime-style test clip resets on its five cuts and nowhere else. The client
+  and the worker run the same rule and agree frame for frame.
+
 * **Two more GPU-priority experiments for #142, off by default.** The
   reporter's A/B showed `NS_GPU_PRIORITY=high` changes nothing while hardware
   GPU scheduling (HAGS) is on - the practical answer there is HAGS off. For

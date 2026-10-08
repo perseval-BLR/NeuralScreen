@@ -1,14 +1,15 @@
 """The scene cut, decided in the worker: no capture round trip per frame.
 
 With NVOFA the loop's only use for the capture before a frame was the scene
-score - mean(|gray - previous|)/255 > 0.24 - and fetching it (CAP1 -> the gray
--> FRM1) cost a round trip with the GPU idle: 2.07 ms a frame in a Boost run.
-FRAME_FLAG_WORKER_SCENE leaves it to the worker, which scores the gray it has
-just captured and sets the reset itself. Checked:
+score, and fetching it (CAP1 -> the gray -> FRM1) cost a round trip with the
+GPU idle: 2.07 ms a frame in a Boost run. FRAME_FLAG_WORKER_SCENE leaves it
+to the worker, which scores the gray it has just captured and sets the reset
+itself - with native/scene_cut.h, the twin of the client's app/scene_cut.py.
+Checked:
 
-* the score is the client's number: after every frame the test computes
-  mean(|gray - previous|)/255 from the same gray the worker wrote, and the
-  reply must agree to the 1/65535 it is sent in;
+* the score and the decision are the client's: after every frame the test
+  runs app/scene_cut.py on the same gray the worker wrote, and the reply must
+  agree to the 1/65535 it is sent in, and on the cut;
 * a real cut (the window repainted in other colours) resets exactly one
   frame, and the reply says so; frames around it do not;
 * a frame sent without the flag carries no score.
@@ -96,26 +97,31 @@ def main() -> int:
         for _ in range(30):
             frame()
 
-        # 1. The worker's score is the client's formula on the same gray.
+        # 1. The worker's score and cut are the client's rule on the same gray.
+        from scene_cut import SceneCutDetector
+        client = SceneCutDetector()
+        client.step(shm.read_gray().reshape(GH, GW))
         target.animate = True
-        previous = shm.read_gray().astype(np.int16).reshape(GH, GW)
         scored = 0
         worst = 0.0
+        disagree = 0
         for _ in range(90):
-            score, _cut = frame()
-            gray = shm.read_gray().astype(np.int16).reshape(GH, GW)
+            score, cut = frame()
+            gray = shm.read_gray().reshape(GH, GW)
+            mine_cut = client.step(gray)
             if score is not None:
-                mine = float(np.abs(gray - previous).mean()) / 255.0
-                worst = max(worst, abs(mine - score))
+                worst = max(worst, abs(client.last_score - score))
+                disagree += int(bool(cut) != bool(mine_cut))
                 scored += 1
-            previous = gray
         print(f"    {scored} of 90 frames scored by the worker; the largest "
-              f"difference from the client's formula {worst * 65535:.2f}/65535")
+              f"difference from the client's rule {worst * 65535:.2f}/65535")
         if scored < 30:
             failures.append(f"only {scored} of 90 animated frames carried a score")
         if worst > 1.5 / 65535:
-            failures.append(f"the worker's score differs from the client's formula "
+            failures.append(f"the worker's score differs from the client's rule "
                             f"by {worst:.6f}")
+        if disagree:
+            failures.append(f"the worker and the client disagreed on {disagree} cuts")
 
         # 2. A cut resets exactly the frame that captured it.
         target.animate = False
@@ -133,7 +139,7 @@ def main() -> int:
             failures.append("a still window reported a scene cut")
         if len(cuts) != 1:
             failures.append(f"the repaint reset {len(cuts)} frames, not exactly one")
-        elif after[cuts[0]][0] is None or after[cuts[0]][0] <= 0.24:
+        elif after[cuts[0]][0] is None or after[cuts[0]][0] <= 0.40:
             failures.append(f"the cut came with a score of {after[cuts[0]][0]}")
 
         # 3. No flag, no score.

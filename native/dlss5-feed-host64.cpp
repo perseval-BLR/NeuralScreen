@@ -49,7 +49,8 @@
 #include <tlhelp32.h>   // the parent process: whose panel to look for
 #include <cstring>
 #include <algorithm>
-#include <emmintrin.h>   // _mm_sad_epu8: the scene score
+#include <emmintrin.h>
+#include "scene_cut.h"   // the scene-cut rule, shared with app/scene_cut.py
 #include <fcntl.h>
 #include <io.h>
 #include <string>
@@ -4925,44 +4926,28 @@ static bool CopyGrayOut()
     return true;
 }
 
-// The scene score of the last capture: mean(|gray - previous gray|) / 255, the
-// same number guides.py computes on the client from the same buffer, so the
-// cut lands on the same frames whichever side decides it. The previous gray
-// is the worker's own copy - g_gray_map is the client's to read.
-static std::vector<uint8_t> g_scene_prev;
+// The scene cut of the last capture, decided by native/scene_cut.h - the twin
+// of app/scene_cut.py, which guides.py runs on the same grey on the client,
+// so the cut lands on the same frames whichever side decides it. It replaced
+// mean(|grey - previous grey|) / 255 > 0.24, which reset on every frame of a
+// fast cel-shaded pan and missed cuts between dark pictures. The detector
+// keeps its own copy of the previous frame - g_gray_map is the client's to
+// read. g_scene_score is the aligned difference in units of 2 x MAD (a cut
+// needs more than 0.40 of it and the envelope test), clamped to 1.
+static ns_scene::Detector g_scene_detector;
 static float g_scene_score = 0.0f;
+static bool g_scene_cut = false;
 static bool g_scene_fresh = false;      // a capture scored since a frame took it
-static constexpr float kSceneCutScore = 0.24f;   // guides.py: reset = score > 0.24
 
 static void UpdateSceneScore()
 {
-    const size_t n = static_cast<size_t>(g_gray_w) * g_gray_h;
-    if (g_gray_map == nullptr || n == 0) return;
+    if (g_gray_map == nullptr || g_gray_w == 0 || g_gray_h == 0) return;
     g_scene_fresh = true;
-    if (g_scene_prev.size() != n)
-    {
-        // Nothing to compare with - a first frame, or a new gray size. The
-        // client counted that as a cut too (previous_gray None -> reset).
-        g_scene_prev.assign(g_gray_map, g_gray_map + n);
-        g_scene_score = 1.0f;
-        return;
-    }
-    // Sums of absolute differences, 16 pixels an instruction: ~58k pixels
-    // come to a few microseconds.
-    uint64_t sum = 0;
-    size_t i = 0;
-    for (; i + 16 <= n; i += 16)
-    {
-        const __m128i a = _mm_loadu_si128(reinterpret_cast<const __m128i *>(g_gray_map + i));
-        const __m128i b = _mm_loadu_si128(reinterpret_cast<const __m128i *>(g_scene_prev.data() + i));
-        const __m128i d = _mm_sad_epu8(a, b);
-        sum += static_cast<uint64_t>(_mm_cvtsi128_si64(d)) +
-               static_cast<uint64_t>(_mm_cvtsi128_si64(_mm_srli_si128(d, 8)));
-    }
-    for (; i < n; ++i)
-        sum += static_cast<uint64_t>(abs(int(g_gray_map[i]) - int(g_scene_prev[i])));
-    g_scene_score = static_cast<float>(static_cast<double>(sum) / (static_cast<double>(n) * 255.0));
-    memcpy(g_scene_prev.data(), g_gray_map, n);
+    const ns_scene::Result r = g_scene_detector.Step(
+        g_gray_map, static_cast<int>(g_gray_w), static_cast<int>(g_gray_h),
+        static_cast<int>(g_gray_w));
+    g_scene_cut = r.cut;
+    g_scene_score = r.score;
 }
 
 // There was an adaptive exposure here: the frame's mean luminance mapped
@@ -8002,7 +7987,7 @@ static int RunVideo()
             // leaves the reply without one.
             if ((fh.reserved & FRAME_FLAG_WORKER_SCENE) != 0 && got && g_scene_fresh)
             {
-                const bool cut = g_scene_score > kSceneCutScore;
+                const bool cut = g_scene_cut;
                 if (cut) fh.reset = 1;
                 const float clamped = (std::min)(1.0f, (std::max)(0.0f, g_scene_score));
                 g_frame_status = OUT_STATUS_SCENE | (cut ? OUT_STATUS_SCENE_CUT : 0u) |

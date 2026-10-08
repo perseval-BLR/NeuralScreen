@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from scene_cut import SceneCutDetector
+
 
 @dataclass(slots=True)
 class GuideFrame:
@@ -80,6 +82,9 @@ class TemporalGuideGenerator:
         self.flow_height = max(64, int(round(height * scale / 2) * 2))
         self.emit_small = emit_small
         self.previous_gray: np.ndarray | None = None
+        # The cut decision (app/scene_cut.py); the mean difference below
+        # still gates the static screen and feeds the log.
+        self._cuts = SceneCutDetector()
         # The last frame went out with the scene cut left to the worker
         # (handoff); the first one after anything else resets.
         self._handed_off = False
@@ -294,14 +299,15 @@ class TemporalGuideGenerator:
         what a resumed pipeline is.
         """
         self.previous_gray = None
+        self._cuts.reset()
         self._handed_off = False
 
     def handoff(self) -> GuideFrame:
         """The frame's guides when the worker decides the scene cut.
 
         FRAME_FLAG_WORKER_SCENE: the worker scores the gray it has just
-        captured - the same mean(|gray - previous|)/255 > 0.24 as process() -
-        and resets on a cut itself. What is left here is zero motion (NVOFA
+        captured - the same rule as process() (native/scene_cut.h, the twin
+        of app/scene_cut.py) - and resets on a cut itself. What is left here is zero motion (NVOFA
         makes the field in the worker) and a reset only for what the client
         knows and the worker does not: a first frame, after a restart or a
         stretch of NR off (forget).
@@ -314,6 +320,7 @@ class TemporalGuideGenerator:
         reset = not self._handed_off
         self._handed_off = True
         self.previous_gray = None
+        self._cuts.reset()
         motion = self._zero_small if self.emit_small else self._zero_motion
         return GuideFrame(motion=motion, reset=reset, scene_score=0.0)
 
@@ -334,13 +341,16 @@ class TemporalGuideGenerator:
             current = self._small_gray(rgba)
         pixels = self.width * self.height
         self._handed_off = False
+        cut = self._cuts.step(current)
         if self.previous_gray is None:
             motion = self._zero_small if self.emit_small else self._zero_motion
             reset = True
             scene_score = 1.0
         else:
             scene_score = float(np.mean(cv2.absdiff(current, self.previous_gray))) / 255.0
-            reset = scene_score > 0.24
+            # Not "scene_score > 0.24": that fired on every frame of a fast
+            # cel-shaded pan and missed dark cuts (app/scene_cut.py).
+            reset = cut
             if not compute_motion or reset or scene_score < 0.001:
                 # Reset (scene cut) or static screen (desktop/text): no flow needed.
                 # 0.001: above capture noise (~0.0002 @ +-2 LSB) and static 0.0,
