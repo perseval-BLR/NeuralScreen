@@ -645,6 +645,20 @@ static bool TestFailureOnce(const char *stage)
     return true;
 }
 
+// A standing test condition rather than a one-shot failure: true for every
+// call while NS_TEST_FAIL_STAGE names the stage (a driver quirk that keeps
+// happening, not an event).
+static bool TestStageRequested(const char *stage)
+{
+    static std::once_flag read_once;
+    static char requested[48] = {};
+    std::call_once(read_once, [] {
+        GetEnvironmentVariableA("NS_TEST_FAIL_STAGE", requested,
+                                static_cast<DWORD>(sizeof(requested)));
+    });
+    return requested[0] != '\0' && _stricmp(requested, stage) == 0;
+}
+
 // The requirements query answered FAIL_OutOfDate (0xBAD0000C) before the
 // create: the driver is older than the feature needs. A create that then
 // fails - the 576.x drivers fault inside NVIDIA's runtime rather than refuse
@@ -4441,6 +4455,14 @@ static bool                    g_dda_empty_said = false;   // once per session
 // FP16/BGRA8 through the legacy DuplicateOutput, so the capture is pinned to
 // FP16 through DuplicateOutput1 instead (#89).
 static UINT                    g_capture_deep_bits = 8;
+// The bit depth is not the whole story: a display that reports 8 bits and no
+// HDR still alternated FP16/BGRA8 through the legacy DuplicateOutput - 307
+// bridge rebuilds in two minutes in one real log (#151, three 8-bit monitors).
+// g_dda_legacy says the current duplication took that path; once it has
+// flipped format, g_dda_format_flips pins every later open of this process to
+// FP16 through DuplicateOutput1, the same way the deep-bits case is.
+static bool                    g_dda_legacy = false;
+static bool                    g_dda_format_flips = false;
 // The WGCW command, filled by the dispatcher and read by its handler.
 static VideoWgcCmd             g_wgc_cmd = {};
 // The PPRM command, same arrangement: the dispatcher reads it into this and
@@ -5211,7 +5233,9 @@ static bool OpenDda(UINT w, UINT hgt)
     // can report 8 - so the test is the display's own advanced-colour
     // capability, which is the same fact that made FP16 available at all.
     const bool high_colour_display = g_capture_display.enabled
-                                     || g_capture_deep_bits > 8;
+                                     || g_capture_deep_bits > 8
+                                     || g_dda_format_flips;
+    g_dda_legacy = false;
     if (!g_dda_hdr_mode && has_output5 && high_colour_display)
     {
         // High-colour display with HDR compatibility off: ask for FP16 FIRST
@@ -5226,8 +5250,11 @@ static bool OpenDda(UINT w, UINT hgt)
         hr = output5->DuplicateOutput1(g_dda_d11, 0, _countof(deep_formats),
                                        deep_formats, &g_dda_dup);
         if (SUCCEEDED(hr))
-            Log("[dda] 10-bit scan-out: FP16 duplication pinned through "
-                "IDXGIOutput5 (no format flips)");
+            Log(g_dda_format_flips && g_capture_deep_bits <= 8 && !g_capture_display.enabled
+                    ? "[dda] the legacy duplication alternated formats: FP16 "
+                      "duplication pinned through IDXGIOutput5 (no format flips)"
+                    : "[dda] 10-bit scan-out: FP16 duplication pinned through "
+                      "IDXGIOutput5 (no format flips)");
         else
             Log("[dda] FP16 duplication refused 0x%08X on a %u-bit output - "
                 "falling back to legacy SDR", hr, g_capture_deep_bits);
@@ -5247,6 +5274,7 @@ static bool OpenDda(UINT w, UINT hgt)
         // HDR compatibility is off, so one driver quirk cannot rebuild the
         // bridge on every mouse movement.
         hr = output1->DuplicateOutput(g_dda_d11, &g_dda_dup);
+        g_dda_legacy = SUCCEEDED(hr);
         if (SUCCEEDED(hr))
             Log("[dda] SDR capture fixed to BGRA8 through legacy duplication");
     }
@@ -5280,6 +5308,7 @@ static bool OpenDda(UINT w, UINT hgt)
         // g_dda_hdr_mode stays true so DdaGrab can still notice a real desktop
         // HDR mode change without reopening the duplication every second.
         hr = output1->DuplicateOutput(g_dda_d11, &g_dda_dup);
+        g_dda_legacy = SUCCEEDED(hr);
     }
     output1->Release(); output->Release(); adapter->Release(); factory->Release();
     if (FAILED(hr)) { Log("[dda] DuplicateOutput failed 0x%08X", hr); return false; }
@@ -5700,17 +5729,40 @@ static bool DdaGrab(VideoState &v)
     }
     UINT new_w = 0, new_h = 0;
     DXGI_FORMAT new_format = DXGI_FORMAT_UNKNOWN;
-    const StageResult st = StageCapturedFrame(frame, &new_w, &new_h, &new_format);
+    StageResult st = StageCapturedFrame(frame, &new_w, &new_h, &new_format);
     frame->Release();
     res->Release();
+    // NS_TEST_FAIL_STAGE=dda-format-flip: the legacy duplication behaves like
+    // the #151 driver and hands every 8th frame over in the other format.
+    static unsigned test_flip_frames = 0;
+    if (st == StageResult::Ok && g_dda_legacy && TestStageRequested("dda-format-flip") &&
+        ++test_flip_frames % 8 == 0)
+    {
+        Log("[test] the legacy duplication changed format");
+        CloseCaptureBridge();
+        st = StageResult::FormatChanged;
+    }
     // Desktop Duplication requires ReleaseFrame() only AFTER every read of the
     // frame has finished. StageCapturedFrame waits on the fence, so the copy
     // is done; releasing earlier let the compositor overwrite the surface
     // mid-copy (torn frames on motion).
     g_dda_dup->ReleaseFrame();
     // A format change already rebuilt the bridge inside StageCapturedFrame
-    // and said so; it costs this one frame and nothing else (#62).
-    if (st == StageResult::FormatChanged) return false;
+    // and said so; it costs this one frame and nothing else (#62). On the
+    // legacy path a change means this driver alternates formats whatever the
+    // display reports (#151): pin the format now instead of paying a frame
+    // and a bridge rebuild several times a second for the whole session.
+    if (st == StageResult::FormatChanged)
+    {
+        if (g_dda_legacy && !g_dda_format_flips)
+        {
+            g_dda_format_flips = true;
+            Log("[dda] the legacy duplication changed format on an %u-bit output - "
+                "reopening it with the format pinned", g_capture_deep_bits);
+            if (!OpenDda(g_dda_w, g_dda_h) || !g_dda_active) MarkCaptureLost(false);
+        }
+        return false;
+    }
     if (st == StageResult::SizeChanged)
     {
         Log("[dda] capture resized -> %ux%u, format %u - recreating",

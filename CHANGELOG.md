@@ -32,6 +32,14 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **A desktop capture that keeps changing format is pinned after the first
+  change (#151).** An SDR display is captured through the older duplication
+  call because it hands the desktop over as 8-bit - but one driver alternated
+  8-bit and 16-bit frames through it anyway, on monitors that report 8 bits
+  and no HDR: 307 capture rebuilds in two minutes, each one losing a frame.
+  The format was already pinned for displays that report HDR or more than 8
+  bits (#89); now the first change on any display pins it for the session.
+
 * **A game controller that connects and drops again no longer closes the
   program (#152).** The interface library starts the joystick subsystem with
   everything else, and it fails on the "device removed" event of a controller
