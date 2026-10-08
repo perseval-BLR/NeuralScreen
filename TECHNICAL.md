@@ -686,6 +686,32 @@ linear would change the look of every scene, so it is a deliberate choice, not
 an oversight.
 
 
+### The edit stabilizer: steadying the network over time
+
+The network's output shimmers from frame to frame even where the picture does
+not change - fed the same frame 40 times it moved by ~0.26 of 255 on average
+and up to 3 every frame - and on moving content the motion field's error
+comes on top ("jelly"). In Boost the edit is therefore steadied before the
+composite: only `nr_out - nr_in`, at the work resolution, once per evaluated
+frame after the last cascade pass (`native/stabilizer.inl`). The history of
+the edit is carried along the motion field; per pixel, the vector and "no
+motion" compete on how well they explain the current input (a 3x3 patch
+tested against the input's 3x3 range), the history is clamped to the current
+3x3 edit range +- 0.02, and the current edit gets at least 25% weight. The
+native picture underneath is never delayed, so a wrong history can misplace
+part of the enhancement, never the content. Any command, a reset, NR off or a
+failure starts the history over.
+
+Measured on the worker with known motion (`tests/nr_motion_harness.py`), the
+edit's frame-to-frame instability: pan 0.71 -> 0.40, moving object 1.14 ->
+0.63, still content 0.23 -> 0.12, the halo around a moving object with
+NVOFA-like vectors 0.70 -> 0.30; the edit's strength within 2%; with zero
+(wrong) vectors the output's warp error does not grow. Cost about +0.1 ms at
+a 1248x702 work size and +0.3 ms at 2496x1404. On by default; `NS_STAB=0`
+turns it off, `NS_STAB_STRENGTH=0..1` scales it. The design and its
+references (MPCVR-DLSS5, Magpie, RenoDX, 2600th) are in
+`_work/stabilizer/SPEC.md`.
+
 ### The NR cascade: more than one pass over a frame
 
 An experiment, reachable only in Boost mode, and off (one pass) by default.

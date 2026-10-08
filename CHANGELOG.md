@@ -32,6 +32,17 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**
+  The network's output moves a little on every frame even where the picture
+  does not, and on moving content the motion field's error comes on top. The
+  network's edit - and only the edit; the picture underneath is never delayed
+  - is now carried along the motion and blended with the current one where a
+  per-pixel test trusts it. Measured on the worker: frame-to-frame instability
+  of the edit about halved on a pan (-43%), a moving object (-45%) and still
+  content (-49%), the shimmer around a moving object with NVOFA-like vectors
+  -57%, the strength of the effect kept within 2%, no ghosting when the
+  vectors are wrong. Costs about 0.1-0.3 ms a frame. `NS_STAB=0` turns it off.
+
 * **Scene cuts are judged on the picture, not on how much it moved.** On a cut
   the network's history is thrown away and the picture pops; a missed cut
   smears one picture into the next. The old rule - the average change between

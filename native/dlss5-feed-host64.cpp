@@ -6320,6 +6320,7 @@ static void ProfileGpuEnd(ProfileStage, unsigned query_count)
 }
 
 #include "nvofa.inl"
+#include "stabilizer.inl"
 
 static void ReadProfileGpuTime(int slot)
 {
@@ -6649,6 +6650,7 @@ static bool EvaluateVideo(VideoState &v, int reset, UINT64 *submitted = nullptr)
         if (code != 0)
         {
             AbortCommands();
+            StabFailed();
             ReportFailure(failure_stage, "seh", static_cast<HRESULT>(code));
             Log("[pure] direct evaluate exception 0x%08X (pass %u of %u)",
                 code, pass + 1u, passes);
@@ -6675,11 +6677,17 @@ static bool EvaluateVideo(VideoState &v, int reset, UINT64 *submitted = nullptr)
             v.nr_out, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         h.list->ResourceBarrier(1, &to_srv);
+        // NS_STAB: the edit is steadied over time first (stabilizer.inl) and
+        // the composite reads the steadied result instead of nr_out.
+        ID3D12Resource *edit = v.nr_out;
+        if (StabRequested() && StabilizeEdit(v, nw, nh, reset != 0))
+            edit = g_stab.out;
         if (v.residual)
-            ResidualCompose(v.color.tex, v.nr_in, v.nr_out, cw, ch, v.output,
+            ResidualCompose(v.color.tex, v.nr_in, edit, cw, ch, v.output,
                             v.residual_strength);
         else
-            ScaleColorInto(v.nr_out, nw, nh, v.output, cw, ch, 1);
+            ScaleColorInto(edit, nw, nh, v.output, cw, ch, 1);
+        if (edit != v.nr_out) StabAfterCompose();
         D3D12_RESOURCE_BARRIER back = Transition(
             v.nr_out, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -6688,7 +6696,7 @@ static bool EvaluateVideo(VideoState &v, int reset, UINT64 *submitted = nullptr)
     if (ts) ProfileGpuEnd(PS_EVAL, 4);
     const UINT64 fence = EndCommands();
     if (submitted) *submitted = fence;
-    if (fence == 0) return false;
+    if (fence == 0) { StabFailed(); return false; }
     if (NVSDK_NGX_FAILED(result))
     {
         ReportFailure(failure_stage, "ngx-result", static_cast<HRESULT>(result));
@@ -7060,6 +7068,7 @@ static int ReadVideoMessage(VideoState &v, VideoFrameHeader &fh, std::vector<BYT
 static void ReleaseVideoTextures(VideoState &v)
 {
     CloseNvofa();
+    CloseStab();
     NvofaResetLatch();
     if (PhaseEnabled()) { ++g_capture_generation; g_previous_source_qpc = 0; g_frame_stamp = {}; }
     CloseFgResources();
@@ -7390,7 +7399,7 @@ static int RunVideo()
         // frame. Missing it here sent every PPRM through the "not prepared"
         // path and threw away the frame that was ready.
         if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13) prepared = false;
-        if (msg != 1) g_still_evals = 0;   // a command may change what the network makes
+        if (msg != 1) { g_still_evals = 0; StabForget(); }   // a command may change what the network makes
         if (msg < 0) return 11;   // protocol desync: not a clean end of input
         if (msg == 0)
         {
@@ -8128,6 +8137,7 @@ static int RunVideo()
         g_still_evals = still_frame ? g_still_evals + 1 : 0;
         g_still_flags = fh.reserved;
         const bool keep_result = !bypass && still_frame && g_still_evals > kStillEvaluations;
+        if (bypass) StabForget();   // the input moves on while NR is off
         if (!bypass && !keep_result)
         {
             const double t_eval = PhaseNow();
