@@ -32,6 +32,14 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **The "adaptive exposure" is gone, because the network never used it.** It
+  mapped the picture's average brightness into DLSS.Exposure.Scale to lift dark
+  scenes, and the log announced it in every desktop session. The neural
+  runtime does not read that parameter at all: its library carries no exposure
+  name, and the output with the value forced to 0.3, 1.0 and 3.0 is the same to
+  the byte. Nothing in the picture changes; the false log line and the wasted
+  work are gone. A dark-scene lift that works has to act before the network.
+
 * **One-window mode is no longer held at 60 frames a second (#155).** Window
   capture was opened without a minimum update interval, and current Windows 11
   then delivers a window at most ~60 times a second whatever it draws - the

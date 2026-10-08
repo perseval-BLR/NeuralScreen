@@ -129,7 +129,7 @@ ABOUT = {
     "test_worker_log_prefixes.py": "every prefix the worker logs under reaches the shared log",
     "test_fps_overlay.py": "the on-screen counter says the same as the status line, in the corner it names",
     "test_to_tray.py": "minimise and close to tray, without stopping the pass",
-    "test_adaptive_exposure.py": "adaptive exposure brightens dark scenes, lit scenes untouched",
+    "test_no_dead_exposure.py": "the worker does not claim an exposure stage the network ignores",
     "test_capture_visibility.py": "outside capture sees the overlay only without WDA",
     "test_config.py": "the config loader validates, clamps and resolves",
     "test_theme_rebuild.py": "the chosen theme survives a pipeline rebuild",
@@ -540,7 +540,7 @@ TEST_GROUPS = {
         # Starts the real program with its worker twice (and the log it
         # writes is the program's own) - it sat among the unit tests, so a
         # "static only" run took the GPU and cleared NeuralScreen.log.
-        "test_adaptive_exposure.py",
+        "test_no_dead_exposure.py",
         "test_media_convert.py",
         "test_gpu_recorder.py",
         "test_early_reply.py",

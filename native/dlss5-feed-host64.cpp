@@ -1645,7 +1645,7 @@ static bool ReinitNgx()
 }
 
 // Forward declarations: the NR parameter block lives below (it needs
-// SetVerifiedU/F, g_video_options and g_pw_exposure, which are declared after
+// SetVerifiedU/F and g_video_options, which are declared after
 // this point), but Evaluate has to share it - both must set the same parameters
 // the live path sets, or --test exercises a different contract than the program
 // runs.
@@ -4926,109 +4926,12 @@ static void UpdateSceneScore()
     memcpy(g_scene_prev.data(), g_gray_map, n);
 }
 
-// ---------------------------------------------------------------------------
-// Adaptive exposure (PaperWhite principle, Ghady983/RenoDX-DLSS-5-Artifact-Fix)
-// ---------------------------------------------------------------------------
-// A static exposure leaves dark scenes underexposed: the network sees a
-// near-black frame and produces artifacts/flicker on textures. The desktop
-// is exactly that case - windows of very different brightness (dark IDE +
-// bright site). The fix: sample the AREA luminance we already compute for
-// the guides (320x180 R8), map the average through a smoothstep between
-// Dark/Lit thresholds, and feed the result into DLSS.Exposure.Scale with
-// temporal smoothing so the value cannot flicker.
-//
-// NS_PW=0 disables (tests); default on, like the residual composite.
-// NS_PW_DARK / NS_PW_LIT: luminance thresholds (0..1) for the smoothstep.
-// NS_PW_MIN / NS_PW_MAX: exposure range the value is mapped into.
-// NS_PW_TAU: EMA time constant in seconds (0 = instant).
-static bool PwEnabled()
-{
-    char buf[8] = {};
-    const DWORD got = GetEnvironmentVariableA("NS_PW", buf, sizeof(buf));
-    return !(got > 0 && got < sizeof(buf) && buf[0] == '0');
-}
-
-static float PwEnvFloat(const char *name, float def)
-{
-    char buf[32] = {};
-    const DWORD got = GetEnvironmentVariableA(name, buf, sizeof(buf));
-    if (got > 0 && got < sizeof(buf))
-    {
-        const float f = static_cast<float>(atof(buf));
-        if (f >= 0.0f) return f;
-    }
-    return def;
-}
-
-static float g_pw_exposure = 1.0f;   // current smoothed value
-static double g_pw_last = 0.0;       // last update time (GetTickCount64 ms)
-static bool   g_pw_logged = false;
-
-// Called once per captured frame, after CopyGrayOut filled g_gray_map.
-static void UpdateAdaptiveExposure()
-{
-    if (!PwEnabled() || !g_gray_mapped || g_gray_w == 0 || g_gray_h == 0)
-    {
-        g_pw_exposure = 1.0f;
-        return;
-    }
-    // The tuning values are read ONCE: they come from the process
-    // environment, which cannot change while we run, and this function is
-    // called for every captured frame - six GetEnvironmentVariable calls per
-    // frame bought nothing.
-    static float dark = 0.0f, lit = 0.0f, mn = 0.0f, mx = 0.0f, tau = 0.0f;
-    static bool  env_read = false;
-    if (!env_read)
-    {
-        dark = PwEnvFloat("NS_PW_DARK", 0.10f);
-        lit  = PwEnvFloat("NS_PW_LIT", 0.40f);
-        mn   = PwEnvFloat("NS_PW_MIN", 1.00f);
-        mx   = PwEnvFloat("NS_PW_MAX", 1.10f);
-        tau  = PwEnvFloat("NS_PW_TAU", 0.50f);
-        // A zero-wide window would divide by zero below and hand NGX a NaN
-        // exposure. Fall back to the default spread around the given dark
-        // point rather than refusing to work.
-        if (lit <= dark) lit = dark + 0.30f;
-        env_read = true;
-    }
-    if (!g_pw_logged)
-    {
-        Log("[pw] adaptive exposure on (dark=%.2f lit=%.2f min=%.2f max=%.2f tau=%.2f)",
-            dark, lit, mn, mx, tau);
-        g_pw_logged = true;
-    }
-
-    // Average luminance of the AREA frame (0..1). The bytes are summed as
-    // integers and scaled once: a division per pixel was 57 600 of them per
-    // frame for a number that is the same either way.
-    uint64_t sum = 0;
-    const size_t n = static_cast<size_t>(g_gray_w) * g_gray_h;
-    for (size_t i = 0; i < n; ++i) sum += g_gray_map[i];
-    const float avg = static_cast<float>(
-        static_cast<double>(sum) / (255.0 * static_cast<double>(n)));
-
-    // smoothstep(dark, lit, avg): 0 in dark scenes, 1 in lit ones. The
-    // exposure goes UP in dark scenes (the network sees a brighter frame
-    // and stops producing artifacts in the shadows - the Ghady983
-    // principle) and stays at 1.0 in lit ones.
-    float t = (avg - dark) / (lit - dark);
-    t = (t < 0.0f) ? 0.0f : (t > 1.0f) ? 1.0f : t;
-    const float target = mx - (mx - mn) * (t * t * (3.0f - 2.0f * t));
-
-    // Temporal smoothing: EMA with a time constant.
-    const double now = static_cast<double>(GetTickCount64());
-    if (tau <= 0.0f || g_pw_last == 0.0)
-    {
-        g_pw_exposure = target;
-    }
-    else
-    {
-        const float dt = static_cast<float>((now - g_pw_last) / 1000.0);
-        const float a = 1.0f - expf(-dt / tau);
-        g_pw_exposure += (target - g_pw_exposure) * a;
-    }
-    g_pw_last = now;
-}
+// There was an adaptive exposure here: the frame's mean luminance mapped
+// into DLSS.Exposure.Scale to brighten dark scenes. The NR runtime never reads
+// that parameter - its DLL carries no "Exposure" string at all, and outputs
+// with Exposure.Scale and Pre.Exposure forced to 0.3, 1.0 and 3.0 are byte for
+// byte the same (2026-10-08) - so the stage only claimed in the log to do
+// something. A brightening that works has to happen before the network.
 
 // Open capture. w/h = capture size; the worker keeps its own pipe for motion.
 // The D3D11 device the capture runs on. Desktop Duplication and Windows
@@ -5664,7 +5567,6 @@ static bool SwizzleCaptureIntoColor(VideoState &v)
     // else best effort: guides go without a fresh frame
     g_capture_gray_ok = g_gray_mapped;
     if (g_submission_failed) return false;
-    UpdateAdaptiveExposure();
     g_dda_ready = true;
     g_no_colour_retried = false;   // the dry spell is over
     return true;
@@ -6536,8 +6438,6 @@ static void ApplyNrEvalParams(NVSDK_NGX_Parameter *p, ID3D12Resource *color,
     verified &= SetVerifiedU(p, "DLSSNR.UICorrection", opts.ui_correction);
     if (!verified)
         Log("[host] NGX parameter read-back mismatch - a value did not stick");
-    p->Set("DLSS.Pre.Exposure", 1.0f);
-    p->Set("DLSS.Exposure.Scale", g_pw_exposure);
 }
 
 // One pass of the network, on the command list the caller has already opened.
@@ -6594,8 +6494,6 @@ static NVSDK_NGX_Result EvalNrPass(VideoState &v, NVSDK_NGX_Handle *feature,
     verified &= SetVerifiedU(h.params, "DLSSNR.UICorrection", g_video_options.ui_correction);
     if (!verified)
         Log("[host] NGX parameter read-back mismatch - a value did not stick");
-    h.params->Set("DLSS.Pre.Exposure", 1.0f);
-    h.params->Set("DLSS.Exposure.Scale", g_pw_exposure);
     DWORD code = 0;
     NVSDK_NGX_Result result = static_cast<NVSDK_NGX_Result>(0x7FFFFFFF);
     __try { result = g_nr_evaluate(h.list, feature, h.params, nullptr); }

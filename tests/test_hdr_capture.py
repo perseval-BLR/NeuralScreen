@@ -36,10 +36,7 @@ def run(desktop=False):
         pygame.display.flip()
         hwnd = pygame.display.get_wm_info()["window"]
     work_w, work_h = (1280, 720) if desktop else (width, height)
-    # NS_PW is the adaptive-exposure switch (PwEnabled, dlss5-feed-host64.cpp).
-    # This used to set NS_PW_ADAPTIVE, which nothing ever read - not the worker
-    # then and not now (audit: STALE). It was a no-op in this environment.
-    env = dict(os.environ, NS_HDR="1", NS_NR_SMALL="1", NS_PW="0")
+    env = dict(os.environ, NS_HDR="1", NS_NR_SMALL="1")
     worker = subprocess.Popen([str(ROOT / "native/nvngx.dll"), "--live"],
                               cwd=ROOT / "native", env=env, stdin=subprocess.PIPE,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
