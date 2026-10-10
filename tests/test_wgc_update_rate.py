@@ -39,12 +39,19 @@ RUN_S = 6.0
 
 
 def _refresh_hz() -> int:
-    user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
-    dc = user32.GetDC(0)
+    # Own library objects with their own prototypes: ctypes.windll is shared
+    # with the app modules, which give GetDC a pointer-sized restype - the
+    # 64-bit handle then overflowed GetDeviceCaps' default int argument.
+    user32, gdi32 = ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32")
+    user32.GetDC.restype = ctypes.c_void_p
+    user32.GetDC.argtypes = [ctypes.c_void_p]
+    user32.ReleaseDC.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    gdi32.GetDeviceCaps.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    dc = user32.GetDC(None)
     try:
         return int(gdi32.GetDeviceCaps(dc, 116))   # VREFRESH
     finally:
-        user32.ReleaseDC(0, dc)
+        user32.ReleaseDC(None, dc)
 
 
 def main() -> int:
