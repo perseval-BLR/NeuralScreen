@@ -30,6 +30,18 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **A still screen is held and the edit steadied on the CPU motion path too.**
+  An unchanged capture is evaluated a few times and then keeps its result, and
+  the stabilizer carries the edit over time - both start over on any command.
+  On the CPU motion path (motion backend CPU, or NVOFA falling back to it) the
+  client latches the capture with a small command before every frame, and that
+  command counted: a still desktop was re-evaluated on every frame and
+  shimmered, and the stabilizer reset its history every time and did nothing.
+  Measured on the worker, a still window sent that way: 66 of 66 frames
+  evaluated before, 0 of 70 after.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**

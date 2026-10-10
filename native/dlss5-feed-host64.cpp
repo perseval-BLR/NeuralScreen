@@ -7399,7 +7399,11 @@ static int RunVideo()
         // frame. Missing it here sent every PPRM through the "not prepared"
         // path and threw away the frame that was ready.
         if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13) prepared = false;
-        if (msg != 1) { g_still_evals = 0; StabForget(); }   // a command may change what the network makes
+        // A command may change what the network makes. CAP1 (10) does not: it
+        // only latches the capture the next FRM1 consumes, and on the CPU
+        // motion path it precedes every frame - counting it here kept the
+        // still-screen hold and the stabilizer's history from ever forming.
+        if (msg != 1 && msg != 10) { g_still_evals = 0; StabForget(); }
         if (msg < 0) return 11;   // protocol desync: not a clean end of input
         if (msg == 0)
         {
