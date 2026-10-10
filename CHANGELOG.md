@@ -98,6 +98,11 @@ Scope and honesty notes:
   config.json was edited by hand. The check now always runs with the shipped
   profile.
 
+* **The diagnostic package no longer keeps part of a refused file's name.** A
+  file the conversion queue refused is named in the log and cut out of the
+  package - but only up to its first parenthesis, so "Anna (wedding).mp4" left
+  "(wedding).mp4" behind.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**

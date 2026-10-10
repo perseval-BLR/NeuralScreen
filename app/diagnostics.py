@@ -241,7 +241,11 @@ _WINDOW_TITLE_RE = re.compile(
 _OWN_TITLES = {"'NeuralScreen'", "''"}
 # A file the conversion queue refused is named by the log line; the name is
 # the user's (the folder is already cut out as a path).
-_REFUSED_FILE_RE = re.compile(r"(not queued for conversion: )(.+?)( \()")
+# The reason is the LAST parenthesis on the line (one word: missing, format,
+# queued); a name may hold parentheses of its own - "Anna (wedding).mp4" kept
+# "(wedding).mp4" in the bundle while the match stopped at the first one.
+_REFUSED_FILE_RE = re.compile(
+    r"(not queued for conversion: )(.+)( \([^()\n]*\))[ \t\r]*$", re.MULTILINE)
 # The conversion queue names the file on every line of a job's life
 # (convert_jobs: "[convert] <name>: started|failed|done|stopped ..."). Only
 # the folder used to go, as a path; the name - "Holiday with Anna.mp4" -
