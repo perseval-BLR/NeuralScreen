@@ -103,6 +103,12 @@ Scope and honesty notes:
   package - but only up to its first parenthesis, so "Anna (wedding).mp4" left
   "(wedding).mp4" behind.
 
+* **A start while Windows lists no display at all no longer fails (#158).** At
+  logon the program can start before the monitors are up, and for a moment
+  Windows may report none. The capture's last fallback raised in that case and
+  the start ended in "NeuralScreen failed to start"; it now opens the slower
+  GDI capture instead, as it already did when the fast capture refuses.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**

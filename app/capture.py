@@ -326,6 +326,10 @@ def list_monitors() -> list[tuple[int, int, int, str]]:
     ]
 
 
+class _NoOutput(IndexError):
+    """dxcam lists no output to open at all - not a stale index (#158)."""
+
+
 class ScreenCapture:
     """Monitor capture through DXCamera (Desktop Duplication API).
 
@@ -371,7 +375,7 @@ class ScreenCapture:
             """Open the selected output on the adapter that owns it."""
             target = _dxcam_capture_target(monitor_idx)
             if target is None:
-                raise IndexError(f"dxcam output {monitor_idx} is unavailable")
+                raise _NoOutput(f"dxcam output {monitor_idx} is unavailable")
             device_idx, local_idx = target
             return dxcam.create(
                 device_idx=device_idx,
@@ -399,7 +403,18 @@ class ScreenCapture:
                 self.monitor_idx = 0
                 monitor_idx = 0
                 requested_name = devicename_for_output_idx(monitor_idx) or ""
-                self._camera = open_target()
+                try:
+                    self._camera = open_target()
+                except _NoOutput:
+                    # No output at all: DXGI lists none for a moment while a
+                    # display driver or a monitor handshake comes up (a start
+                    # at logon). The sibling handler below cannot catch a
+                    # raise from in here, and this one took the start down.
+                    # An IndexError from dxcam.create itself still propagates:
+                    # switch_monitor wraps that and tells the user.
+                    print("[capture] dxcam lists no output - falling back to "
+                          "mss (GDI)", file=sys.stderr)
+                    self._camera = None
         except Exception as exc:
             # DXGI_ERROR_UNSUPPORTED on hybrid graphics (issue #26): the
             # display is wired to the iGPU and DDA refuses a cross-adapter
