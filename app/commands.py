@@ -766,7 +766,8 @@ def apply_menu_action(st, action: tuple) -> None:
         # while Boost is on, so every position is a real work resolution;
         # whether the reduced mode runs at all is the switch's business.
         want = min(settings_io.work_scale_cap(st), float(action[1]))
-        pipeline.request_apply(st, want, st.cfg["profile"], st.params, new_small=True)
+        _scale, profile, params = settings_io.queued_apply(st)
+        pipeline.request_apply(st, want, profile, params, new_small=True)
     elif kind == "split":
         # No need to recreate the worker: the wipe position rides in
         # every frame's header.
@@ -781,10 +782,10 @@ def apply_menu_action(st, action: tuple) -> None:
         # apply is debounced, so two quick clicks would otherwise both read
         # the old value and both ask for the same one (#115).
         want = not settings_io.queued_small(st)
-        scale = min(settings_io.work_scale_cap(st), st.work_scale) if want \
-            else st.work_scale
-        pipeline.request_apply(st, scale, st.cfg["profile"], st.params,
-                               new_small=want)
+        scale, profile, params = settings_io.queued_apply(st)
+        if want:
+            scale = min(settings_io.work_scale_cap(st), scale)
+        pipeline.request_apply(st, scale, profile, params, new_small=want)
     elif kind == "toggle" and action[1] == "open_on_start":
         st.startup_menu = not st.startup_menu
         settings_io.save_menu_layout(st)
@@ -981,10 +982,9 @@ def apply_menu_action(st, action: tuple) -> None:
         except (TypeError, ValueError):
             value = 1
         if 0 <= value <= 2:
-            new_params = dict(st.params)
+            scale, profile, new_params = settings_io.queued_apply(st)
             new_params["style"] = value
-            pipeline.request_apply(st, st.work_scale, st.cfg["profile"],
-                                   new_params)
+            pipeline.request_apply(st, scale, profile, new_params)
     elif kind == "motion_backend":
         pipeline.apply_motion_backend(st, action[1])
     elif kind == "screenshot_mode":
@@ -1018,22 +1018,23 @@ def apply_menu_action(st, action: tuple) -> None:
         # Files dropped on the panel.
         add_conversions(st, list(action[1] or []))
     elif kind == "param":
-        new_params = dict(st.params)
+        scale, profile, new_params = settings_io.queued_apply(st)
         new_params[action[1]] = float(action[2])
-        pipeline.request_apply(st, st.work_scale, st.cfg["profile"], new_params)
+        pipeline.request_apply(st, scale, profile, new_params)
     elif kind == "profile":
+        scale, _profile, queued_params = settings_io.queued_apply(st)
         if action[1] in PROFILES:
             # A built-in profile moves the four sliders only (user rule
             # 15.09): the model is its own control and survives a profile
             # change. Taking the style from the profile made "Natural"
             # silently overwrite a Cinematic the user had just picked.
             new_params = dict(PROFILES[action[1]])
-            new_params["style"] = int(st.params.get("style", 1))
-            pipeline.request_apply(st, st.work_scale, action[1], new_params)
+            new_params["style"] = int(queued_params.get("style", 1))
+            pipeline.request_apply(st, scale, action[1], new_params)
         elif action[1] in st.presets:
             # A user preset DOES carry its own model - that is what saving
             # it promised.
-            pipeline.request_apply(st, st.work_scale, action[1],
+            pipeline.request_apply(st, scale, action[1],
                                    dict(st.presets[action[1]]))
         else:
             print(f"[main] unknown profile {action[1]!r} - ignored",
@@ -1148,7 +1149,7 @@ def apply_menu_action(st, action: tuple) -> None:
         # through a full restart briefly, to re-read a residual strength
         # derived from the count; that strength is a setting now and the
         # seconds it cost were not worth it (user, 20.09).
-        pipeline.request_apply(st, st.work_scale, st.cfg["profile"], st.params)
+        pipeline.request_apply(st, *settings_io.queued_apply(st))
     elif kind == "fps_overlay":
         corner = str(action[1])
         if corner not in ("off", "tl", "tr", "bl", "br"):
@@ -1321,7 +1322,9 @@ def apply_menu_action(st, action: tuple) -> None:
             # along, so the preset reproduces the exact look it was
             # saved with.
             name = _next_preset_name(st.presets)
-            st.presets[name] = dict(st.params)
+            # What the sliders show: a change still waiting in the debounce
+            # slot is part of it.
+            st.presets[name] = settings_io.queued_apply(st)[2]
             st.cfg["presets"] = st.presets
             if not settings_io.save_menu_layout(st):
                 # The preset lives in memory but not on disk - the
@@ -1349,9 +1352,10 @@ def apply_menu_action(st, action: tuple) -> None:
                 print(f"[main] preset deleted: {st.cfg['profile']}")
                 st.display.alert(UI_STRINGS[st.lang].get(
                     "preset_deleted", "Preset deleted: {}").format(st.cfg["profile"]))
+                scale, _profile, queued_params = settings_io.queued_apply(st)
                 new_params = dict(PROFILES["Natural"])
-                new_params["style"] = int(st.params.get("style", 1))
-                pipeline.request_apply(st, st.work_scale, "Natural", new_params)
+                new_params["style"] = int(queued_params.get("style", 1))
+                pipeline.request_apply(st, scale, "Natural", new_params)
         elif name == "channel":
             # The channel label in the settings page opens the
             # channel (user rule 2026-09-08).
@@ -1661,14 +1665,16 @@ def drain_commands(st) -> bool:
                 # is debounced, so a second key press inside the debounce
                 # window would otherwise walk the ladder from the step the
                 # user has just left (#115).
-                cur = (st.work_scale if settings_io.queued_small(st)
+                queued_scale, queued_profile, queued_params = \
+                    settings_io.queued_apply(st)
+                cur = (queued_scale if settings_io.queued_small(st)
                        else cap + WORK_SCALE_STEP)
                 delta = WORK_SCALE_STEP if cmd == "scale_up" else -WORK_SCALE_STEP
                 new_scale = min(cap + WORK_SCALE_STEP,
                                 max(WORK_SCALE_MIN, cur + delta))
                 if abs(new_scale - cur) > 1e-6:
                     want_small = new_scale <= cap + 1e-6
-                    applied = new_scale if want_small else st.work_scale
+                    applied = new_scale if want_small else queued_scale
                     new_w, new_h = _work_size(st.width, st.height, applied,
                                               settings_io.cascade_passes(st))
                     print(f"[main] work_scale -> {new_scale:.2f} ({new_w}x{new_h}), "
@@ -1681,7 +1687,7 @@ def drain_commands(st) -> bool:
                         new_scale if want_small else 1.0,
                         new_w if want_small else st.width,
                         new_h if want_small else st.height))
-                    pipeline.request_apply(st, applied, st.cfg["profile"], st.params,
+                    pipeline.request_apply(st, applied, queued_profile, queued_params,
                                            new_small=want_small)
     except queue.Empty:
         pass

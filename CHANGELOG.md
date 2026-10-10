@@ -62,6 +62,14 @@ Scope and honesty notes:
   to client frames, that guess was wrong in either direction. It now follows
   the colour texture's own state, as the capture path already did.
 
+* **Quick changes no longer undo each other.** A setting is applied 0.3 s after
+  the last change (#115), and each change used to start from the settings still
+  running rather than from the ones already waiting - so a second change inside
+  that moment threw the first away. Two presses of the work-scale key moved one
+  step instead of two (holding the key walked a single step), moving intensity
+  and then tone lost the intensity, a profile followed by a slider lost the
+  profile, and a preset saved right after a slider move stored the old value.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**

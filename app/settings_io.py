@@ -111,6 +111,21 @@ def queued_small(st) -> bool:
     return bool(getattr(st, "nr_small", False))
 
 
+def queued_apply(st) -> tuple:
+    """(scale, profile, params) the user has ASKED for: queued, or running.
+
+    The same reason as queued_small, for the rest of the slot: every request
+    replaces the whole slot, so a request built from the running state threw
+    away an earlier change still waiting in it - intensity and then tone
+    queued the old intensity, two presses of the scale key walked one step.
+    A request builds on this instead. The params are a copy.
+    """
+    pending = getattr(st, "pending_apply", None)
+    if pending is not None:
+        return float(pending[0]), pending[1], dict(pending[2])
+    return float(st.work_scale), st.cfg["profile"], dict(st.params)
+
+
 def cascade_passes(st) -> int:
     """The pass count to size the work by: the saved one under Boost, one
     without it.

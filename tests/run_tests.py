@@ -69,6 +69,7 @@ CANONICAL_SKIP_RE = re.compile(
 # digging through the file to find out what broke.
 ABOUT = {
     "test_apply_debounce.py": "the settings apply is debounced: one rebuild at the end of a drag (#115)",
+    "test_apply_debounce_merge.py": "changes inside the debounce window add up instead of replacing each other",
     "test_wire_msg_numbers.py": "every wire command has its own message number and keeps the prepared frame",
     "test_pointer_and_monitor_target.py": "the pointer stays put and a monitor change drops the window target (#96)",
     "test_frame_pacing.py": "30/60/custom/unlimited pacing and real-work NR rate accounting",
@@ -375,6 +376,7 @@ TEST_GROUPS = {
         "test_alert_font_size.py",
         "test_alert_position.py",
         "test_apply_debounce.py",
+        "test_apply_debounce_merge.py",
         "test_wire_msg_numbers.py",
         "test_audio_limiter.py",
         "test_audio_pack.py",
