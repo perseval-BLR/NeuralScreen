@@ -1,4 +1,4 @@
-"""No display output at all does not take the start down.
+r"""No display output at all does not take the start down.
 
 At logon the display driver and the monitors come up after the program is
 already starting (it runs from the Run key), and for a moment DXGI can list

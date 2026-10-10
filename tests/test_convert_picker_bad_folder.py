@@ -1,4 +1,4 @@
-"""An unavailable recording folder does not lock out every dialog for the session.
+r"""An unavailable recording folder does not lock out every dialog for the session.
 
 The "Add files" picker of the conversion page starts in the recording folder,
 and creating that folder can fail - a drive that is gone, a share that is

@@ -1,4 +1,4 @@
-"""A monitor standing in for a missing one is not saved over it (#158).
+r"""A monitor standing in for a missing one is not saved over it (#158).
 
 config.json names the monitor by its Windows device name. When that monitor
 is not there at startup - a TV, a dock, a DisplayPort monitor still waking up
@@ -33,8 +33,8 @@ import pipeline  # noqa: E402
 import settings_io  # noqa: E402
 import startup  # noqa: E402
 
-WANTED = "\\.\DISPLAY3"
-STAND_IN = "\\.\DISPLAY1"
+WANTED = r"\\.\DISPLAY3"
+STAND_IN = r"\\.\DISPLAY1"
 
 
 def main() -> int:

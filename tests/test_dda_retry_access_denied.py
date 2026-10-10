@@ -1,4 +1,4 @@
-"""A desktop capture refused "for now" is asked for again (#158).
+r"""A desktop capture refused "for now" is asked for again (#158).
 
 At logon (and under a UAC prompt or the lock screen) Desktop Duplication is
 refused with E_ACCESSDENIED: the input desktop is Winlogon's, not ours. The

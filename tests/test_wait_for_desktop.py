@@ -1,4 +1,4 @@
-"""A start before the user's desktop is up waits for it (#158).
+r"""A start before the user's desktop is up waits for it (#158).
 
 The Run key starts the program while the session is still coming up. A
 reporter's log from that moment: Windows reported one 1524x3264 display

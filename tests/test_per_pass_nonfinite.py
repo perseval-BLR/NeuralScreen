@@ -1,4 +1,4 @@
-"""A per-pass set with NaN or Infinity in config.json is dropped, not sent.
+r"""A per-pass set with NaN or Infinity in config.json is dropped, not sent.
 
 Python's json reads the NaN and Infinity literals, and the range clamp let NaN
 through untouched (min/max with NaN return NaN). The main sliders and presets

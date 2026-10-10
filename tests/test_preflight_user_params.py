@@ -1,4 +1,4 @@
-"""A preset at intensity 0 does not get the card blocked as unsupported.
+r"""A preset at intensity 0 does not get the card blocked as unsupported.
 
 The startup preflight runs the neural runtime on three synthetic frames and,
 since v2.2.0, refuses a runtime that answers success but changes nothing

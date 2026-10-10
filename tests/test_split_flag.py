@@ -1,4 +1,4 @@
-"""A wipe position that rounds to zero does not turn the wipe on.
+r"""A wipe position that rounds to zero does not turn the wipe on.
 
 The before/after wipe rides in the frame header: a SPLIT flag and the position
 in the top 16 bits. A slider value above 0 but below half a step (1/65535) set

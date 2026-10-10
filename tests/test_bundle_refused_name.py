@@ -1,4 +1,4 @@
-"""A refused file's name leaves the diagnostic package whole, parentheses and all.
+r"""A refused file's name leaves the diagnostic package whole, parentheses and all.
 
 The conversion queue logs a file it refuses as "not queued for conversion:
 <name> (<reason>)", and the package cuts the name out - the folder is already
