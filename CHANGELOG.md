@@ -85,6 +85,10 @@ Scope and honesty notes:
   the picker itself refusing silently until a restart. The picker now opens
   where Windows last left it.
 
+* **A wipe slider a hair above zero no longer counts as on.** A position too
+  small to draw still switched the wipe on: with HDR the divider appeared at
+  the left edge, and Frame Generation restarted its history on every frame.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**

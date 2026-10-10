@@ -693,7 +693,10 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
         # there is no dedicated field in the header, and widening it for a
         # single number would mean changing the protocol on both sides.
         frac = min(0xFFFF, max(0, int(round(min(1.0, split) * 0xFFFF))))
-        flags |= FRAME_FLAG_SPLIT | (frac << 16)
+        # A position that rounds to 0 is no wipe: the flag alone drew the HDR
+        # divider at the left edge and reset Frame Generation every frame.
+        if frac:
+            flags |= FRAME_FLAG_SPLIT | (frac << 16)
     if no_color:
         # DDA mode: motion only, no colour (SHM is not used for colour)
         worker.stdin.write(struct.pack(FRAME_FMT, FRAME_MAGIC, index, int(reset), flags, pts))
