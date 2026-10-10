@@ -582,6 +582,10 @@ def main() -> int:
             pass
         return 1
 
+    # A start at logon (the Run key) can come before the user's desktop: the
+    # monitors, the capture and the adapter order are not real yet (#158).
+    # Before anything reads them; an ordinary launch does not wait.
+    startup.wait_for_desktop()
     # The config file's path, kept in the state: the settings module writes
     # back into it and has no business knowing what argparse is.
     st.cfg_path = args.config

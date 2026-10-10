@@ -486,6 +486,94 @@ def _log_environment(cfg: dict) -> None:
         pass
 
 
+def input_desktop_name() -> str | None:
+    """The name of the desktop that receives input, or None if it cannot be opened.
+
+    "Default" is the user's desktop. While Windows is still logging on (or a
+    UAC prompt or the lock screen is up) the input belongs to Winlogon's
+    desktop, which a user process cannot open - None.
+    """
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.OpenInputDesktop.restype = ctypes.c_void_p
+    user32.OpenInputDesktop.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_uint]
+    user32.GetUserObjectInformationW.argtypes = [
+        ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint,
+        ctypes.POINTER(ctypes.c_uint)]
+    user32.CloseDesktop.argtypes = [ctypes.c_void_p]
+    DESKTOP_READOBJECTS, UOI_NAME = 0x0001, 2
+    handle = user32.OpenInputDesktop(0, False, DESKTOP_READOBJECTS)
+    if not handle:
+        return None
+    try:
+        buf = ctypes.create_unicode_buffer(256)
+        needed = ctypes.c_uint(0)
+        if not user32.GetUserObjectInformationW(handle, UOI_NAME, buf,
+                                                ctypes.sizeof(buf),
+                                                ctypes.byref(needed)):
+            return None
+        return buf.value
+    finally:
+        user32.CloseDesktop(handle)
+
+
+def screen_layout() -> tuple:
+    """The virtual screen's rectangle and the monitor count, as one comparable value."""
+    metric = ctypes.windll.user32.GetSystemMetrics
+    # SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN,
+    # SM_CYVIRTUALSCREEN, SM_CMONITORS
+    return tuple(int(metric(i)) for i in (76, 77, 78, 79, 80))
+
+
+DESKTOP_WAIT_LIMIT = 180.0
+DESKTOP_POLL = 1.0
+
+
+def wait_for_desktop(desktop=input_desktop_name, layout=screen_layout,
+                     sleep=time.sleep, clock=time.monotonic,
+                     limit: float = DESKTOP_WAIT_LIMIT,
+                     poll: float = DESKTOP_POLL) -> bool:
+    """Hold a start made before the user's desktop is up; True if it waited.
+
+    The Run key starts the program while the session is still coming up
+    (#158). At that moment Windows reported one 1524x3264 display instead of
+    three, Desktop Duplication was refused with E_ACCESSDENIED because the
+    input still belonged to Winlogon, and DXGI listed the adapters in a
+    different order than an hour later - the whole pipeline was built for a
+    display that did not exist, on the wrong card. So when the input desktop
+    is not "Default" yet, wait until it is, and then until the monitor layout
+    reads the same twice in a row. At most `limit` seconds, then start as
+    before. A start on the user's desktop - every ordinary launch - does not
+    wait at all.
+    """
+    if desktop() == "Default":
+        return False
+    started = clock()
+    print("[main] the user's desktop is not up yet (a start at logon?) - "
+          "waiting for it before reading the monitors and the cards",
+          file=sys.stderr)
+    while desktop() != "Default":
+        if clock() - started >= limit:
+            print(f"[main] the desktop did not come up in {limit:.0f} s - "
+                  "starting anyway", file=sys.stderr)
+            return True
+        sleep(poll)
+    last = layout()
+    while True:
+        if clock() - started >= limit:
+            print(f"[main] the monitor layout kept changing for {limit:.0f} s "
+                  "- starting anyway", file=sys.stderr)
+            return True
+        sleep(poll)
+        now = layout()
+        if now == last:
+            break
+        last = now
+    print(f"[main] the desktop is up after {clock() - started:.1f} s "
+          f"(virtual screen {last[2]}x{last[3]} at ({last[0]},{last[1]}), "
+          f"{last[4]} monitor(s))", file=sys.stderr)
+    return True
+
+
 def configure(st) -> None:
     """Read the config and decide what the program is going to do.
 

@@ -109,6 +109,15 @@ Scope and honesty notes:
   the start ended in "NeuralScreen failed to start"; it now opens the slower
   GDI capture instead, as it already did when the fast capture refuses.
 
+* **Autostart waits for the desktop before reading the monitors and the cards
+  (#158).** Started from the Run key while Windows was still logging on, the
+  program saw one wrong-sized display instead of three, was refused the screen
+  capture, and found the graphics cards listed in a different order - and built
+  everything for that moment. It now waits until the user's desktop is up and
+  the monitor layout stops changing (at most three minutes), then starts as
+  before. A start on the desktop - every ordinary launch - does not wait.
+  Thanks to the reporter, whose own fix this follows.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**
