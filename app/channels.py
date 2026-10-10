@@ -24,10 +24,21 @@ from __future__ import annotations
 
 import ctypes
 import sys
+import time
 
 from i18n import STRINGS as UI_STRINGS
 from protocol import (WINDOW_FLAG_DISABLE, send_dda, send_gray,
                       send_motion_size, send_out, send_wgc, send_window)
+
+# A desktop capture refused because the input is not ours yet - Winlogon's
+# desktop at logon, a UAC prompt, the lock screen - is asked for again, a few
+# seconds apart, for about two minutes. Any other refusal (a card that drives
+# no display, #88) is final for this worker, as before.
+DDA_RETRY_DELAY = 5.0
+DDA_RETRY_LIMIT = 24
+DDA_TRANSIENT = ("0x80070005",   # E_ACCESSDENIED: the input desktop is not ours
+                 "0x887A0026",   # DXGI_ERROR_ACCESS_LOST
+                 "0x887A0022")   # DXGI_ERROR_NOT_CURRENTLY_AVAILABLE
 
 
 def enable_out_shm(st) -> None:
@@ -128,6 +139,7 @@ def suspend_for_off(st) -> None:
             st.reader.wait_dack(timeout=15.0)
     st.dda_mode = False
     st.dda_attempted = True
+    st.dda_retry_at = 0.0
     st.gray_active = False
 
 
@@ -178,12 +190,20 @@ def enable_dda(st) -> None:
     A refusal is not fatal: we stay on sending frames from Python.
     """
     st.dda_attempted = True
+    st.dda_retry_at = 0.0
+    # The worker's own log list, read again after the reply: `or []` would
+    # swap an empty one for a fresh list the worker never writes to.
+    logs = getattr(st, "worker_logs", None)
+    if logs is None:
+        logs = []
+    seen = len(logs)
     try:
         # In DDA mode guides still need the frame (motion), so dxcam
         # keeps running - we simply stop sending colour to the worker.
         send_dda(st.worker, st.width, st.height, 0)
         st.reader.wait_dack(timeout=15.0)
         st.dda_mode = True
+        st.dda_retries = 0
         st.gpu_switch_pending = False  # the card runs capture - nothing is split
         sync_gray(st)
         print("[main] screen capture inside the worker (DDA1): no colour through the pipe")
@@ -191,6 +211,25 @@ def enable_dda(st) -> None:
         st.dda_mode = False
         print(f"[main] capture inside the worker unavailable ({exc}) - frames through Python",
               file=sys.stderr)
+        # Refused because the desktop is not ours yet (#158): until here the
+        # whole session stayed on the slow Python capture, because nothing
+        # asked again.
+        # The reason is in the worker's log, which a thread of its own reads
+        # from stderr - it can land a moment after the DACK on stdout.
+        deadline = time.monotonic() + 0.5
+        while True:
+            refusal = " ".join(str(line) for line in logs[seen:]
+                               if "DuplicateOutput" in str(line))
+            if refusal or time.monotonic() >= deadline:
+                break
+            time.sleep(0.02)
+        retries = int(getattr(st, "dda_retries", 0) or 0)
+        if any(code in refusal for code in DDA_TRANSIENT) and retries < DDA_RETRY_LIMIT:
+            st.dda_retries = retries + 1
+            st.dda_retry_at = time.monotonic() + DDA_RETRY_DELAY
+            print(f"[main] the desktop refused the capture for now - asking again "
+                  f"in {DDA_RETRY_DELAY:.0f} s ({st.dda_retries}/{DDA_RETRY_LIMIT})",
+                  file=sys.stderr)
         # The chosen card could not open a capture session for THIS monitor.
         # It may drive another display, which is exactly the multi-GPU #88
         # case. The pipeline is SPLIT now: the network runs on the chosen
@@ -200,6 +239,17 @@ def enable_dda(st) -> None:
             st.gpu_switch_pending = False
             st.display.alert(UI_STRINGS[st.lang].get(
                 "gpu_split", "The chosen card drives no display - the capture stays on the display card"))
+
+
+def rearm_dda_if_due(st) -> bool:
+    """Let the loop ask for the desktop capture again once a retry is due."""
+    due = float(getattr(st, "dda_retry_at", 0.0) or 0.0)
+    if (not due or getattr(st, "dda_mode", False) or st.window_hwnd is not None
+            or time.monotonic() < due):
+        return False
+    st.dda_retry_at = 0.0
+    st.dda_attempted = False
+    return True
 
 
 def enable_wgc(st) -> bool:
@@ -250,6 +300,8 @@ def forget_dda(st) -> None:
     """The worker restarted - its DDA capture died with the process."""
     st.dda_mode = False
     st.dda_attempted = False
+    st.dda_retry_at = 0.0
+    st.dda_retries = 0
     st.gray_active = False
 
 

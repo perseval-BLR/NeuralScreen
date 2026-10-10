@@ -411,6 +411,10 @@ class _Pipeline:
         "consecutive_restarts",
         "dda_attempted",
         "dda_mode",
+        #: When a desktop capture refused for now (the input desktop is not
+        #: ours yet) is asked for again, and how often it was (#158).
+        "dda_retry_at",
+        "dda_retries",
         "display",
         "follow_pos",
         "follow_resize",
@@ -967,6 +971,7 @@ def main() -> int:
                     continue
             if st.reader is not iteration_reader:
                 continue
+            channels.rearm_dda_if_due(st)
             if st.want_dda and not st.dda_mode and not st.dda_attempted:
                 if st.window_hwnd is not None:
                     # The channel module opens channels; deciding that the

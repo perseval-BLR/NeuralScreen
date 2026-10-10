@@ -126,6 +126,14 @@ Scope and honesty notes:
   stand-in is now only for the session; the saved monitor changes when the user
   picks another in the menu.
 
+* **A screen capture refused "for now" is asked for again (#158).** At logon,
+  under a UAC prompt or on the lock screen, Windows refuses the fast desktop
+  capture because the input is not the user's yet. The program asked once per
+  worker, so one refusal at the wrong moment left the whole session on the slow
+  capture path. It now asks again every few seconds for about two minutes. A
+  refusal for any other reason - a card that drives no display - is final, as
+  before.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**

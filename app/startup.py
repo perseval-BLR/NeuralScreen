@@ -974,6 +974,8 @@ def bring_up(st) -> None:
     st.present_attempted = False  # already tried for the current worker (do not spam)
     st.dda_mode = False          # the worker captures the screen itself
     st.dda_attempted = False     # already tried for the current worker (do not spam)
+    st.dda_retry_at = 0.0        # a refusal "for now" asks again then (#158)
+    st.dda_retries = 0
     st.window_hwnd = None        # WGCW target; None = the whole desktop (DDA1)
     st.last_foreground = 0       # the last focused window that was not ours
     #: The window list the picker shows, held still while that page is open.
