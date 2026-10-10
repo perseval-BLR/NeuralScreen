@@ -1042,7 +1042,8 @@ def _autostart_enabled() -> bool:
 
 def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
                          work_scale: float, split_pos: float,
-                         startup_menu: bool, nr_small: bool, menu) -> dict:
+                         startup_menu: bool, nr_small: bool, menu,
+                         monitor_wanted: str | None = None) -> dict:
     """The settings _save_menu_layout persists into config.json.
 
     Everything the user can change in the menu: the panel geometry, the
@@ -1054,7 +1055,11 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
     saved monitor keeps pointing at the same physical display when the
     arrangement changes; old configs with a positional int still load.
     """
-    monitor_name = devicename_for_output_idx(int(monitor))
+    # A monitor that is standing in for the user's own (missing at startup,
+    # or gone mid-session) is not saved over it: monitor_wanted is the name
+    # the user chose, kept until they pick another.
+    monitor_name = (monitor_wanted if monitor_wanted
+                    else devicename_for_output_idx(int(monitor)))
     return {
         "menu_scale": round(menu.user_scale, 2),
         # Written from the config, not from the menu: the menu has no opinion
@@ -1704,7 +1709,8 @@ def save_menu_layout(st) -> bool:
         data = json.loads(st.cfg_path.read_text(encoding="utf-8-sig"))
         payload = _menu_layout_payload(
             st.cfg, st.params, st.monitor, st.lang, st.work_scale, st.split_pos,
-            st.startup_menu, st.nr_small, st.display.menu)
+            st.startup_menu, st.nr_small, st.display.menu,
+            monitor_wanted=getattr(st, "monitor_wanted", None))
         data.update(payload)
         # "No per-pass set" is the key's absence, and update() cannot remove
         # a key: a set the user turned off stayed in the file and came back

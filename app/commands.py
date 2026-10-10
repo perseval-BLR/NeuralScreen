@@ -1201,6 +1201,9 @@ def apply_menu_action(st, action: tuple) -> None:
         except (ValueError, IndexError):
             print(f"[main] invalid monitor: {action[1]!r}", file=sys.stderr)
             return
+        # A monitor the user picks is the one config.json keeps from now on,
+        # whatever stood in for a missing one until here.
+        st.monitor_wanted = None
         if new_monitor != st.capture.devicename:
             pipeline.switch_monitor(st, new_monitor)
     elif kind == "window":

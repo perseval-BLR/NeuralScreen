@@ -420,6 +420,10 @@ class _Pipeline:
         #: monitor that stays gone does not repeat the line every 30 frames
         #: (#128). Cleared as soon as the monitor answers again.
         "mon_gone",
+        #: The monitor config.json keeps while another stands in for it
+        #: (missing at startup, or gone mid-session) - None once the user
+        #: picks one (#158).
+        "monitor_wanted",
         "environment",
         "frame_index",
         "gpu_ok",

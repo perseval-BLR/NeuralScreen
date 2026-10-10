@@ -1220,6 +1220,10 @@ def follow_monitor(st) -> None:
         print(f"[main] the captured monitor {devicename!r} is gone - switching "
               f"to {live!r}", file=sys.stderr)
         st.display.alert(UI_STRINGS[st.lang]["mon_fail"])
+        # The stand-in is for this session; config.json keeps the monitor the
+        # user chose (a cable unplug or a dock must not move it for good).
+        if devicename and not getattr(st, "monitor_wanted", None):
+            st.monitor_wanted = devicename
         switch_monitor(st, live)
         return
     # The monitor is back (or was never gone): forget the absence, so the

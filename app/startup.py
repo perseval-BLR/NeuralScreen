@@ -591,6 +591,7 @@ def configure(st) -> None:
     st.environment = dict(ENVIRONMENT)
     st.width, st.height = int(st.cfg["width"]), int(st.cfg["height"])
     monitor_cfg = st.cfg["monitor"]
+    st.monitor_wanted = None
     if isinstance(monitor_cfg, str):
         # New configs store the DXGI devicename - resolve it to the current
         # output index; a monitor that is not connected falls back to 0.
@@ -599,6 +600,10 @@ def configure(st) -> None:
             print(f"[main] monitor {monitor_cfg!r} from config.json is not "
                   "connected - using monitor 0", file=sys.stderr)
             st.monitor = 0
+            # Still the user's monitor: a display that is late at logon (a
+            # TV, a dock, a DisplayPort monitor waking up) must not be
+            # replaced in config.json by the stand-in on the first save.
+            st.monitor_wanted = monitor_cfg
     else:
         # Old configs store the positional index.
         st.monitor = int(monitor_cfg)

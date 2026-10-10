@@ -118,6 +118,14 @@ Scope and honesty notes:
   before. A start on the desktop - every ordinary launch - does not wait.
   Thanks to the reporter, whose own fix this follows.
 
+* **A monitor that is late or unplugged keeps its place in the settings
+  (#158).** When the saved monitor was not there at startup - a TV, a dock, a
+  monitor still waking up - the program used the first one for the session,
+  which is right, but the next save wrote that one over the user's choice for
+  good. The same happened when the captured monitor vanished mid-session. The
+  stand-in is now only for the session; the saved monitor changes when the user
+  picks another in the menu.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**
