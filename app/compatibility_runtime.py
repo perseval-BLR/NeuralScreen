@@ -37,7 +37,7 @@ from protocol import (
     CREATE_CATEGORY_DRIVER_OUT_OF_DATE, CREATE_CATEGORY_NONE,
     CREATE_CATEGORY_UNSUPPORTED, WORKER_STARTUP_TIMEOUT_S, send_frame,
 )
-from settings_io import APP_VERSION
+from settings_io import APP_VERSION, PROFILES
 
 
 CACHE_PATH = BASE_DIR / "compatibility-cache.json"
@@ -324,12 +324,25 @@ def require_pass(st) -> None:
         raise RuntimeError("production worker blocked: compatibility key changed")
 
 
+def preflight_params() -> dict:
+    """The parameters the preflight runs with: the shipped profile, always.
+
+    Not the user's. The probe asks whether this runtime changes the picture on
+    this card, and the verdict is cached per runtime/driver/card - with no
+    parameters in the key. Run with a user's preset at intensity 0 (which the
+    range allows), the runtime returned the frame byte for byte as it was
+    told to, the verdict was "no effect", and the card was blocked as
+    unsupported until config.json was edited by hand.
+    """
+    return dict(PROFILES["Natural"], style=1)
+
+
 def run_preflight(st, *, force: bool = False) -> CompatibilityResult:
     """Run or reuse the preflight and retain its exact verdict on ``st``."""
     key = build_key(st)
     service = CompatibilityPreflight(
         CompatibilityCache(CACHE_PATH),
-        lambda: NativeSelfTestRunner(st.params),
+        lambda: NativeSelfTestRunner(preflight_params()),
         frames=production_synthetic_frames(),
     )
     result = service.run(key, force=force)
