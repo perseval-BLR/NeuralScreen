@@ -70,6 +70,10 @@ Scope and honesty notes:
   and then tone lost the intensity, a profile followed by a slider lost the
   profile, and a preset saved right after a slider move stored the old value.
 
+* **Turning the second parameter set (NR passes 2+) off is remembered.** The
+  switch cleared it for the running session but left it in config.json, so with
+  two or more passes the next launch brought the set back on.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**

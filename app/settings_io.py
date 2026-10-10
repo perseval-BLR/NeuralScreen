@@ -1696,9 +1696,15 @@ def save_menu_layout(st) -> bool:
     """
     try:
         data = json.loads(st.cfg_path.read_text(encoding="utf-8-sig"))
-        data.update(_menu_layout_payload(
+        payload = _menu_layout_payload(
             st.cfg, st.params, st.monitor, st.lang, st.work_scale, st.split_pos,
-            st.startup_menu, st.nr_small, st.display.menu))
+            st.startup_menu, st.nr_small, st.display.menu)
+        data.update(payload)
+        # "No per-pass set" is the key's absence, and update() cannot remove
+        # a key: a set the user turned off stayed in the file and came back
+        # on the next launch.
+        if "nr_pass_params" not in payload:
+            data.pop("nr_pass_params", None)
         _atomic_write_json(st.cfg_path, data)
         return True
     except Exception as exc:
