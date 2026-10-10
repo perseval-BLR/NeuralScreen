@@ -3512,6 +3512,10 @@ static bool PresentBypass(VideoState &v)
     if (framegen && FgPresent(v, v.color.tex,
                               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true))
         return true;
+    // FG gave up on this frame (an evaluate fault leaves its presenter thread
+    // running): stop it before presenting here, as PresentFrame does, or two
+    // threads present into one swap chain.
+    if (framegen) StopFgPresentation();
     ID3D12Resource *bb = nullptr;
     const HRESULT get_buffer = g_present_swap->GetBuffer(
         g_present_swap->GetCurrentBackBufferIndex(), __uuidof(ID3D12Resource),
