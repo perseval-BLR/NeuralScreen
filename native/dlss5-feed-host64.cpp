@@ -49,6 +49,7 @@
 #include <tlhelp32.h>   // the parent process: whose panel to look for
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 #include <emmintrin.h>
 #include "scene_cut.h"   // the scene-cut rule, shared with app/scene_cut.py
 #include <fcntl.h>
@@ -1898,6 +1899,8 @@ static constexpr uint32_t MOTION_MAGIC     = 0x53544F4Du; // "MOTS" -- client ->
 static constexpr uint32_t MOTION_ACK_MAGIC = 0x4B43414Du; // "MACK" -- worker -> client reply to MOTS
 static constexpr uint32_t PER_PASS_MAGIC     = 0x4D525050u; // "PPRM" -- client -> worker: passes 2..N get their own parameters
 static constexpr uint32_t PER_PASS_ACK_MAGIC = 0x50414150u; // "PAAP" -- worker -> client reply to PPRM
+static constexpr uint32_t LENS_MAGIC         = 0x534E454Cu; // "LENS" -- client -> worker: the fisheye lens
+static constexpr uint32_t LENS_ACK_MAGIC     = 0x4B414E4Cu; // "LNAK" -- worker -> client reply to LENS
 static constexpr uint32_t PER_PASS_FLAG_ENABLED = 0x1u;     // passes 2+ use this set; clear = main set for every pass
 static constexpr uint32_t DDA_MAGIC        = 0x31414444u; // "DDA1" -- client -> worker: worker takes over capture
 static constexpr uint32_t DDA_ACK_MAGIC    = 0x4B434144u; // "DACK" -- worker -> client reply to DDA1
@@ -2098,6 +2101,18 @@ struct VideoPerPassAck
     uint32_t magic, ok, reserved0, reserved1;
     int64_t pts;
 };
+// LENS: client -> worker. The fisheye lens over what the viewer sees
+// (lens.inl): flags bit0 = on, fov = the game's horizontal field of view in
+// degrees, noise = webcam noise over it, 0..1. 24 bytes like DDA1, so it is
+// the frame header's own size. Read between frames, applied to the next one;
+// nothing is recreated.
+struct VideoLensCmd
+{
+    uint32_t magic, flags;
+    float fov, noise;
+    int64_t pts;
+};
+using VideoLensAck = VideoPerPassAck;   // magic LNAK, ok, two reserved, pts
 // DDA1: client -> worker. "Take over capture from the desktop yourself."
 // width/height = required capture size (usually the full output size);
 // flags: bit0 WANT pixels back (screenshot), bit1 = present overlay stays on.
@@ -2228,6 +2243,8 @@ static VideoRecCmd g_rec_cmd = {};
 static_assert(offsetof(VideoFrameHeader, pts) == 16, "VideoFrameHeader is not packed");
 static_assert(offsetof(VideoResultHeader, pts) == 20, "VideoResultHeader is not packed");
 static_assert(offsetof(VideoWgcCmd, hwnd) == 24, "VideoWgcCmd is not packed");
+static_assert(sizeof(VideoLensCmd) == 24, "VideoLensCmd != LENS_FMT");
+static_assert(sizeof(VideoLensAck) == 24, "VideoLensAck != LENS_ACK_FMT");
 
 struct VideoTex
 {
@@ -3412,6 +3429,8 @@ static struct EarlyReply
 } g_early_reply;
 static void SendEarlyReply();   // defined next to WriteExact, below
 
+#include "lens.inl"
+
 static bool PresentFrame(VideoState &v, UINT64 *submitted = nullptr)
 {
     if (!RebuildPresentIfStale()) return false;
@@ -3450,14 +3469,17 @@ static bool PresentFrame(VideoState &v, UINT64 *submitted = nullptr)
     if (BeginCommands())
     {
         ProfileGpuBegin(PS_PRESENT);
+        // What the viewer sees: the network's frame, or its fisheye lens.
+        ID3D12Resource *shown = LensApply(h.list, v.output,
+                                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, LENS_SHOWN);
         // The export stays on the worker's queue; the back buffer is written
         // on the present queue once this list is done (CopyToBackBuffer).
-        auto pre = Transition(v.output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        auto pre = Transition(shown, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                               D3D12_RESOURCE_STATE_COPY_SOURCE);
         h.list->ResourceBarrier(1, &pre);
-        ExportCopy(h.list, v.output, v.upscale ? v.full_w : v.w,
+        ExportCopy(h.list, shown, v.upscale ? v.full_w : v.w,
                    v.upscale ? v.full_h : v.hgt);
-        auto post = Transition(v.output, D3D12_RESOURCE_STATE_COPY_SOURCE,
+        auto post = Transition(shown, D3D12_RESOURCE_STATE_COPY_SOURCE,
                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         h.list->ResourceBarrier(1, &post);
         ProfileGpuEnd(PS_PRESENT);
@@ -3465,7 +3487,7 @@ static bool PresentFrame(VideoState &v, UINT64 *submitted = nullptr)
         if (submitted) *submitted = fv;
         if (fv != 0) SendEarlyReply();
         if (ProfileWait(PS_PRESENT, fv, submitted ? 60000 : 2000)
-            && CopyToBackBuffer(bb, v.output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, "present"))
+            && CopyToBackBuffer(bb, shown, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, "present"))
         {
             if (PhaseEnabled()) { g_frame_stamp.present_call = PhaseNow(); g_frame_stamp.fence = fv; }
             ok = PresentStatus(g_present_swap->Present(0, 0), "present");
@@ -3532,19 +3554,22 @@ static bool PresentBypass(VideoState &v)
     if (BeginCommands())
     {
         ProfileGpuBegin(PS_PRESENT);
+        ID3D12Resource *shown = LensApply(h.list, v.color.tex,
+                                          D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                          LENS_SHOWN);
         // As in PresentFrame: export here, the back buffer on the present queue.
-        auto pre = Transition(v.color.tex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+        auto pre = Transition(shown, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                               D3D12_RESOURCE_STATE_COPY_SOURCE);
         h.list->ResourceBarrier(1, &pre);
-        ExportCopy(h.list, v.color.tex, v.upscale ? v.full_w : v.w,
+        ExportCopy(h.list, shown, v.upscale ? v.full_w : v.w,
                    v.upscale ? v.full_h : v.hgt);
-        auto post = Transition(v.color.tex, D3D12_RESOURCE_STATE_COPY_SOURCE,
+        auto post = Transition(shown, D3D12_RESOURCE_STATE_COPY_SOURCE,
                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         h.list->ResourceBarrier(1, &post);
         ProfileGpuEnd(PS_PRESENT);
         const UINT64 fv = EndCommands();
         if (ProfileWait(PS_PRESENT, fv, 2000)
-            && CopyToBackBuffer(bb, v.color.tex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            && CopyToBackBuffer(bb, shown, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                                 "bypass-present"))
         {
             if (PhaseEnabled()) { g_frame_stamp.present_call = PhaseNow(); g_frame_stamp.fence = fv; }
@@ -4512,6 +4537,8 @@ static VideoWgcCmd             g_wgc_cmd = {};
 // The PPRM command, same arrangement: the dispatcher reads it into this and
 // returns a message number, the handler above applies it.
 static VideoPerPassCmd         g_per_pass_cmd = {};
+// LENS, read the same way.
+static VideoLensCmd            g_lens_cmd = {};
 // Gray downsample (GRAY): write luminance (flow size) into a client mapping.
 static HANDLE                  g_gray_file = nullptr;   // client's mapping handle
 static BYTE                   *g_gray_map = nullptr;    // mapped view
@@ -6825,6 +6852,9 @@ static bool DownloadVideoFrame(VideoState &v, std::vector<BYTE> &packed,
 {
     if (src == nullptr) src = v.output;
     if (!BeginCommands()) return false;
+    // The pixels the viewer sees: the lens too, when it is on (every caller
+    // passes the same state before and after).
+    src = LensApply(h.list, src, src_before, LENS_PIXELS);
     D3D12_RESOURCE_BARRIER a = Transition(src, src_before,
                                            D3D12_RESOURCE_STATE_COPY_SOURCE);
     h.list->ResourceBarrier(1, &a);
@@ -6883,6 +6913,7 @@ static void RecordClosingFrame(VideoState &v)
         ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
         : D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     if (!BeginCommands()) return;
+    src = LensApply(h.list, src, rest, LENS_PIXELS);
     D3D12_RESOURCE_BARRIER pre = Transition(src, rest, D3D12_RESOURCE_STATE_COPY_SOURCE);
     h.list->ResourceBarrier(1, &pre);
     ++g_frame_serial;          // the same picture, recorded again at the stop
@@ -7067,6 +7098,11 @@ static int ReadVideoMessage(VideoState &v, VideoFrameHeader &fh, std::vector<BYT
         // per-magic and must stay unique; 13 is the next free one.
         return 13;
     }
+    if (fh.magic == LENS_MAGIC)
+    {
+        memcpy(&g_lens_cmd, &fh, sizeof(g_lens_cmd));
+        return 14;   // unique, like every number here (see 13 above)
+    }
     // A magic no handler owns: the stream is out of step with the client, not
     // closed. It used to return 0 like EOF, so a desync left the log saying
     // "input stream closed" and the worker exiting 0 - a clean shutdown.
@@ -7079,6 +7115,7 @@ static void ReleaseVideoTextures(VideoState &v)
 {
     CloseNvofa();
     CloseStab();
+    CloseLens();
     NvofaResetLatch();
     if (PhaseEnabled()) { ++g_capture_generation; g_previous_source_qpc = 0; g_frame_stamp = {}; }
     CloseFgResources();
@@ -7408,12 +7445,14 @@ static int RunVideo()
         // parameters, so like 1/10/11/12 it does not invalidate the prepared
         // frame. Missing it here sent every PPRM through the "not prepared"
         // path and threw away the frame that was ready.
-        if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13) prepared = false;
+        if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13 && msg != 14) prepared = false;
         // A command may change what the network makes. CAP1 (10) does not: it
         // only latches the capture the next FRM1 consumes, and on the CPU
         // motion path it precedes every frame - counting it here kept the
         // still-screen hold and the stabilizer's history from ever forming.
-        if (msg != 1 && msg != 10) { g_still_evals = 0; StabForget(); }
+        // LENS (14) neither: the lens is applied after the network, to its
+        // output, and the held result is exactly what it bends.
+        if (msg != 1 && msg != 10 && msg != 14) { g_still_evals = 0; StabForget(); }
         if (msg < 0) return 11;   // protocol desync: not a clean end of input
         if (msg == 0)
         {
@@ -7728,6 +7767,28 @@ static int RunVideo()
             else
                 Log("[video] PPRM: cleared - every pass uses the main set");
             const VideoPerPassAck ack = { PER_PASS_ACK_MAGIC, 1u, 0u, 0u, g_per_pass_cmd.pts };
+            if (!WriteExact(g_wire, &ack, sizeof(ack))) return 10;
+            continue;
+        }
+        if (msg == 14)
+        {
+            // LENS: the fisheye lens (lens.inl). Two numbers and no GPU
+            // object: the next present draws with them. A field of view that
+            // is not a number keeps the last good one.
+            const bool on = (g_lens_cmd.flags & 1u) != 0;
+            const float fov = g_lens_cmd.fov;
+            if (std::isfinite(fov)) g_lens_fov = std::clamp(fov, kLensFovMin, kLensFovMax);
+            if (std::isfinite(g_lens_cmd.noise))
+                g_lens_noise = std::clamp(g_lens_cmd.noise, 0.0f, 1.0f);
+            // Logged when it switches, not on every angle: a dragged slider
+            // sends one command per degree.
+            if (on != g_lens_on)
+            {
+                g_lens.said = false;
+                if (!on) Log("[lens] off");
+            }
+            g_lens_on = on;
+            const VideoLensAck ack = { LENS_ACK_MAGIC, 1u, 0u, 0u, g_lens_cmd.pts };
             if (!WriteExact(g_wire, &ack, sizeof(ack))) return 10;
             continue;
         }

@@ -96,6 +96,7 @@ def main() -> int:
         11: "RECS: starts a recording on the frame that is ready",
         12: "RECE: stops a recording",
         13: "PPRM: passes 2..N get their own parameters",
+        14: "LENS: the fisheye lens over the output, applied after the network",
     }
     m = re.search(r"if \(msg != 1 && msg != 10[^)]*\) prepared = false;", src)
     if not m:

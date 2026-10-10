@@ -673,9 +673,10 @@ static void FgDump(ID3D12Resource *source, D3D12_RESOURCE_STATES state, unsigned
 // is not showing at all. Records into h.list.
 static void ExportFgSource(VideoState &v, bool bypass)
 {
-    ID3D12Resource *export_src = bypass ? v.color.tex : v.output;
     const auto export_rest = bypass ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
                                     : D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    ID3D12Resource *export_src = LensApply(h.list, bypass ? v.color.tex : v.output,
+                                           export_rest, LENS_EXPORT);
     auto spout_pre = Transition(export_src, export_rest, D3D12_RESOURCE_STATE_COPY_SOURCE);
     h.list->ResourceBarrier(1, &spout_pre);
     ExportCopy(h.list, export_src, g_fg.w, g_fg.height);
@@ -855,6 +856,11 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
             Transition(destination, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE)};
         h.list->ResourceBarrier(2, after);
     }
+    // The fisheye lens goes on what the presenter shows - the real frame and
+    // each generated one, all resting in COPY_SOURCE - never on what DLSS-G
+    // interpolated from: its motion field is the rectilinear picture's.
+    LensInPlace(h.list, slot->real.get());
+    for (unsigned i = 0; i < g_fg_count; ++i) LensInPlace(h.list, slot->interpolated[i].get());
     ExportFgSource(v, bypass);
     const UINT64 fg_fence = EndCommands();
     if (!ProfileWait(PS_FG, fg_fence, 30000, "fg-evaluate"))

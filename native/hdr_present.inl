@@ -234,8 +234,13 @@ static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg, UINT64 *submit
     h.list->ResourceBarrier(1, &to_copy_source);
     // Both candidates are in COPY_SOURCE here. The back buffer is written on
     // the present queue once this list is done (CopyToBackBuffer, below).
-    if (rec_pq) RecordCopyAt(h.list, g_rec_pq, rec_t);
-    else if (rec && framegen) RecordCopyAt(h.list, g_hdr_output, rec_t);
+    // The recording takes the fisheye lens too, when it is on.
+    if (rec_pq)
+        RecordCopyAt(h.list, LensApply(h.list, g_rec_pq, D3D12_RESOURCE_STATE_COPY_SOURCE,
+                                       LENS_RECORD), rec_t);
+    else if (rec && framegen)
+        RecordCopyAt(h.list, LensApply(h.list, g_hdr_output, D3D12_RESOURCE_STATE_COPY_SOURCE,
+                                       LENS_RECORD), rec_t);
     if (rec_pq)
     {
         auto back = Transition(g_rec_pq, D3D12_RESOURCE_STATE_COPY_SOURCE,
@@ -248,10 +253,16 @@ static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg, UINT64 *submit
         Transition(v.output, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)};
     h.list->ResourceBarrier(1, post);
     h.list->ResourceBarrier(bypass ? 1 : 2, post + 1);
+    // What the screen gets: the composite, or its fisheye lens. With Frame
+    // Generation the composite goes to DLSS-G unbent and FgPresent puts the
+    // lens on what it shows.
+    ID3D12Resource *shown = framegen ? g_hdr_output
+        : LensApply(h.list, g_hdr_output, D3D12_RESOURCE_STATE_COMMON, LENS_SHOWN);
     // Spout consumers are SDR, and so is every recording but an HDR10 one
     // (taken above; RecordCopy stands down for it).
-    ID3D12Resource *export_src = bypass ? v.color.tex : v.output;
     auto rest = bypass ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE : D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    ID3D12Resource *export_src = LensApply(h.list, bypass ? v.color.tex : v.output, rest,
+                                           LENS_EXPORT);
     auto export_pre = Transition(export_src, rest, D3D12_RESOURCE_STATE_COPY_SOURCE);
     h.list->ResourceBarrier(1, &export_pre);
     ExportCopy(h.list, export_src, w, height);
@@ -290,7 +301,7 @@ static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg, UINT64 *submit
         // already fall through to a plain present here.
         return PresentHdr(v, bypass, false, submitted);
     }
-    if (!CopyToBackBuffer(bb.get(), g_hdr_output, D3D12_RESOURCE_STATE_COMMON, "hdr-present"))
+    if (!CopyToBackBuffer(bb.get(), shown, D3D12_RESOURCE_STATE_COMMON, "hdr-present"))
     {
         if (g_submission_failed) bb.detach();
         return false;

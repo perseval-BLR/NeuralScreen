@@ -550,6 +550,18 @@ PER_PASS_FMT = "<4I4fq"
 PER_PASS_ACK_FMT = "<4Iq"       # magic, ok, reserved0, reserved1, pts
 PER_PASS_FLAG_ENABLED = 0x1     # passes 2+ use this set; clear = fall back to main
 
+# LENS: the fisheye lens over what the viewer sees (native/lens.inl). The
+# worker bends its output - after the network, the HDR composite and Frame
+# Generation - from the game's horizontal field of view, so the edges a wide
+# rectilinear frame stretches are compressed the way a real wide lens does.
+# Read between frames; a worker that never hears LENS shows no lens.
+LENS_MAGIC = 0x534E454C          # 'LENS'
+LENS_ACK_MAGIC = 0x4B414E4C      # 'LNAK'
+LENS_FMT = "<IIffq"              # magic, flags, fov (degrees), noise (0..1), pts (24)
+LENS_ACK_FMT = "<4Iq"            # magic, ok, reserved0, reserved1, pts
+LENS_FLAG_ON = 0x1
+LENS_FOV_MIN, LENS_FOV_MAX = 30.0, 170.0
+
 # RNSZ: change the work resolution on the fly (without restarting the worker
 # process). The worker recreates the NGX feature at the new sizes and answers
 # RACK.
@@ -775,6 +787,22 @@ def send_per_pass(worker: subprocess.Popen, params: dict | None,
     worker.stdin.flush()
 
 
+def send_lens(worker: subprocess.Popen, enabled: bool, fov: float,
+              noise: float = 0.0, pts: int = 0) -> None:
+    """LENS: the fisheye lens on or off, from a horizontal field of view,
+    with webcam noise over it (0..1).
+
+    Nothing is recreated and nothing is waited for: the worker applies it to
+    the next frame and answers LNAK, which the reader drops like any answer
+    nobody waits for.
+    """
+    fov = min(LENS_FOV_MAX, max(LENS_FOV_MIN, float(fov)))
+    noise = min(1.0, max(0.0, float(noise)))
+    worker.stdin.write(struct.pack(LENS_FMT, LENS_MAGIC,
+                                   LENS_FLAG_ON if enabled else 0, fov, noise, int(pts)))
+    worker.stdin.flush()
+
+
 def send_motion_size(worker: subprocess.Popen, width: int, height: int,
                      flags: int = 0, pts: int = 0) -> None:
     """MOTS: at what resolution the motion field will arrive.
@@ -992,6 +1020,11 @@ class WorkerReader:
                     rest = _read_exact(self._worker.stdout, struct.calcsize(PER_PASS_ACK_FMT) - 4)
                     _magic, ok, _r0, _r1, _pts = struct.unpack(PER_PASS_ACK_FMT, magic_raw + rest)
                     self._queue.put(("paap", ok))
+                elif magic == LENS_ACK_MAGIC:
+                    # LNAK: the lens settings arrived; nothing waits for it
+                    rest = _read_exact(self._worker.stdout, struct.calcsize(LENS_ACK_FMT) - 4)
+                    _magic, ok, _r0, _r1, _pts = struct.unpack(LENS_ACK_FMT, magic_raw + rest)
+                    self._queue.put(("lnak", ok))
                 elif magic == SHM_ACK_MAGIC:
                     # SACK: acknowledgement of SHMI - the worker opened the mapping
                     rest = _read_exact(self._worker.stdout, struct.calcsize(SHM_ACK_FMT) - 4)
