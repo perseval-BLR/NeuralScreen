@@ -534,15 +534,24 @@ def pick_convert_files(st) -> None:
     """The "Add files" picker, off the UI thread (it is modal)."""
     if st.shot_dialog_open:
         return
-    st.shot_dialog_open = True
-    # pygame is not thread-safe: the handle is read here, on the main thread.
-    hwnd = st.display.get_hwnd()
     # A CONSTANT start folder, on purpose: Windows reopens the dialog where
     # the user last picked from whenever it is handed the same folder as the
     # first time, so this is where the very first visit starts and nothing
     # more (see dialogs.ask_open_paths).
-    start_dir = str(_configured_directory(st.cfg.get("recording_dir"),
-                                          BASE_DIR / "recordings"))
+    # Worked out BEFORE the dialog flag is raised: a recording folder on a
+    # drive that is gone makes mkdir raise, and a raise after the flag left
+    # it up for the session - screenshots, the folder pickers and this
+    # picker all refused silently until a restart.
+    try:
+        start_dir = str(_configured_directory(st.cfg.get("recording_dir"),
+                                              BASE_DIR / "recordings"))
+    except OSError as exc:
+        print(f"[main] the recording folder is unavailable ({exc}) - the "
+              "picker opens where Windows last left it", file=sys.stderr)
+        start_dir = None
+    st.shot_dialog_open = True
+    # pygame is not thread-safe: the handle is read here, on the main thread.
+    hwnd = st.display.get_hwnd()
     title = UI_STRINGS[st.lang].get("convert_dialog",
                                     "Choose images or videos to convert")
 

@@ -78,6 +78,13 @@ Scope and honesty notes:
   main sliders and presets already refused such numbers; the set for NR passes
   2+ let NaN through to the worker.
 
+* **A recording folder that is gone no longer locks every dialog.** "Add files"
+  on the conversion page starts in the recording folder; when that folder could
+  not be created (a disconnected drive, an offline share) the picker failed in
+  a way that left screenshots, the folder pickers, the diagnostic package and
+  the picker itself refusing silently until a restart. The picker now opens
+  where Windows last left it.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**
