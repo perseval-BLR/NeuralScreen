@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import math
 import os
 import sys
 import winreg
@@ -357,9 +358,14 @@ def clean_per_pass(value) -> dict | None:
         if key not in value:
             return None
         try:
-            out[key] = clamp_param(key, value[key])
+            number = float(value[key])
         except (TypeError, ValueError):
             return None
+        # json reads NaN and Infinity, and min/max let NaN through the clamp
+        # untouched - it reached the worker's wire as a strength.
+        if not math.isfinite(number):
+            return None
+        out[key] = clamp_param(key, number)
     return out
 
 

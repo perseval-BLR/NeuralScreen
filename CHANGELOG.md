@@ -74,6 +74,10 @@ Scope and honesty notes:
   switch cleared it for the running session but left it in config.json, so with
   two or more passes the next launch brought the set back on.
 
+* **A hand-edited second parameter set with NaN or Infinity is ignored.** The
+  main sliders and presets already refused such numbers; the set for NR passes
+  2+ let NaN through to the worker.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**
