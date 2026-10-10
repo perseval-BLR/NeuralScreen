@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.3.0 - 2026-10-10 - Fisheye with webcam noise, autostart that waits for the desktop, and the 2.2.0 audit fixes
 
 * **Fisheye: a wide-lens look with the game's own field of view, and a little
   webcam noise.** A new switch on the main page, under the effect sliders,
