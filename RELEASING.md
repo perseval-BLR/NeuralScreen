@@ -476,8 +476,8 @@ failure. The messages worth recognising:
 * **Step order for the screenshots** (before the manifest re-pin) is what the code
   allows, because the re-pin requires a clean tracked tree; it is not written down
   as a procedure anywhere.
-* **The `> [!IMPORTANT]` AMD block** is verified only in the sense that a
-  human reads the release; `verify_github.py` checks the notice and the driver
-  warning and nothing else in the body.
+* **The body beyond the two mandatory blocks** is verified only in the sense
+  that a human reads the release; `verify_github.py` checks the notice and the
+  driver warning and nothing else in the body.
 * The notes-length check reads the **latest** release, so it cannot gate a draft.
   There is no pre-publish length gate in the code.
