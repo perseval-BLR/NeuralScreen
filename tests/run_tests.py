@@ -252,6 +252,7 @@ ABOUT = {
     "test_focus_z_order.py": "focused target stays below the worker picture and HUD",
     "test_split.py": "the before/after wipe leaves the left side untouched",
     "test_split_flag.py": "a wipe position that rounds to zero does not turn the wipe on",
+    "test_lens_menu.py": "the fisheye switch, angle and noise reach the worker as one LENS command each and are saved",
     "test_taskbar_window.py": "the taskbar button exists, opens the menu, closes cleanly",
     "test_taskbar_show.py": "duplicate taskbar activation shows the menu without closing it",
     "test_taskbar_startup_menu.py": "the menu never opens by itself at launch, whatever the cursor does",
@@ -269,6 +270,7 @@ ABOUT = {
     "test_window_mode.py": "the one-window hotkey switches the pipeline and back",
     "test_window_surround.py": "a window-sized frame's surround is keyed, the layer is really keyed",
     "test_window_mode_menu.py": "the menu stays fully visible across the window-mode switch",
+    "test_lens_app.py": "the saved fisheye lens reaches the real program's worker at startup",
     "test_switch_veil.py": "the mode-switch veil eases in/out and owns the layer",
     "test_runner_reporting.py": "pure runner routing, SKIP classification and exact summaries",
     "test_bundle_log_privacy.py": "the bundle log tail carries no converted file names, half lines or window titles",
@@ -461,6 +463,7 @@ TEST_GROUPS = {
         "test_per_pass_off_saved.py",
         "test_per_pass_nonfinite.py",
         "test_split_flag.py",
+        "test_lens_menu.py",
         "test_per_pass_seed.py",
         "test_scene_cut.py",
         "test_reveal_below_panel.py",
@@ -659,6 +662,7 @@ TEST_GROUPS = {
         "test_taskbar_window.py",
         "test_window_mode.py",
         "test_window_mode_menu.py",
+        "test_lens_app.py",
     }),
 }
 

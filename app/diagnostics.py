@@ -634,6 +634,9 @@ _SETTINGS_KEYS = (
     # answer "how was the program configured" and had quietly stopped
     # answering it for anything new (found in a reporter's package, #96).
     "nr_direct", "nr_passes", "residual_strength", "fps_overlay",
+    # The fisheye lens bends the whole picture: a report of "everything is
+    # warped / clicks miss" is answered by these two.
+    "lens", "lens_fov", "lens_noise",
     # What passes 2..N use, when they have their own set. Without it a report
     # from a two-pass session cannot say whether the cascade was running one
     # set or two - and that is exactly the difference between "the second pass

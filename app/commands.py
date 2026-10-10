@@ -33,6 +33,7 @@ import convert_jobs
 import dialogs
 import pipeline
 import power
+import protocol
 import settings_io
 from hotkeys import UNBIND_WORDS, build_bindings, parse_binding
 from i18n import STRINGS as UI_STRINGS
@@ -687,6 +688,26 @@ def _hotkey_owner(st, parsed, cmd: str) -> str | None:
     return None
 
 
+def send_lens_state(st) -> None:
+    """Tell the running worker the lens settings in the config - if one runs.
+
+    Not waited for: the worker answers LNAK and the reader drops it. A worker
+    that is not running is told by the main loop once it is (keyed on its
+    pid, like the pass count), so nothing is lost here.
+    """
+    worker = getattr(st, "worker", None)
+    if (getattr(st, "worker_failed", False) or worker is None
+            or worker.poll() is not None):
+        return
+    try:
+        protocol.send_lens(worker, bool(st.cfg.get("lens", False)),
+                           float(st.cfg.get("lens_fov", settings_io.LENS_FOV_DEFAULT)),
+                           float(st.cfg.get("lens_noise", settings_io.LENS_NOISE_DEFAULT)))
+        st.lens_pid = worker.pid
+    except Exception as exc:
+        print(f"[main] the lens settings did not go through ({exc})", file=sys.stderr)
+
+
 def _send_per_pass_now(st, params, *, enabled: bool, wait: bool = True) -> None:
     """Send the second set to the running worker - if there is one to send to.
 
@@ -781,6 +802,32 @@ def apply_menu_action(st, action: tuple) -> None:
         # No need to recreate the worker: the wipe position rides in
         # every frame's header.
         st.split_pos = min(1.0, max(0.0, float(action[1])))
+    elif kind == "toggle" and action[1] == "lens":
+        # The fisheye lens: a command of its own, applied to the next frame,
+        # nothing rebuilt. Written through on the menu's close like the
+        # sliders; a new worker is told by the main loop (send_lens_state).
+        st.cfg["lens"] = not bool(st.cfg.get("lens", False))
+        print(f"[main] fisheye lens {'on' if st.cfg['lens'] else 'off'} "
+              f"({float(st.cfg.get('lens_fov', settings_io.LENS_FOV_DEFAULT)):.0f} degrees)")
+        st.display.menu.set_state({"lens": st.cfg["lens"]})
+        send_lens_state(st)
+    elif kind == "lens_fov":
+        try:
+            fov = float(action[1])
+        except (TypeError, ValueError):
+            return
+        st.cfg["lens_fov"] = float(min(settings_io.LENS_FOV_MAX,
+                                       max(settings_io.LENS_FOV_MIN, round(fov))))
+        send_lens_state(st)
+    elif kind == "lens_noise":
+        try:
+            noise = float(action[1])
+        except (TypeError, ValueError):
+            return
+        if noise != noise:
+            return
+        st.cfg["lens_noise"] = round(min(1.0, max(0.0, noise)), 2)
+        send_lens_state(st)
     elif kind == "toggle" and action[1] == "boost":
         # Boost: run the network at the work resolution instead of the full
         # frame, and composite its edit back onto the native 1:1 picture.

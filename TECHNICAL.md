@@ -300,6 +300,7 @@ a maintainer's GPU, paths or experimental switches cannot leak into a release.
 | `hotkeys` | `{"toggle": "Num1", ...}` — see README, "Using it". Names: `Num0`-`Num9`, `Numdot`, `Numplus`, `Numminus`, `Nummul`, `Numdiv`, `F1`-`F12`, `Insert`, `Home`, letters, digits, with `Ctrl+`/`Alt+`/`Shift+` |
 | `nr_passes` | 1-4, how many passes the network makes over one frame (Boost only). An experiment; the second pass costs about a third of the frame rate and every extra pass carries its own network - about 640 MB at a 2560x1440 work size, and it scales with that size |
 | `fps_overlay` | `off` / `tl` / `tr` / `bl` / `br` - the on-screen frame counter and the corner it sits in |
+| `lens`, `lens_fov`, `lens_noise` | the fisheye lens: off by default; the game's horizontal field of view, 60-170 degrees (110); webcam noise 0-1 (0.3) |
 | `tray_on_minimise`, `tray_on_close` | what the taskbar button's minimise and close do; both off by default, and neither stops the neural pass |
 | `menu_scale_auto` | the panel size is still the automatic fit; cleared for good the moment a scale step is chosen by hand |
 | `menu_offset`, `menu_scale`, `menu_height` | where the menu sits, its scale and height. Written by the app, not meant to be edited by hand (`menu_height: null` — fit the content) |
@@ -326,6 +327,7 @@ They talk over stdin/stdout with a binary protocol:
 | `OUTS` / `OAK2` | named section the worker writes result pixels into; the reply then carries `bytes = 0xFFFFFFFF` instead of a payload |
 | `RECS` / `RSAK` | record the frame the viewer sees into an MP4, on the GPU; the answer names the codec, the size and the file's time 0 |
 | `RECE` / `REAK` | stop and close the recording; `REAK` also comes unasked when the encoder fails |
+| `LENS` / `LNAK` | the fisheye lens on/off, its field of view and webcam noise; applied to the next frame, nothing rebuilt |
 
 **Capture.** On `DDA1` the worker opens Desktop Duplication on the GPU: each
 frame is copied into a cross-device shared texture and swizzled to RGBA.
@@ -816,6 +818,51 @@ Default **+18.7%**, Natural **-11.4%**, Cinematic **-23.4%**. Three different
 outputs rather than three strengths, which is why a saved preset keeps the
 model it was saved with.
 
+
+## Fisheye lens
+
+**Fisheye** (main page, under the effect sliders) re-projects the picture the
+viewer sees from the rectilinear frame a game renders into an equidistant
+fisheye (`native/lens.inl`). A rectilinear projection puts a ray at angle
+theta at `f_rect * tan(theta)` from the centre - which is what stretches the
+edges of a 110-120 degree game frame - while a real wide lens puts it at
+`f_fish * theta`. The game's horizontal field of view gives `f_rect`;
+`f_fish` is chosen so the frame's corners stay where they are. The mapping is
+convex, so every output pixel then comes from inside the source: no black
+borders, and the price of compressing the edges is an enlarged centre. A
+plain barrel distortion laid over the frame looks false because it does not
+know which angles the pixels stand for; this one does, from the one number
+the user sets. Sampling is Catmull-Rom (nine bilinear taps), so the enlarged
+centre stays sharp.
+
+**Where it runs.** After the network, after the HDR composite and after
+Frame Generation - never on the network's input, the motion field or the
+frames DLSS-G interpolates from (its motion is rectilinear). Every export site
+- the SDR, bypass and HDR presents, each real and generated frame of the FG
+presenter, the Spout/GPU-recording copy and the pixel readback (screenshots,
+CPU recording) - hands its source to `LensApply`, which writes into a target
+of its own and returns it in the source's state; with the lens off it returns
+the source itself and the frame takes exactly the path it always did. The
+source is never written in place: the still-screen hold keeps `v.output`
+across frames and a lens applied there would compound. The settings travel in
+their own 24-byte command (`LENS`/`LNAK`), read between frames, so a slider
+move costs no rebuild, and a new worker is told once, keyed on its pid.
+
+**Webcam noise** sits in the same pass: soft specks about the size of a 720p
+pixel, mostly brightness with a little colour, stronger in the shadows. It is
+renewed 30 times a second by the clock rather than per frame, so what is
+shown, exported and recorded in one frame carries the same specks, and Frame
+Generation's frames are not each given their own - the noise is added after
+interpolation, which is where grain has to go (interpolating two noise fields
+halves their contrast mid-way and makes them "breathe").
+
+Measured on the worker (`tests/test_lens.py`): at 120 degrees every probed
+pixel comes from where the equidistant mapping says, to within the 8-bit test
+ramp's 2.2 px; a pixel halfway to the right edge comes from x = 416 instead of
+480 (640-wide frame); off is bit-identical to no lens. Noise at 100%: mean
+shift -0.02 codes, spread 10.3 in the shadows against 4.4 in the light. In the
+real program at 4K the NR rate was 100.0-101.5 fps with the lens and
+99.9-101.1 without (two rounds each): no measurable cost.
 
 ## Before / after wipe
 

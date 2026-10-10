@@ -474,6 +474,12 @@ class OverlayMenu:
             "nr_not_evaluating": False,
             "open_on_start": True,
             "split": 0.0,
+            # The fisheye lens: on/off, the game's field of view in degrees,
+            # and the slider's range (settings_io.LENS_FOV_*).
+            "lens": False,
+            "lens_fov": 110.0,
+            "lens_fov_range": (60.0, 170.0),
+            "lens_noise": 0.3,
             # Which card this is and whether NR runs on it. gpu_ok:
             # True/False/None (None - the worker has not answered yet).
             "gpu_text": "",
@@ -2219,6 +2225,26 @@ class OverlayMenu:
                                          and not self.state.get("preset_active")}))
             if not mini_short:
                 cy += act_h + self._u(8)
+            # The fisheye lens over the processed picture (native/lens.inl):
+            # what the picture looks like, so it closes this block. A row and
+            # not a block of its own - the main page has to fit a 1080p
+            # screen, and a title costs as much height as the row
+            # (test_ui_scale_fit). The angle is the game's own field of view -
+            # what the lens needs to know which pixels stand for which angles,
+            # and a larger one is a stronger look. Like the resolution slider
+            # under Boost, it is on screen only while it does something.
+            lens_on = bool(self.state.get("lens"))
+            toggle("lens", s["lens"], lens_on)
+            if lens_on:
+                lo, hi = self.state.get("lens_fov_range") or (60.0, 170.0)
+                fov = float(self.state.get("lens_fov", 110.0))
+                slider("lens_fov", float(lo), float(hi), fov, s["lens_fov"],
+                       value_text=f"{int(fov)}°", hint=s["lens_fov_hint"])
+                # Webcam noise over the lens: soft specks, stronger in the
+                # shadows, renewed 30 times a second. 0 is a clean lens.
+                noise = float(self.state.get("lens_noise", 0.3))
+                slider("lens_noise", 0.0, 1.0, noise, s["lens_noise"],
+                       value_text=f"{int(round(noise * 100))}%")
 
             section(s["sec_compare"])
             split_val = float(self.state.get("split", 0.0))
@@ -3101,7 +3127,7 @@ class OverlayMenu:
     def _step_slider(self, item: Item, direction: int) -> list[tuple]:
         """Move a focused slider by one meaningful keyboard step."""
         step = (1 if item.key == "frame_multiplier"
-                else 5 if item.key == "frame_limit_custom"
+                else 5 if item.key in ("frame_limit_custom", "lens_fov")
                 else 0.05)
         return self._set_slider_value(item, item.value + direction * step)
 
@@ -3122,6 +3148,16 @@ class OverlayMenu:
             self.state["frame_limit_custom"] = value
             item.extra["value_text"] = f"{value} fps"
             return [("frame_limit_custom", value)]
+        if item.key == "lens_fov":
+            # Whole degrees: a field of view is set in whole degrees in every
+            # game that offers one, and the value cell says the number.
+            value = float(int(value + 0.5))
+            if value == item.value:
+                return []
+            item.value = value
+            self.state["lens_fov"] = value
+            item.extra["value_text"] = f"{int(value)}°"
+            return [("lens_fov", value)]
         value = round(round(value / 0.05) * 0.05, 2)
         if abs(value - item.value) < 1e-9:
             return []
@@ -3129,6 +3165,10 @@ class OverlayMenu:
         if item.key == "split":
             self.state["split"] = value
             return [("split", value)]
+        if item.key == "lens_noise":
+            self.state["lens_noise"] = value
+            item.extra["value_text"] = f"{int(round(value * 100))}%"
+            return [("lens_noise", value)]
         if item.key == "nr_res":
             # The slider is only on screen while Boost is on, so every
             # position means a work resolution now - there is no "off" step

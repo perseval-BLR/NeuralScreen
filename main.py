@@ -480,6 +480,9 @@ class _Pipeline:
         # Which worker has been told the pass count: the cascade has to be
         # re-sent to every new one (see the main loop).
         "nr_passes_pid",
+        #: The worker the lens settings were last sent to (LENS): a new one
+        #: starts with no lens and is told once, like the pass count.
+        "lens_pid",
         #: What passes 2..N use, when the user gave them their own set. None
         #: by default, which means "the main set for every pass".
         "nr_pass_params",
@@ -1601,6 +1604,10 @@ def main() -> int:
             # Not before the stream is running: `startup_pending` is cleared
             # on the second displayed frame, and an apply before that would
             # race the first RNSZ.
+            # The fisheye lens the same way: a worker starts without it.
+            if (not startup_pending and st.cfg.get("lens") and st.worker is not None
+                    and getattr(st, "lens_pid", None) != st.worker.pid):
+                commands.send_lens_state(st)
             if (not startup_pending and int(getattr(st, "nr_passes", 1)) > 1
                     and st.worker is not None
                     and getattr(st, "nr_passes_pid", None) != st.worker.pid):

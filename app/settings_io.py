@@ -827,6 +827,27 @@ def _validate_config(cfg: dict) -> dict:
         _fallback("fps_overlay", cfg.get("fps_overlay"), "off",
                   "is not one of off/tl/tr/bl/br")
         cfg["fps_overlay"] = "off"
+    # The fisheye lens's field of view: a number in degrees inside the range
+    # the worker honours. Anything else - a string, NaN - is the default.
+    fov = cfg.get("lens_fov", LENS_FOV_DEFAULT)
+    try:
+        fov = float(fov)
+    except (TypeError, ValueError):
+        _fallback("lens_fov", cfg.get("lens_fov"), LENS_FOV_DEFAULT, "is not a number")
+        fov = LENS_FOV_DEFAULT
+    if not math.isfinite(fov):
+        fov = LENS_FOV_DEFAULT
+    cfg["lens_fov"] = float(min(LENS_FOV_MAX, max(LENS_FOV_MIN, round(fov))))
+    # Webcam noise over the lens, 0..1 in steps of 0.05 (the slider's).
+    noise = cfg.get("lens_noise", LENS_NOISE_DEFAULT)
+    try:
+        noise = float(noise)
+    except (TypeError, ValueError):
+        _fallback("lens_noise", cfg.get("lens_noise"), LENS_NOISE_DEFAULT, "is not a number")
+        noise = LENS_NOISE_DEFAULT
+    if not math.isfinite(noise):
+        noise = LENS_NOISE_DEFAULT
+    cfg["lens_noise"] = round(min(1.0, max(0.0, round(noise / 0.05) * 0.05)), 2)
 
     menu_height = cfg.get("menu_height")
     if menu_height is not None:
@@ -919,7 +940,20 @@ _BOOL_KEYS = (
     "pixels_in_shm", "nr_small", "nr_direct", "frame_generation",
     "record_audio", "rec_indicator", "gpu_record", "convert_audio", "spout",
     "hdr", "open_menu_on_start", "hotkeys_enabled", "keep_speed_when_hidden",
+    "lens",
 )
+
+# The fisheye lens (native/lens.inl): the game's horizontal field of view, in
+# whole degrees. 110 is where wide-FOV game settings usually sit, and where the
+# lens reads as a wide lens rather than a gimmick; below about 60 it barely
+# shows, the worker clamps at 170.
+LENS_FOV_DEFAULT = 110.0
+LENS_FOV_MIN = 60.0
+LENS_FOV_MAX = 170.0
+# Webcam noise over the lens (the owner's ask: "a little noise, like a
+# webcam"): 0.3 is grain you see in the shadows that does not read as a
+# broken signal (about 3 codes of spread there, measured on the worker).
+LENS_NOISE_DEFAULT = 0.3
 
 
 def _shipped_default(key: str, fallback):
@@ -1090,6 +1124,9 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         "rec_indicator": bool(cfg.get("rec_indicator", True)),
         "gpu_record": cfg.get("gpu_record", True) is not False,
         "fps_overlay": str(cfg.get("fps_overlay", "off")),
+        "lens": bool(cfg.get("lens", False)),
+        "lens_fov": float(cfg.get("lens_fov", LENS_FOV_DEFAULT)),
+        "lens_noise": float(cfg.get("lens_noise", LENS_NOISE_DEFAULT)),
         "nr_passes": int(cfg.get("nr_passes", 1)),
         # What passes 2..N use, only when the user actually set it. Absent from
         # the file means "every pass uses the main set" - writing a default set
@@ -1606,6 +1643,10 @@ def menu_payload(st) -> dict:
         "rec_indicator": bool(st.cfg.get("rec_indicator", True)),
         "gpu_record": st.cfg.get("gpu_record", True) is not False,
         "fps_overlay": str(st.cfg.get("fps_overlay", "off")),
+        "lens": bool(st.cfg.get("lens", False)),
+        "lens_fov": float(st.cfg.get("lens_fov", LENS_FOV_DEFAULT)),
+        "lens_fov_range": (LENS_FOV_MIN, LENS_FOV_MAX),
+        "lens_noise": float(st.cfg.get("lens_noise", LENS_NOISE_DEFAULT)),
         "nr_passes": int(st.cfg.get("nr_passes", 1)),
         "convert_busy": bool(getattr(st, "convert_busy", False)),
         "convert_status": str(getattr(st, "convert_status", "")),

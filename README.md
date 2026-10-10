@@ -116,6 +116,13 @@ on it, red when it is not.
   three strengths: **Default** suits a desktop, **Natural** and **Cinematic**
   are tuned for games and soften photographs and small text (measured in
   TECHNICAL.md). A saved preset keeps the model it was saved with.
+- **Fisheye** — off by default. Bends the processed picture the way a wide
+  lens would: set **Field of view** to the game's own FOV (110-120 is typical)
+  and the edges a wide game frame stretches are compressed instead, with no
+  black corners; a larger angle is a stronger look. **Webcam noise** adds a
+  small sensor's grain, stronger in the shadows. It lands in recordings,
+  Spout and screenshots. A game mode: the picture is bent, so a click away
+  from the centre lands somewhere else than it looks.
 - **Before / after wipe** — leaves the left part of the screen unprocessed so
   you can see what the effect is doing. Back to 0 when done.
 - **Boost** — on by default. The network runs at a reduced resolution and a

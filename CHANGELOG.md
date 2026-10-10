@@ -32,6 +32,19 @@ Scope and honesty notes:
 
 ## Unreleased
 
+* **Fisheye: a wide-lens look with the game's own field of view, and a little
+  webcam noise.** A new switch on the main page, under the effect sliders,
+  bends the processed picture the way a real wide lens does. Set **Field of
+  view** to the game's FOV (110-120 is typical): the edges a wide game frame
+  stretches are compressed instead, the corners stay where they are, nothing
+  goes black, and a larger angle is a stronger look. **Webcam noise** adds a
+  small sensor's grain - soft, stronger in the shadows, renewed 30 times a
+  second. It is applied after the network and after Frame Generation, so the
+  network's input and FG's interpolation never see it, and it lands in GPU
+  recordings, Spout and screenshots. Measured: no frame-rate cost at 4K
+  (100-101 fps with and without). It is a game mode: away from the centre a
+  click lands somewhere else than it looks.
+
 * **A still screen is held and the edit steadied on the CPU motion path too.**
   An unchanged capture is evaluated a few times and then keeps its result, and
   the stabilizer carries the edit over time - both start over on any command.
