@@ -551,8 +551,9 @@ round trip could go too.
 An uncapped game in the foreground can take the GPU from the network almost
 entirely - #142 measured eval at 200-650 ms of GPU time with the CPU side
 under 1 ms, and Alt-Tab alone brought it back. A command queue's priority
-does not reach across processes (and is ignored under hardware scheduling);
-the process's GPU scheduling class does. `NS_GPU_PRIORITY=above_normal` or
+orders work inside one process; whether the scheduler weighs it across
+processes was the open question (measured below: under HAGS it did not). The
+process's GPU scheduling class does reach across. `NS_GPU_PRIORITY=above_normal` or
 `high` sets the worker's class at start and logs what Windows reads back
 (`[gpu] GPU scheduling priority ...`). Off by default and not yet measured
 against such a game: it can take time from the game as well.
@@ -565,9 +566,19 @@ practical answer (Frame Generation needs HAGS on). Two more levers are there
 for the next measurement, both off by default: `NS_GPU_PRIORITY=realtime`
 (the realtime class; it needs NeuralScreen started as administrator) and
 `NS_GPU_QUEUE_PRIORITY=high|realtime` (the priority of the D3D12 queue the
-network runs on - the scheduler under HAGS is said to honour it; Windows
-limits realtime queues, and a refused queue falls back to a normal one with
-`[gpu] command queue priority ... refused` in the log).
+network runs on; Windows limits realtime queues, and a refused queue falls
+back to a normal one with `[gpu] command queue priority ... refused` in the
+log).
+
+The second round (reporter, 08.10, RTX 4060 Ti, HAGS on, game in focus and
+uncapped, each lever alone): `NS_GPU_QUEUE_PRIORITY=high` was accepted and
+changed nothing - eval on the GPU 709 ms, 0.9 NR fps, as with no lever.
+`NS_GPU_PRIORITY=realtime`, started as administrator (the class reads back
+5), removed the starvation: eval on the GPU 5.7 ms, 64 NR fps with the game in
+focus against 81.5 after Alt-Tab. So under HAGS the realtime scheduling class
+is the lever that reaches the scheduler, and the queue priority is not. It
+stays an environment variable: it needs elevation, and it takes GPU time from
+the game, which one measurement does not price.
 
 ### work_scale costs nothing (in upscale mode)
 

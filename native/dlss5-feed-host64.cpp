@@ -1339,10 +1339,11 @@ static bool InitDisguise()
 
     factory->Release();
     // NS_GPU_QUEUE_PRIORITY=high|realtime: the priority of the queue the
-    // network runs on - an experiment for #142, off by default. Under
-    // hardware GPU scheduling the scheduler is said to honour queue
-    // priorities, which the process class evidently does not reach (the
-    // reporter's A/B). The system limits GLOBAL_REALTIME (refused with
+    // network runs on - an experiment for #142, off by default. It was the
+    // hypothesis that the HAGS scheduler honours queue priorities; the
+    // reporter's second A/B (08.10) answered no - `high` was accepted and eval
+    // still waited ~700 ms, while the realtime process class (NS_GPU_PRIORITY,
+    // elevated) took it to 5.7 ms. The system limits GLOBAL_REALTIME (refused with
     // 0x887A002B on the bench, elevated); a queue it refuses falls back to a
     // normal one and says so.
     D3D12_COMMAND_QUEUE_DESC qd = {};
