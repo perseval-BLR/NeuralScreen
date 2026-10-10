@@ -14,9 +14,6 @@ same neural network that DLSS 5 games use, and comes back sharper.
 > unmodified, research/educational use only, no warranty, use at your own
 > risk. Rights holders: say the word and the next build ships without them.
 
-> [!IMPORTANT]
-> **AMD Radeon build - an active call for testers.** A separate repository, **[NeuralScreen-AMD](https://github.com/perseval-BLR/NeuralScreen-AMD)** - the same overlay with the neural pass aimed at RX 7000 / 9000 (RDNA3/RDNA4). **It has not run on a real Radeon yet**, and that is what that release is for: start with `native/AMD.md`, and if it does not come up, press **Settings -> Program -> Create diagnostic package** and open an issue with that one file - it carries the log, your card, the driver and the stage it stopped at, with your paths already scrubbed.
-
 ## How it looks
 
 <table>
@@ -116,13 +113,9 @@ on it, red when it is not.
   three strengths: **Default** suits a desktop, **Natural** and **Cinematic**
   are tuned for games and soften photographs and small text (measured in
   TECHNICAL.md). A saved preset keeps the model it was saved with.
-- **Fisheye** — off by default. Bends the processed picture the way a wide
-  lens would: set **Field of view** to the game's own FOV (110-120 is typical)
-  and the edges a wide game frame stretches are compressed instead, with no
-  black corners; a larger angle is a stronger look. **Webcam noise** adds a
-  small sensor's grain, stronger in the shadows. It lands in recordings,
-  Spout and screenshots. A game mode: the picture is bent, so a click away
-  from the centre lands somewhere else than it looks.
+- **Fisheye** — a wide-lens look: set **Field of view** to the game's FOV
+  (110-120 is typical); **Webcam noise** adds a small sensor's grain. A game
+  mode: away from the centre a click lands elsewhere than it looks.
 - **Before / after wipe** — leaves the left part of the screen unprocessed so
   you can see what the effect is doing. Back to 0 when done.
 - **Boost** — on by default. The network runs at a reduced resolution and a

@@ -355,13 +355,9 @@ it - that file is the format to copy.
      - a missing or reworded warning is `release vX is missing driver warning alert`.
      Note the two lines are compared as one string, so both lines and the space
      after both `>` markers have to match.
-* **The AMD tester call** goes in a `> [!IMPORTANT]` block: the standing call for
-  Radeon testers, pointing at the separate repository `NeuralScreen-AMD`
-  (`https://github.com/perseval-BLR/NeuralScreen-AMD`), telling them the build has
-  not run on a real Radeon yet, to start from `native/AMD.md`, and to attach the
-  diagnostic package (**Settings -> Program -> Create diagnostic package**) when
-  it does not come up. Every release since v1.13.1 carries it. Nothing checks this
-  block - it is a convention the owner keeps, not a gate.
+* **No AMD tester call.** Releases v1.13.1-v2.2.0 carried a `> [!IMPORTANT]`
+  block calling for Radeon testers of `NeuralScreen-AMD`; the owner dropped it
+  on 10.10.2026 as no longer current - do not put it back.
 * **Then**: one paragraph naming what the release is, `## Fixes` (one bolded
   symptom per paragraph, with the mechanism and the measurement), and a `##
   Tests` section with the suite count and `PASS / FAIL / SKIP` plus the GUI-E2E
