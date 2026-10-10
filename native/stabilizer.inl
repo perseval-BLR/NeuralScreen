@@ -162,6 +162,11 @@ static struct StabState {
     ID3D12Resource *out = nullptr, *hist[2] = {}, *guide[2] = {};
     ID3D12Resource *bound_in = nullptr, *bound_out = nullptr, *bound_mv = nullptr;
     UINT w = 0, hgt = 0;
+    // The inputs whose textures could not be created (out of video memory):
+    // not tried again for them, or every frame allocates, frees, waits on the
+    // fence and logs once more. New inputs (RNSZ, MOTS) try again.
+    ID3D12Resource *failed_in = nullptr, *failed_out = nullptr, *failed_mv = nullptr;
+    UINT failed_w = 0, failed_h = 0;
     unsigned parity = 0;          // which history slot is READ this frame
     bool fresh = false;           // resources still in COMMON
     bool valid = false;           // the history may be used on the next evaluate
@@ -209,7 +214,8 @@ static void CloseStab()
     for (ID3D12Resource **r : {&s.out, &s.hist[0], &s.hist[1], &s.guide[0], &s.guide[1]})
         if (*r != nullptr) { (*r)->Release(); *r = nullptr; }
     s.bound_in = s.bound_out = s.bound_mv = nullptr;
-    s.w = s.hgt = 0;
+    s.failed_in = s.failed_out = s.failed_mv = nullptr;
+    s.w = s.hgt = s.failed_w = s.failed_h = 0;
     s.parity = 0;
     s.valid = false;
     s.fresh = false;
@@ -269,15 +275,29 @@ static bool EnsureStab(VideoState &v, UINT nw, UINT nh)
     if (s.out && s.w == nw && s.hgt == nh && s.bound_in == v.nr_in &&
         s.bound_out == v.nr_out && s.bound_mv == v.mv.tex)
         return true;
+    if (s.failed_w == nw && s.failed_h == nh && s.failed_in == v.nr_in &&
+        s.failed_out == v.nr_out && s.failed_mv == v.mv.tex)
+        return false;
     CloseStab();
-    s.out = MakeTex(nw, nh, DXGI_FORMAT_R8G8B8A8_UNORM, true);
-    for (int i = 0; i < 2; ++i)
+    // NS_TEST_FAIL_STAGE=stab-alloc: the textures never fit (the tests).
+    if (!TestStageRequested("stab-alloc"))
     {
-        s.hist[i] = MakeTex(nw, nh, DXGI_FORMAT_R16G16B16A16_FLOAT, true);
-        s.guide[i] = MakeTex(nw, nh, DXGI_FORMAT_R8G8B8A8_UNORM, true);
+        s.out = MakeTex(nw, nh, DXGI_FORMAT_R8G8B8A8_UNORM, true);
+        for (int i = 0; i < 2; ++i)
+        {
+            s.hist[i] = MakeTex(nw, nh, DXGI_FORMAT_R16G16B16A16_FLOAT, true);
+            s.guide[i] = MakeTex(nw, nh, DXGI_FORMAT_R8G8B8A8_UNORM, true);
+        }
     }
     if (!s.out || !s.hist[0] || !s.hist[1] || !s.guide[0] || !s.guide[1])
-    { CloseStab(); Log("[stab] textures %ux%u could not be created", nw, nh); return false; }
+    {
+        CloseStab();
+        s.failed_in = v.nr_in; s.failed_out = v.nr_out; s.failed_mv = v.mv.tex;
+        s.failed_w = nw; s.failed_h = nh;
+        Log("[stab] textures %ux%u could not be created - the stabilizer is off "
+            "until the next resize", nw, nh);
+        return false;
+    }
     const UINT step = h.dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     D3D12_CPU_DESCRIPTOR_HANDLE cpu = s.heap->GetCPUDescriptorHandleForHeapStart();
     auto srv = [&](ID3D12Resource *r, DXGI_FORMAT f) {

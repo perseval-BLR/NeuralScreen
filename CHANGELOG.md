@@ -42,6 +42,13 @@ Scope and honesty notes:
   Measured on the worker, a still window sent that way: 66 of 66 frames
   evaluated before, 0 of 70 after.
 
+* **A stabilizer that does not fit in video memory is tried once, not on every
+  frame.** When its textures could not be created (a large Boost work size,
+  several NR passes holding the rest of the memory) the stabilizer stayed off
+  by trying again on every frame: allocate, free, wait for the GPU, and one
+  more log line, all session long. It now stays off until the next resize and
+  says so once.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**
