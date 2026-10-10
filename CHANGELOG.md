@@ -55,6 +55,13 @@ Scope and honesty notes:
   both could present into the same window for a moment - a torn frame or a
   present error. It is now stopped first, as the NR-on path already did.
 
+* **Frames sent from the client after a worker capture use the right texture
+  state.** The upload of a frame sent through the pipe judged the colour
+  texture's state by whether motion had been uploaded yet; after a capture in
+  the worker (a prepared capture, a screenshot retry) followed by a fall back
+  to client frames, that guess was wrong in either direction. It now follows
+  the colour texture's own state, as the capture path already did.
+
 ## v2.2.0 - 2026-10-08 - Steadier NR: the edit stabilizer, NVOFA without jelly on still backgrounds, real scene cuts, and the tracker bugs
 
 * **The neural edit is steadied over time: less shimmer and "jelly" in Boost.**

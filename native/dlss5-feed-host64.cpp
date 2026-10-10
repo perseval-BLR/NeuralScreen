@@ -6163,16 +6163,22 @@ static bool UploadVideoFrame(VideoState &v, const BYTE *color, const BYTE *mv, b
     if (!motion_small && !FillUpload(v.mv, mv, v.w * 4, v.hgt)) return false;
     if (!BeginCommands()) return false;
     ProfileGpuBegin(PS_MOTION);
-    if (v.inputs_ready)
+    // The colour always goes as a copy; in downscaled-field mode it is
+    // ScaleMotionInto, not this code, that moves MV into COPY_DEST - it has
+    // its own state chain there. The colour's state is color_in_srv, not
+    // inputs_ready: a CAP1 or the WANT_PIXELS retry leaves the colour in
+    // NON_PIXEL_SHADER_RESOURCE before any motion has been uploaded.
+    if (v.color_in_srv)
     {
-        // The colour always goes as a copy; in downscaled-field mode it is
-        // ScaleMotionInto, not this code, that moves MV into COPY_DEST - it
-        // has its own state chain there.
-        D3D12_RESOURCE_BARRIER pre[] = {
-            Transition(v.color.tex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
-            Transition(v.mv.tex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST),
-        };
-        h.list->ResourceBarrier(motion_small ? 1 : _countof(pre), pre);
+        D3D12_RESOURCE_BARRIER pre = Transition(v.color.tex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                                D3D12_RESOURCE_STATE_COPY_DEST);
+        h.list->ResourceBarrier(1, &pre);
+    }
+    if (v.inputs_ready && !motion_small)
+    {
+        D3D12_RESOURCE_BARRIER pre = Transition(v.mv.tex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                                D3D12_RESOURCE_STATE_COPY_DEST);
+        h.list->ResourceBarrier(1, &pre);
     }
     CopyUpload(h.list, v.color);
     if (motion_small)
