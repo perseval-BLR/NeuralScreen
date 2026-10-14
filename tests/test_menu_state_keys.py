@@ -42,7 +42,13 @@ def _state():
                 "skin_structure": -1.0},
         presets={}, lang="en", recorder=None, work_w=1248, work_h=702,
         startup_menu=True, split_pos=0.0, gpu_text="RTX 5080", gpu_ok=True,
-        window_hwnd=None, capture=_Capture(), monitor=0, worker_logs=[])
+        window_hwnd=None, capture=_Capture(), monitor=0, worker_logs=[],
+        recording_finalizer=None,
+        convert_queue=types.SimpleNamespace(busy=True),
+        update_state=types.SimpleNamespace(
+            phase="available", latest_version="2.5.0", received_bytes=5,
+            total_bytes=20, error_code=None, can_install=True),
+        update_confirming=False)
 
 
 def main() -> int:
@@ -64,6 +70,26 @@ def main() -> int:
             failures.append(
                 f"menu_payload sends keys the menu cannot hold, so they are "
                 f"dropped in silence: {missing}")
+
+        expected_update = {
+            "update_phase": "available",
+            "update_latest_version": "2.5.0",
+            "update_received_bytes": 5,
+            "update_total_bytes": 20,
+            "update_error_code": None,
+            "update_can_install": True,
+            "update_busy": True,
+            "update_confirming": False,
+        }
+        for key, value in expected_update.items():
+            if payload.get(key) != value:
+                failures.append(
+                    f"menu_payload {key} expected {value!r}, got "
+                    f"{payload.get(key)!r}")
+        internal = {"update_controller", "update_transaction_dir",
+                    "update_plan", "original_cwd"} & set(payload)
+        if internal:
+            failures.append(f"update internals escaped into the menu: {sorted(internal)}")
 
         # And the other direction for the one that bit us: a value set through
         # set_state has to be readable back.

@@ -13,6 +13,10 @@ No window is created: the window procedure is called directly.
 Run:  runtime\\python.exe tests\\test_single_instance_message.py
 """
 import sys
+import ctypes
+import importlib.util
+from types import SimpleNamespace
+from unittest import mock
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
@@ -54,11 +58,18 @@ def main() -> int:
                         "broadcasting a registered message that got 0xCE53 "
                         "would open it")
 
-    single = (BASE / "main.py").read_text(encoding="utf-8")
-    single = single.split("ERROR_ALREADY_EXISTS", 1)[-1][:2500]
-    if "WM_NS_SHOW_LEGACY" not in single or "WM_NS_SHOW," not in single:
-        failures.append("a second copy no longer posts both numbers - an older "
-                        "copy that is running would not show itself")
+    spec = importlib.util.spec_from_file_location("ns_message_main", str(BASE / "main.py"))
+    main_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(main_mod)
+    posted = []
+    closed = []
+    kernel = SimpleNamespace(CreateMutexW=lambda *a: 0x1234, CloseHandle=closed.append)
+    user = SimpleNamespace(FindWindowW=lambda *a: 99, RegisterWindowMessageW=lambda *a: show,
+                           PostMessageW=lambda *a: posted.append(a))
+    with mock.patch.object(main_mod, "_startup_claim", None), mock.patch.object(main_mod, "_startup_bindings", return_value=(kernel, user)), mock.patch.object(ctypes, "get_last_error", return_value=183):
+        assert main_mod._startup_instance_gate() == 1
+    assert posted == [(99, show, 0, 0), (99, legacy, 0, 0)]
+    assert closed == [0x1234]
 
     for f in failures:
         print("FAIL:", f)

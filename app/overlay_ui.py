@@ -422,6 +422,14 @@ class OverlayMenu:
             "convert_audio": True,
             # version / windows / driver / gpu, from the log header.
             "about": {},
+            "update_phase": "idle",
+            "update_latest_version": None,
+            "update_received_bytes": 0,
+            "update_total_bytes": 0,
+            "update_error_code": None,
+            "update_can_install": False,
+            "update_busy": False,
+            "update_confirming": False,
             "compatibility_status": "not_run",
             "compatibility_score": "",
             "style": 1,
@@ -1918,6 +1926,96 @@ class OverlayMenu:
                                                   self._u(LABEL_H)),
                                       extra={"label": label, "value": value}))
                     cy += self._u(LABEL_H) + self._u(4)
+                if show:
+                    phase = str(self.state.get("update_phase") or "idle")
+                    version = str(self.state.get("update_latest_version") or "")
+                    error_code = str(self.state.get("update_error_code") or "")
+                    status = ""
+                    buttons = []
+                    if phase == "current":
+                        status = s.get("update_current", "You are up to date.")
+                        buttons = [("update_check", s.get(
+                            "update_check", "Check for updates"), False)]
+                    elif phase == "checking":
+                        status = s.get("update_checking", "Checking for updates…")
+                        buttons = [("update_check", status, True)]
+                    elif phase == "available":
+                        status = s.get(
+                            "update_available", "Version {version} is available."
+                        ).format(version=version)
+                        buttons = [("update_download", s.get(
+                            "update_download", "Download update"), False)]
+                    elif phase == "downloading":
+                        total = int(self.state.get("update_total_bytes") or 0)
+                        received = int(self.state.get("update_received_bytes") or 0)
+                        percent = min(100, max(0, int(received * 100 / total))) if total else 0
+                        status = s.get(
+                            "update_downloading", "Downloading… {percent}%"
+                        ).format(percent=percent)
+                        buttons = [("update_download", status, True)]
+                    elif phase == "installing":
+                        status = s.get("update_preparing", "Preparing update…")
+                        buttons = [("update_confirm", status, True),
+                                   ("update_cancel", s.get("update_cancel", "Cancel"), False)]
+                    elif (phase == "ready"
+                          and self.state.get("update_can_install")
+                          and self.state.get("update_busy")
+                          and self.state.get("update_confirming")):
+                        status = s.get("update_busy", "Finish active work before installing.")
+                        buttons = [("update_confirm", s.get(
+                            "update_confirm", "Confirm"), True),
+                                   ("update_cancel", s.get(
+                                       "update_cancel", "Cancel"), False)]
+                    elif (phase == "ready"
+                          and self.state.get("update_can_install")
+                          and self.state.get("update_confirming")):
+                        status = s.get(
+                            "update_confirmation", "Install version {version} and restart NeuralScreen?"
+                        ).format(version=version)
+                        buttons = [("update_confirm", s.get("update_confirm", "Confirm"), False),
+                                   ("update_cancel", s.get("update_cancel", "Cancel"), False)]
+                    elif phase == "ready":
+                        if not self.state.get("update_can_install"):
+                            error_code = error_code or "invalid_package"
+                            status = s.get(f"update_error_{error_code}", s.get(
+                                "update_error_invalid_package", "This update cannot be installed."))
+                            buttons = [("update_official_release", s.get(
+                                "update_official_release_fallback", "Open the official release page"), False)]
+                        elif self.state.get("update_busy"):
+                            status = s.get("update_busy", "Finish active work before installing.")
+                            buttons = [("update_install", s.get(
+                                "update_install_restart", "Install and restart"), True)]
+                        else:
+                            status = s.get("update_ready", "Version {version} is ready to install.").format(
+                                version=version)
+                            buttons = [("update_install", s.get(
+                                "update_install_restart", "Install and restart"), False)]
+                    elif phase == "error":
+                        error_code = error_code or "invalid_release"
+                        status = s.get(f"update_error_{error_code}", s.get(
+                            "update_error_invalid_release", "The update could not be used."))
+                        buttons = [("update_retry", s.get("update_retry", "Retry"),
+                                    error_code == "restart_required"),
+                                   ("update_official_release", s.get(
+                                       "update_official_release_fallback",
+                                       "Open the official release page"), False)]
+                    elif phase == "idle":
+                        buttons = [("update_check", s.get(
+                            "update_check", "Check for updates"), False)]
+                    if status:
+                        status_h = self._note_height(status, inner_w)
+                        items.append(Item("note", "update_status",
+                                          pygame.Rect(pad, cy, inner_w, status_h),
+                                          extra={"text": status}))
+                        cy += status_h + self._u(4)
+                    for button_key, button_label, disabled in buttons:
+                        items.append(Item("button", button_key,
+                                          pygame.Rect(pad, cy, inner_w, act_h),
+                                          extra={"label": button_label,
+                                                 "disabled": disabled}))
+                        cy += act_h + self._u(4)
+                    if buttons:
+                        cy += self._u(2)
                 compat_status = str(
                     self.state.get("compatibility_status") or "not_run")
                 compat_score = str(self.state.get("compatibility_score") or "")

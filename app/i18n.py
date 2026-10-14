@@ -3738,3 +3738,665 @@ _AUDIT_STRINGS = {
 for _lang, _extra in _AUDIT_STRINGS.items():
     STRINGS[_lang].update(_extra)
 del _lang, _extra
+
+# Manual updater strings stay together so every current language gets the same keys.
+_UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
+        'update_checking': 'Checking for updates…',
+        'update_current': 'You are up to date.',
+        'update_available': 'Version {version} is available.',
+        'update_download': 'Download update',
+        'update_downloading': 'Downloading… {percent}%',
+        'update_ready': 'Version {version} is ready to install.',
+        'update_install_restart': 'Install and restart',
+        'update_confirmation': 'Install version {version} and restart NeuralScreen? The app will '
+                               'close during the update. Official releases may remove fork '
+                               'customizations. Wait for the updater to restart NeuralScreen.',
+        'update_confirm': 'Confirm',
+        'update_cancel': 'Cancel',
+        'update_retry': 'Retry',
+        'update_official_release_fallback': 'Open the official release page',
+        'update_busy': 'Wait for recording, final file saving, and conversions to finish before '
+                       'installing.',
+        'update_error_network': 'Could not reach the official release service. Check your '
+                                'connection and try again.',
+        'update_error_rate_limit': 'Too many requests were sent to the official release service. '
+                                   'Try again later.',
+        'update_error_invalid_release': 'The latest release information cannot be used. Open the '
+                                        'official release page to update manually.',
+        'update_error_checksum': 'The downloaded file failed its integrity check and was not '
+                                 'installed. Try downloading it again.',
+        'update_error_invalid_package': 'This update package cannot be used. Nothing was '
+                                        'installed. Open the official release page for help.',
+        'update_error_disk_space': 'There is not enough free space to install this update. Free '
+                                   'some space and try again.',
+        'update_error_install_readonly': 'NeuralScreen cannot update files in this folder. Get the '
+                                         'update from the official release page.',
+        'update_error_source_checkout': 'Automatic updates are available only in packaged '
+                                        'releases. Get the latest official release from its page.',
+        'update_error_modified_install': 'Some app files have changed, so NeuralScreen cannot '
+                                         'update safely. Restore the original files or use the '
+                                         'official release page.',
+        'update_error_busy': 'Wait for recording, final file saving, and conversions to finish '
+                             'before installing.',
+        'update_error_shutdown_timeout': 'No update was installed. The old app may still be '
+                                         'closing. Wait for it to close, then start NeuralScreen '
+                                         'manually.',
+        'update_error_apply_failed': 'The update failed. Previous app files were restored.',
+        'update_error_relaunch_failed': 'NeuralScreen could not restart. Start it manually from '
+                                        'its folder. Recovery files have been kept.',
+        'update_error_environment_conflict': 'A launch-environment setting prevents this update '
+                                             'from restarting safely. Use the official release '
+                                             'page to update manually.',
+        'update_error_recovery_required': 'NeuralScreen cannot start safely. Keep the recovery '
+                                          'files and follow the recovery instructions.',
+        'update_error_restart_required': 'The updater stopped before installation. Keep the recovery files. Close and restart NeuralScreen before trying again.',
+        'update_preparing': 'Preparing update…',
+        'update_error_prepare_failed': 'The update could not be prepared safely, so installation '
+                                       'was not authorized. Try again or open the official release '
+                                       'page.'},
+ 'ru': {'update_check': 'Проверить наличие обновлений',
+        'update_checking': 'Проверка обновлений…',
+        'update_current': 'Установлена последняя версия.',
+        'update_available': 'Доступна версия {version}.',
+        'update_download': 'Скачать обновление',
+        'update_downloading': 'Загрузка… {percent}%',
+        'update_ready': 'Версия {version} готова к установке.',
+        'update_install_restart': 'Установить и перезапустить',
+        'update_confirmation': 'Установить версию {version} и перезапустить NeuralScreen? Во время '
+                               'обновления приложение закроется. Официальные релизы могут удалить '
+                               'изменения, внесённые в форк. Дождитесь, пока программа обновления '
+                               'перезапустит NeuralScreen.',
+        'update_confirm': 'Подтвердить',
+        'update_cancel': 'Отмена',
+        'update_retry': 'Повторить',
+        'update_official_release_fallback': 'Открыть страницу официальных релизов',
+        'update_busy': 'Перед установкой дождитесь завершения записи, сохранения файла записи и '
+                       'конвертаций.',
+        'update_error_network': 'Не удалось связаться с официальным сервером релизов. Проверьте '
+                                'подключение и повторите попытку.',
+        'update_error_rate_limit': 'Слишком много запросов к официальному серверу релизов. '
+                                   'Повторите попытку позже.',
+        'update_error_invalid_release': 'Не удалось использовать данные последнего релиза. '
+                                        'Откройте страницу официальных релизов, чтобы обновить '
+                                        'приложение вручную.',
+        'update_error_checksum': 'Загруженный файл не прошёл проверку целостности и не был '
+                                 'установлен. Скачайте его ещё раз.',
+        'update_error_invalid_package': 'Этот пакет обновления нельзя использовать. Ничего не '
+                                        'установлено. Откройте страницу официальных релизов.',
+        'update_error_disk_space': 'Недостаточно свободного места для установки обновления. '
+                                   'Освободите место и повторите попытку.',
+        'update_error_install_readonly': 'NeuralScreen не может обновлять файлы в этой папке. '
+                                         'Скачайте обновление со страницы официальных релизов.',
+        'update_error_source_checkout': 'Автообновление доступно только в версиях из официального '
+                                        'пакета. Скачайте последнюю официальную версию со страницы '
+                                        'релизов.',
+        'update_error_modified_install': 'Некоторые файлы приложения изменены, поэтому '
+                                         'NeuralScreen не может безопасно обновиться. Восстановите '
+                                         'исходные файлы или скачайте официальную версию.',
+        'update_error_busy': 'Перед установкой дождитесь завершения записи, сохранения файла '
+                             'записи и конвертаций.',
+        'update_error_shutdown_timeout': 'Обновление не установлено. Старое приложение ещё может '
+                                         'закрываться. Дождитесь его закрытия, затем запустите '
+                                         'NeuralScreen вручную.',
+        'update_error_apply_failed': 'Обновление не удалось. Предыдущие файлы приложения '
+                                     'восстановлены.',
+        'update_error_relaunch_failed': 'Не удалось перезапустить NeuralScreen. Запустите его '
+                                        'вручную из папки приложения. Файлы восстановления '
+                                        'сохранены.',
+        'update_error_environment_conflict': 'Параметр среды запуска мешает безопасному '
+                                             'перезапуску после этого обновления. Обновите '
+                                             'приложение вручную со страницы официальных релизов.',
+        'update_error_recovery_required': 'NeuralScreen не может безопасно запуститься. Не '
+                                          'удаляйте файлы восстановления и следуйте инструкциям по '
+                                          'восстановлению.',
+        'update_error_restart_required': 'Помощник остановился до установки. Сохраните файлы восстановления. Закройте и перезапустите NeuralScreen перед новой попыткой.',
+        'update_preparing': 'Подготовка обновления…',
+        'update_error_prepare_failed': 'Не удалось безопасно подготовить обновление, поэтому '
+                                       'установка не была разрешена. Повторите попытку или '
+                                       'откройте страницу официальных релизов.'},
+ 'fr': {'update_check': 'Rechercher des mises à jour',
+        'update_checking': 'Recherche des mises à jour…',
+        'update_current': 'Vous utilisez la dernière version.',
+        'update_available': 'La version {version} est disponible.',
+        'update_download': 'Télécharger la mise à jour',
+        'update_downloading': 'Téléchargement… {percent}%',
+        'update_ready': 'La version {version} est prête à être installée.',
+        'update_install_restart': 'Installer et redémarrer',
+        'update_confirmation': 'Installer la version {version} et redémarrer NeuralScreen ? '
+                               'L’application se fermera pendant la mise à jour. Les versions '
+                               'officielles peuvent supprimer les personnalisations du fork. '
+                               'Attendez que le programme de mise à jour redémarre NeuralScreen.',
+        'update_confirm': 'Confirmer',
+        'update_cancel': 'Annuler',
+        'update_retry': 'Réessayer',
+        'update_official_release_fallback': 'Ouvrir la page officielle des versions',
+        'update_busy': 'Attendez la fin de l’enregistrement, de la finalisation du fichier et des '
+                       'conversions avant l’installation.',
+        'update_error_network': 'Impossible de joindre le service officiel des versions. Vérifiez '
+                                'votre connexion puis réessayez.',
+        'update_error_rate_limit': 'Trop de demandes ont été envoyées au service officiel des '
+                                   'versions. Réessayez plus tard.',
+        'update_error_invalid_release': 'Les informations de la dernière version ne peuvent pas '
+                                        'être utilisées. Ouvrez la page officielle des versions '
+                                        'pour mettre à jour manuellement.',
+        'update_error_checksum': 'Le fichier téléchargé n’a pas passé la vérification d’intégrité. '
+                                 'Il n’a pas été installé. Relancez le téléchargement.',
+        'update_error_invalid_package': 'Ce paquet de mise à jour ne peut pas être utilisé. Rien '
+                                        'n’a été installé. Consultez la page officielle des '
+                                        'versions.',
+        'update_error_disk_space': 'L’espace libre est insuffisant pour installer cette mise à '
+                                   'jour. Libérez de l’espace puis réessayez.',
+        'update_error_install_readonly': 'NeuralScreen ne peut pas modifier les fichiers de ce '
+                                         'dossier. Téléchargez la mise à jour depuis la page '
+                                         'officielle des versions.',
+        'update_error_source_checkout': 'Les mises à jour automatiques sont réservées aux versions '
+                                        'empaquetées. Téléchargez la dernière version officielle '
+                                        'depuis sa page.',
+        'update_error_modified_install': 'Certains fichiers de l’application ont été modifiés. '
+                                         'NeuralScreen ne peut pas les mettre à jour en toute '
+                                         'sécurité. Restaurez les fichiers d’origine ou utilisez '
+                                         'la page officielle des versions.',
+        'update_error_busy': 'Attendez la fin de l’enregistrement, de la finalisation du fichier '
+                             'et des conversions avant l’installation.',
+        'update_error_shutdown_timeout': 'Aucune mise à jour n’a été installée. L’ancienne '
+                                         'application peut encore se fermer. Attendez sa '
+                                         'fermeture, puis démarrez NeuralScreen manuellement.',
+        'update_error_apply_failed': 'La mise à jour a échoué. Les fichiers précédents de '
+                                     'l’application ont été restaurés.',
+        'update_error_relaunch_failed': 'NeuralScreen n’a pas pu redémarrer. Démarrez-le '
+                                        'manuellement depuis son dossier. Les fichiers de '
+                                        'récupération ont été conservés.',
+        'update_error_environment_conflict': 'Un paramètre de l’environnement de lancement empêche '
+                                             'un redémarrage sûr après cette mise à jour. Utilisez '
+                                             'la page officielle des versions pour mettre à jour '
+                                             'manuellement.',
+        'update_error_recovery_required': 'NeuralScreen ne peut pas démarrer en toute sécurité. Ne '
+                                          'supprimez pas les fichiers de récupération et suivez '
+                                          'les instructions de récupération.',
+        'update_error_restart_required': 'La mise à jour s’est arrêtée avant l’installation. Conservez les fichiers de récupération. Fermez et redémarrez NeuralScreen avant de réessayer.',
+        'update_preparing': 'Préparation de la mise à jour…',
+        'update_error_prepare_failed': 'La mise à jour n’a pas pu être préparée en toute sécurité, '
+                                       'l’installation n’a donc pas été autorisée. Réessayez ou '
+                                       'ouvrez la page officielle des versions.'},
+ 'de': {'update_check': 'Nach Updates suchen',
+        'update_checking': 'Suche nach Updates…',
+        'update_current': 'Du nutzt die neueste Version.',
+        'update_available': 'Version {version} ist verfügbar.',
+        'update_download': 'Update herunterladen',
+        'update_downloading': 'Download läuft… {percent}%',
+        'update_ready': 'Version {version} ist bereit zur Installation.',
+        'update_install_restart': 'Installieren und neu starten',
+        'update_confirmation': 'Version {version} installieren und NeuralScreen neu starten? Die '
+                               'App wird während des Updates geschlossen. Offizielle Releases '
+                               'können Anpassungen am Fork entfernen. Warte, bis das '
+                               'Updateprogramm NeuralScreen neu gestartet hat.',
+        'update_confirm': 'Bestätigen',
+        'update_cancel': 'Abbrechen',
+        'update_retry': 'Erneut versuchen',
+        'update_official_release_fallback': 'Offizielle Release-Seite öffnen',
+        'update_busy': 'Warten Sie vor der Installation, bis Aufnahme, Speichern der Aufnahmedatei '
+                       'und Konvertierungen abgeschlossen sind.',
+        'update_error_network': 'Der offizielle Release-Dienst ist nicht erreichbar. Prüfe deine '
+                                'Verbindung und versuche es erneut.',
+        'update_error_rate_limit': 'An den offiziellen Release-Dienst wurden zu viele Anfragen '
+                                   'gesendet. Versuche es später erneut.',
+        'update_error_invalid_release': 'Die Informationen zum neuesten Release können nicht '
+                                        'verwendet werden. Öffne die offizielle Release-Seite für '
+                                        'ein manuelles Update.',
+        'update_error_checksum': 'Die heruntergeladene Datei hat die Integritätsprüfung nicht '
+                                 'bestanden und wurde nicht installiert. Lade sie erneut herunter.',
+        'update_error_invalid_package': 'Dieses Updatepaket kann nicht verwendet werden. Es wurde '
+                                        'nichts installiert. Öffne die offizielle Release-Seite.',
+        'update_error_disk_space': 'Nicht genug freier Speicherplatz für das Update. Gib '
+                                   'Speicherplatz frei und versuche es erneut.',
+        'update_error_install_readonly': 'NeuralScreen kann Dateien in diesem Ordner nicht ändern. '
+                                         'Lade das Update über die offizielle Release-Seite '
+                                         'herunter.',
+        'update_error_source_checkout': 'Automatische Updates sind nur bei gebündelten Releases '
+                                        'verfügbar. Lade das neueste offizielle Release über '
+                                        'dessen Seite herunter.',
+        'update_error_modified_install': 'Einige App-Dateien wurden geändert. NeuralScreen kann '
+                                         'sie deshalb nicht sicher aktualisieren. Stelle die '
+                                         'Originaldateien wieder her oder nutze die offizielle '
+                                         'Release-Seite.',
+        'update_error_busy': 'Warten Sie vor der Installation, bis Aufnahme, Speichern der '
+                             'Aufnahmedatei und Konvertierungen abgeschlossen sind.',
+        'update_error_shutdown_timeout': 'Es wurde kein Update installiert. Die alte App wird '
+                                         'möglicherweise noch geschlossen. Warte, bis sie '
+                                         'geschlossen ist, und starte NeuralScreen dann manuell.',
+        'update_error_apply_failed': 'Das Update ist fehlgeschlagen. Die vorherigen App-Dateien '
+                                     'wurden wiederhergestellt.',
+        'update_error_relaunch_failed': 'NeuralScreen konnte nicht neu starten. Starte es manuell '
+                                        'aus seinem Ordner. Die Wiederherstellungsdateien wurden '
+                                        'beibehalten.',
+        'update_error_environment_conflict': 'Eine Einstellung der Startumgebung verhindert einen '
+                                             'sicheren Neustart nach diesem Update. Nutze die '
+                                             'offizielle Release-Seite für ein manuelles Update.',
+        'update_error_recovery_required': 'NeuralScreen kann nicht sicher starten. Bewahre die '
+                                          'Wiederherstellungsdateien auf und befolge die '
+                                          'Wiederherstellungsanweisungen.',
+        'update_error_restart_required': 'Der Updater wurde vor der Installation beendet. Bewahre die Wiederherstellungsdateien auf. Schließe NeuralScreen und starte es vor einem neuen Versuch erneut.',
+        'update_preparing': 'Update wird vorbereitet…',
+        'update_error_prepare_failed': 'Das Update konnte nicht sicher vorbereitet werden, daher '
+                                       'wurde die Installation nicht freigegeben. Versuchen Sie es '
+                                       'erneut oder öffnen Sie die offizielle Release-Seite.'},
+ 'es': {'update_check': 'Buscar actualizaciones',
+        'update_checking': 'Buscando actualizaciones…',
+        'update_current': 'Tienes la versión más reciente.',
+        'update_available': 'Hay una versión {version} disponible.',
+        'update_download': 'Descargar actualización',
+        'update_downloading': 'Descargando… {percent}%',
+        'update_ready': 'La versión {version} está lista para instalar.',
+        'update_install_restart': 'Instalar y reiniciar',
+        'update_confirmation': '¿Instalar la versión {version} y reiniciar NeuralScreen? La '
+                               'aplicación se cerrará durante la actualización. Las versiones '
+                               'oficiales pueden eliminar las personalizaciones del fork. Espera a '
+                               'que el actualizador reinicie NeuralScreen.',
+        'update_confirm': 'Confirmar',
+        'update_cancel': 'Cancelar',
+        'update_retry': 'Reintentar',
+        'update_official_release_fallback': 'Abrir la página oficial de versiones',
+        'update_busy': 'Antes de instalar, espere a que terminen la grabación, el guardado del '
+                       'archivo final y las conversiones.',
+        'update_error_network': 'No se pudo contactar con el servicio oficial de versiones. '
+                                'Comprueba la conexión e inténtalo de nuevo.',
+        'update_error_rate_limit': 'Se han enviado demasiadas solicitudes al servicio oficial de '
+                                   'versiones. Inténtalo más tarde.',
+        'update_error_invalid_release': 'No se puede usar la información de la última versión. '
+                                        'Abre la página oficial de versiones para actualizar '
+                                        'manualmente.',
+        'update_error_checksum': 'El archivo descargado no superó la verificación de integridad y '
+                                 'no se instaló. Vuelve a descargarlo.',
+        'update_error_invalid_package': 'No se puede usar este paquete de actualización. No se '
+                                        'instaló nada. Consulta la página oficial de versiones.',
+        'update_error_disk_space': 'No hay suficiente espacio libre para instalar esta '
+                                   'actualización. Libera espacio e inténtalo de nuevo.',
+        'update_error_install_readonly': 'NeuralScreen no puede modificar los archivos de esta '
+                                         'carpeta. Descarga la actualización desde la página '
+                                         'oficial de versiones.',
+        'update_error_source_checkout': 'Las actualizaciones automáticas solo están disponibles en '
+                                        'versiones empaquetadas. Descarga la última versión '
+                                        'oficial desde su página.',
+        'update_error_modified_install': 'Algunos archivos de la aplicación cambiaron, así que '
+                                         'NeuralScreen no puede actualizarlos de forma segura. '
+                                         'Restaura los archivos originales o usa la página '
+                                         'oficial.',
+        'update_error_busy': 'Antes de instalar, espere a que terminen la grabación, el guardado '
+                             'del archivo final y las conversiones.',
+        'update_error_shutdown_timeout': 'No se instaló ninguna actualización. La aplicación '
+                                         'anterior aún puede estar cerrándose. Espera a que se '
+                                         'cierre y luego inicia NeuralScreen manualmente.',
+        'update_error_apply_failed': 'La actualización falló. Se restauraron los archivos '
+                                     'anteriores de la aplicación.',
+        'update_error_relaunch_failed': 'NeuralScreen no pudo reiniciarse. Inícialo manualmente '
+                                        'desde su carpeta. Se conservaron los archivos de '
+                                        'recuperación.',
+        'update_error_environment_conflict': 'Una opción del entorno de inicio impide reiniciar de '
+                                             'forma segura tras esta actualización. Usa la página '
+                                             'oficial de versiones para actualizar manualmente.',
+        'update_error_recovery_required': 'NeuralScreen no puede iniciarse de forma segura. '
+                                          'Conserva los archivos de recuperación y sigue las '
+                                          'instrucciones de recuperación.',
+        'update_error_restart_required': 'El actualizador se detuvo antes de la instalación. Conserva los archivos de recuperación. Cierra y reinicia NeuralScreen antes de volver a intentarlo.',
+        'update_preparing': 'Preparando la actualización…',
+        'update_error_prepare_failed': 'No se pudo preparar la actualización de forma segura, así '
+                                       'que no se autorizó la instalación. Inténtelo de nuevo o '
+                                       'abra la página oficial de versiones.'},
+ 'it': {'update_check': 'Controlla gli aggiornamenti',
+        'update_checking': 'Ricerca aggiornamenti…',
+        'update_current': 'Hai già l’ultima versione.',
+        'update_available': 'È disponibile la versione {version}.',
+        'update_download': 'Scarica aggiornamento',
+        'update_downloading': 'Download in corso… {percent}%',
+        'update_ready': 'La versione {version} è pronta per l’installazione.',
+        'update_install_restart': 'Installa e riavvia',
+        'update_confirmation': 'Installare la versione {version} e riavviare NeuralScreen? L’app '
+                               'verrà chiusa durante l’aggiornamento. Le release ufficiali possono '
+                               'rimuovere le personalizzazioni del fork. Attendi che il programma '
+                               'di aggiornamento riavvii NeuralScreen.',
+        'update_confirm': 'Conferma',
+        'update_cancel': 'Annulla',
+        'update_retry': 'Riprova',
+        'update_official_release_fallback': 'Apri la pagina ufficiale delle release',
+        'update_busy': 'Prima di installare, attendi la fine della registrazione, del salvataggio '
+                       'del file e delle conversioni.',
+        'update_error_network': 'Impossibile contattare il servizio ufficiale delle release. '
+                                'Controlla la connessione e riprova.',
+        'update_error_rate_limit': 'Sono state inviate troppe richieste al servizio ufficiale '
+                                   'delle release. Riprova più tardi.',
+        'update_error_invalid_release': 'Le informazioni sull’ultima release non sono '
+                                        'utilizzabili. Apri la pagina ufficiale delle release per '
+                                        'aggiornare manualmente.',
+        'update_error_checksum': 'Il file scaricato non ha superato il controllo di integrità e '
+                                 'non è stato installato. Scaricalo di nuovo.',
+        'update_error_invalid_package': 'Questo pacchetto di aggiornamento non è utilizzabile. Non '
+                                        'è stato installato nulla. Consulta la pagina ufficiale '
+                                        'delle release.',
+        'update_error_disk_space': 'Spazio libero insufficiente per installare questo '
+                                   'aggiornamento. Libera spazio e riprova.',
+        'update_error_install_readonly': 'NeuralScreen non può modificare i file in questa '
+                                         'cartella. Scarica l’aggiornamento dalla pagina ufficiale '
+                                         'delle release.',
+        'update_error_source_checkout': 'Gli aggiornamenti automatici sono disponibili solo nelle '
+                                        'versioni distribuite con un pacchetto. Scarica l’ultima '
+                                        'versione ufficiale dalla relativa pagina.',
+        'update_error_modified_install': 'Alcuni file dell’app sono stati modificati, quindi '
+                                         'NeuralScreen non può aggiornarli in sicurezza. '
+                                         'Ripristina i file originali o usa la pagina ufficiale '
+                                         'delle release.',
+        'update_error_busy': 'Prima di installare, attendi la fine della registrazione, del '
+                             'salvataggio del file e delle conversioni.',
+        'update_error_shutdown_timeout': 'Non è stato installato alcun aggiornamento. La vecchia '
+                                         'app potrebbe stare ancora chiudendosi. Attendi che si '
+                                         'chiuda, poi avvia NeuralScreen manualmente.',
+        'update_error_apply_failed': 'L’aggiornamento non è riuscito. I file precedenti dell’app '
+                                     'sono stati ripristinati.',
+        'update_error_relaunch_failed': 'NeuralScreen non è riuscito a riavviarsi. Avvialo '
+                                        'manualmente dalla sua cartella. I file di ripristino sono '
+                                        'stati conservati.',
+        'update_error_environment_conflict': 'Un’impostazione dell’ambiente di avvio impedisce un '
+                                             'riavvio sicuro dopo questo aggiornamento. Usa la '
+                                             'pagina ufficiale delle release per aggiornare '
+                                             'manualmente.',
+        'update_error_recovery_required': 'NeuralScreen non può avviarsi in sicurezza. Conserva i '
+                                          'file di ripristino e segui le istruzioni per il '
+                                          'ripristino.',
+        'update_error_restart_required': 'L’aggiornamento si è interrotto prima dell’installazione. Conserva i file di ripristino. Chiudi e riavvia NeuralScreen prima di riprovare.',
+        'update_preparing': 'Preparazione dell’aggiornamento…',
+        'update_error_prepare_failed': 'Non è stato possibile preparare l’aggiornamento in '
+                                       'sicurezza, quindi l’installazione non è stata autorizzata. '
+                                       'Riprova o apri la pagina ufficiale delle versioni.'},
+ 'pt': {'update_check': 'Verificar atualizações',
+        'update_checking': 'Verificando atualizações…',
+        'update_current': 'Você está com a versão mais recente.',
+        'update_available': 'A versão {version} está disponível.',
+        'update_download': 'Baixar atualização',
+        'update_downloading': 'Baixando… {percent}%',
+        'update_ready': 'A versão {version} está pronta para instalar.',
+        'update_install_restart': 'Instalar e reiniciar',
+        'update_confirmation': 'Instalar a versão {version} e reiniciar o NeuralScreen? O '
+                               'aplicativo será fechado durante a atualização. Versões oficiais '
+                               'podem remover personalizações do fork. Aguarde o atualizador '
+                               'reiniciar o NeuralScreen.',
+        'update_confirm': 'Confirmar',
+        'update_cancel': 'Cancelar',
+        'update_retry': 'Tentar novamente',
+        'update_official_release_fallback': 'Abrir a página oficial de versões',
+        'update_busy': 'Antes de instalar, aguarde o fim da gravação, do salvamento do arquivo '
+                       'final e das conversões.',
+        'update_error_network': 'Não foi possível acessar o serviço oficial de versões. Verifique '
+                                'sua conexão e tente novamente.',
+        'update_error_rate_limit': 'Foram enviadas muitas solicitações ao serviço oficial de '
+                                   'versões. Tente novamente mais tarde.',
+        'update_error_invalid_release': 'Não foi possível usar as informações da versão mais '
+                                        'recente. Abra a página oficial de versões para atualizar '
+                                        'manualmente.',
+        'update_error_checksum': 'O arquivo baixado não passou na verificação de integridade e não '
+                                 'foi instalado. Baixe-o novamente.',
+        'update_error_invalid_package': 'Este pacote de atualização não pode ser usado. Nada foi '
+                                        'instalado. Consulte a página oficial de versões.',
+        'update_error_disk_space': 'Não há espaço livre suficiente para instalar esta atualização. '
+                                   'Libere espaço e tente novamente.',
+        'update_error_install_readonly': 'O NeuralScreen não pode alterar os arquivos desta pasta. '
+                                         'Baixe a atualização pela página oficial de versões.',
+        'update_error_source_checkout': 'Atualizações automáticas estão disponíveis apenas em '
+                                        'versões distribuídas em pacote. Baixe a versão oficial '
+                                        'mais recente pela página de lançamentos.',
+        'update_error_modified_install': 'Alguns arquivos do aplicativo foram alterados, então o '
+                                         'NeuralScreen não pode atualizá-los com segurança. '
+                                         'Restaure os arquivos originais ou use a página oficial.',
+        'update_error_busy': 'Antes de instalar, aguarde o fim da gravação, do salvamento do '
+                             'arquivo final e das conversões.',
+        'update_error_shutdown_timeout': 'Nenhuma atualização foi instalada. O aplicativo antigo '
+                                         'ainda pode estar fechando. Aguarde o fechamento e inicie '
+                                         'o NeuralScreen manualmente.',
+        'update_error_apply_failed': 'A atualização falhou. Os arquivos anteriores do aplicativo '
+                                     'foram restaurados.',
+        'update_error_relaunch_failed': 'Não foi possível reiniciar o NeuralScreen. Inicie-o '
+                                        'manualmente pela pasta do aplicativo. Os arquivos de '
+                                        'recuperação foram mantidos.',
+        'update_error_environment_conflict': 'Uma configuração do ambiente de inicialização impede '
+                                             'uma reinicialização segura após esta atualização. '
+                                             'Use a página oficial de versões para atualizar '
+                                             'manualmente.',
+        'update_error_recovery_required': 'O NeuralScreen não pode iniciar com segurança. Preserve '
+                                          'os arquivos de recuperação e siga as instruções de '
+                                          'recuperação.',
+        'update_error_restart_required': 'O atualizador parou antes da instalação. Guarde os arquivos de recuperação. Feche e reinicie o NeuralScreen antes de tentar novamente.',
+        'update_preparing': 'Preparando a atualização…',
+        'update_error_prepare_failed': 'Não foi possível preparar a atualização com segurança, '
+                                       'então a instalação não foi autorizada. Tente novamente ou '
+                                       'abra a página oficial de versões.'},
+ 'pl': {'update_check': 'Sprawdź aktualizacje',
+        'update_checking': 'Sprawdzanie aktualizacji…',
+        'update_current': 'Masz najnowszą wersję.',
+        'update_available': 'Dostępna jest wersja {version}.',
+        'update_download': 'Pobierz aktualizację',
+        'update_downloading': 'Pobieranie… {percent}%',
+        'update_ready': 'Wersja {version} jest gotowa do instalacji.',
+        'update_install_restart': 'Zainstaluj i uruchom ponownie',
+        'update_confirmation': 'Zainstalować wersję {version} i ponownie uruchomić NeuralScreen? '
+                               'Aplikacja zamknie się na czas aktualizacji. Oficjalne wydania mogą '
+                               'usunąć modyfikacje wprowadzone w forku. Poczekaj, aż program '
+                               'aktualizujący ponownie uruchomi NeuralScreen.',
+        'update_confirm': 'Potwierdź',
+        'update_cancel': 'Anuluj',
+        'update_retry': 'Ponów próbę',
+        'update_official_release_fallback': 'Otwórz oficjalną stronę wydań',
+        'update_busy': 'Przed instalacją poczekaj na zakończenie nagrywania, zapisu pliku nagrania '
+                       'i konwersji.',
+        'update_error_network': 'Nie można połączyć się z oficjalnym serwisem wydań. Sprawdź '
+                                'połączenie i spróbuj ponownie.',
+        'update_error_rate_limit': 'Wysłano zbyt wiele żądań do oficjalnego serwisu wydań. Spróbuj '
+                                   'ponownie później.',
+        'update_error_invalid_release': 'Nie można użyć informacji o najnowszym wydaniu. Otwórz '
+                                        'oficjalną stronę wydań, aby zaktualizować ręcznie.',
+        'update_error_checksum': 'Pobrany plik nie przeszedł kontroli integralności i nie został '
+                                 'zainstalowany. Pobierz go ponownie.',
+        'update_error_invalid_package': 'Nie można użyć tego pakietu aktualizacji. Niczego nie '
+                                        'zainstalowano. Otwórz oficjalną stronę wydań.',
+        'update_error_disk_space': 'Za mało wolnego miejsca, aby zainstalować tę aktualizację. '
+                                   'Zwolnij miejsce i spróbuj ponownie.',
+        'update_error_install_readonly': 'NeuralScreen nie może zmieniać plików w tym folderze. '
+                                         'Pobierz aktualizację z oficjalnej strony wydań.',
+        'update_error_source_checkout': 'Automatyczne aktualizacje są dostępne tylko w wersjach '
+                                        'dostarczanych w pakiecie. Pobierz najnowsze oficjalne '
+                                        'wydanie z jego strony.',
+        'update_error_modified_install': 'Niektóre pliki aplikacji zostały zmienione, więc '
+                                         'NeuralScreen nie może bezpiecznie ich zaktualizować. '
+                                         'Przywróć oryginalne pliki lub użyj oficjalnej strony '
+                                         'wydań.',
+        'update_error_busy': 'Przed instalacją poczekaj na zakończenie nagrywania, zapisu pliku '
+                             'nagrania i konwersji.',
+        'update_error_shutdown_timeout': 'Nie zainstalowano aktualizacji. Stara aplikacja może '
+                                         'nadal się zamykać. Poczekaj, aż się zamknie, a potem '
+                                         'uruchom NeuralScreen ręcznie.',
+        'update_error_apply_failed': 'Aktualizacja nie powiodła się. Poprzednie pliki aplikacji '
+                                     'zostały przywrócone.',
+        'update_error_relaunch_failed': 'NeuralScreen nie udało się ponownie uruchomić. Uruchom go '
+                                        'ręcznie z folderu aplikacji. Pliki odzyskiwania zostały '
+                                        'zachowane.',
+        'update_error_environment_conflict': 'Ustawienie środowiska uruchomieniowego uniemożliwia '
+                                             'bezpieczne ponowne uruchomienie po tej aktualizacji. '
+                                             'Użyj oficjalnej strony wydań, aby zaktualizować '
+                                             'ręcznie.',
+        'update_error_recovery_required': 'NeuralScreen nie może bezpiecznie się uruchomić. '
+                                          'Zachowaj pliki odzyskiwania i postępuj zgodnie z '
+                                          'instrukcjami odzyskiwania.',
+        'update_error_restart_required': 'Aktualizator zatrzymał się przed instalacją. Zachowaj pliki odzyskiwania. Zamknij i uruchom ponownie NeuralScreen przed kolejną próbą.',
+        'update_preparing': 'Przygotowywanie aktualizacji…',
+        'update_error_prepare_failed': 'Nie udało się bezpiecznie przygotować aktualizacji, więc '
+                                       'instalacja nie została autoryzowana. Spróbuj ponownie lub '
+                                       'otwórz oficjalną stronę wydań.'},
+ 'uk': {'update_check': 'Перевірити наявність оновлень',
+        'update_checking': 'Перевірка оновлень…',
+        'update_current': 'У вас найновіша версія.',
+        'update_available': 'Доступна версія {version}.',
+        'update_download': 'Завантажити оновлення',
+        'update_downloading': 'Завантаження… {percent}%',
+        'update_ready': 'Версія {version} готова до встановлення.',
+        'update_install_restart': 'Встановити й перезапустити',
+        'update_confirmation': 'Встановити версію {version} і перезапустити NeuralScreen? Під час '
+                               'оновлення програма закриється. Офіційні випуски можуть видалити '
+                               'зміни, внесені у форк. Дочекайтеся, поки засіб оновлення '
+                               'перезапустить NeuralScreen.',
+        'update_confirm': 'Підтвердити',
+        'update_cancel': 'Скасувати',
+        'update_retry': 'Повторити',
+        'update_official_release_fallback': 'Відкрити сторінку офіційних випусків',
+        'update_busy': 'Перед установленням дочекайтеся завершення запису, збереження файлу запису '
+                       'та конвертацій.',
+        'update_error_network': 'Не вдалося зв’язатися з офіційним сервісом випусків. Перевірте '
+                                'підключення й повторіть спробу.',
+        'update_error_rate_limit': 'До офіційного сервісу випусків надійшло забагато запитів. '
+                                   'Спробуйте пізніше.',
+        'update_error_invalid_release': 'Не вдалося використати дані останнього випуску. Відкрийте '
+                                        'сторінку офіційних випусків, щоб оновити програму вручну.',
+        'update_error_checksum': 'Завантажений файл не пройшов перевірку цілісності й не був '
+                                 'встановлений. Завантажте його ще раз.',
+        'update_error_invalid_package': 'Цей пакет оновлення не можна використати. Нічого не '
+                                        'встановлено. Відкрийте сторінку офіційних випусків.',
+        'update_error_disk_space': 'Недостатньо вільного місця для встановлення оновлення. '
+                                   'Звільніть місце й повторіть спробу.',
+        'update_error_install_readonly': 'NeuralScreen не може змінювати файли в цій папці. '
+                                         'Завантажте оновлення зі сторінки офіційних випусків.',
+        'update_error_source_checkout': 'Автоматичне оновлення доступне лише для версій з '
+                                        'офіційного пакета. Завантажте найновішу офіційну версію '
+                                        'зі сторінки випусків.',
+        'update_error_modified_install': 'Деякі файли програми змінено, тому NeuralScreen не може '
+                                         'безпечно їх оновити. Відновіть початкові файли або '
+                                         'скористайтеся сторінкою офіційних випусків.',
+        'update_error_busy': 'Перед установленням дочекайтеся завершення запису, збереження файлу '
+                             'запису та конвертацій.',
+        'update_error_shutdown_timeout': 'Оновлення не встановлено. Стара програма ще може '
+                                         'закриватися. Дочекайтеся її закриття, а потім запустіть '
+                                         'NeuralScreen вручну.',
+        'update_error_apply_failed': 'Оновлення не вдалося. Попередні файли програми відновлено.',
+        'update_error_relaunch_failed': 'Не вдалося перезапустити NeuralScreen. Запустіть його '
+                                        'вручну з папки програми. Файли відновлення збережено.',
+        'update_error_environment_conflict': 'Параметр середовища запуску заважає безпечно '
+                                             'перезапустити програму після цього оновлення. '
+                                             'Оновіть її вручну зі сторінки офіційних випусків.',
+        'update_error_recovery_required': 'NeuralScreen не може безпечно запуститися. Збережіть '
+                                          'файли відновлення та виконайте інструкції з '
+                                          'відновлення.',
+        'update_error_restart_required': 'Помічник зупинився до встановлення. Збережіть файли відновлення. Закрийте та перезапустіть NeuralScreen перед новою спробою.',
+        'update_preparing': 'Підготовка оновлення…',
+        'update_error_prepare_failed': 'Не вдалося безпечно підготувати оновлення, тому '
+                                       'встановлення не було дозволено. Спробуйте ще раз або '
+                                       'відкрийте сторінку офіційних випусків.'},
+ 'zh': {'update_check': '检查更新',
+        'update_checking': '正在检查更新…',
+        'update_current': '已是最新版本。',
+        'update_available': '可更新至版本 {version}。',
+        'update_download': '下载更新',
+        'update_downloading': '正在下载… {percent}%',
+        'update_ready': '版本 {version} 已准备好安装。',
+        'update_install_restart': '安装并重启',
+        'update_confirmation': '现在安装版本 {version} 并重启 NeuralScreen '
+                               '吗？更新期间应用会关闭。官方发行版可能会移除此分支的自定义修改。请等待更新程序重新启动 NeuralScreen。',
+        'update_confirm': '确认',
+        'update_cancel': '取消',
+        'update_retry': '重试',
+        'update_official_release_fallback': '打开官方发行页',
+        'update_busy': '安装前请等待录制、录制文件保存和转换全部完成。',
+        'update_error_network': '无法连接到官方发行服务。请检查网络连接后重试。',
+        'update_error_rate_limit': '向官方发行服务发送的请求过多。请稍后重试。',
+        'update_error_invalid_release': '无法使用最新版本的信息。请打开官方发行页手动更新。',
+        'update_error_checksum': '下载的文件未通过完整性检查，因此没有安装。请重新下载。',
+        'update_error_invalid_package': '无法使用此更新包，没有安装任何内容。请查看官方发行页。',
+        'update_error_disk_space': '可用空间不足，无法安装此更新。请释放空间后重试。',
+        'update_error_install_readonly': 'NeuralScreen 无法修改此文件夹中的文件。请从官方发行页下载更新。',
+        'update_error_source_checkout': '自动更新仅适用于打包版本。请从官方发行页下载最新版本。',
+        'update_error_modified_install': '部分应用文件已被修改，NeuralScreen 无法安全更新。请恢复原始文件，或使用官方发行页下载更新。',
+        'update_error_busy': '安装前请等待录制、录制文件保存和转换全部完成。',
+        'update_error_shutdown_timeout': '没有安装更新。旧版应用可能仍在关闭。请等待其关闭，然后手动启动 NeuralScreen。',
+        'update_error_apply_failed': '更新失败。已还原旧版应用文件。',
+        'update_error_relaunch_failed': 'NeuralScreen 无法重新启动。请从其文件夹中手动启动。恢复文件已保留。',
+        'update_error_environment_conflict': '启动环境设置会阻止此更新后的安全重启。请从官方发行页手动更新。',
+        'update_error_recovery_required': 'NeuralScreen 无法安全启动。请保留恢复文件，并按照恢复说明操作。',
+        'update_error_restart_required': '更新程序在安装前停止。请保留恢复文件。请关闭并重新启动 NeuralScreen 后重试。',
+        'update_preparing': '正在准备更新…',
+        'update_error_prepare_failed': '无法安全准备此更新，因此未授权安装。请重试或打开官方发行页。'},
+ 'ja': {'update_check': '更新を確認',
+        'update_checking': '更新を確認しています…',
+        'update_current': '最新バージョンを使用しています。',
+        'update_available': 'バージョン {version} を利用できます。',
+        'update_download': '更新をダウンロード',
+        'update_downloading': 'ダウンロード中… {percent}%',
+        'update_ready': 'バージョン {version} をインストールできます。',
+        'update_install_restart': 'インストールして再起動',
+        'update_confirmation': 'バージョン {version} をインストールして NeuralScreen '
+                               'を再起動しますか？更新中にアプリは終了します。公式リリースではフォーク独自のカスタマイズが削除される場合があります。アップデーターが '
+                               'NeuralScreen を再起動するまでお待ちください。',
+        'update_confirm': '確認',
+        'update_cancel': 'キャンセル',
+        'update_retry': '再試行',
+        'update_official_release_fallback': '公式リリースページを開く',
+        'update_busy': 'インストールする前に、録画、録画ファイルの保存、変換が終わるまでお待ちください。',
+        'update_error_network': '公式リリースサービスに接続できません。接続を確認して、もう一度お試しください。',
+        'update_error_rate_limit': '公式リリースサービスへのリクエストが多すぎます。時間をおいて再試行してください。',
+        'update_error_invalid_release': '最新リリースの情報を使用できません。手動で更新するには公式リリースページを開いてください。',
+        'update_error_checksum': 'ダウンロードしたファイルの整合性を確認できなかったため、インストールされませんでした。もう一度ダウンロードしてください。',
+        'update_error_invalid_package': 'この更新パッケージは使用できません。何もインストールされていません。公式リリースページを確認してください。',
+        'update_error_disk_space': '更新をインストールする空き容量が不足しています。空き容量を確保して、もう一度お試しください。',
+        'update_error_install_readonly': 'このフォルダー内のファイルを NeuralScreen '
+                                         'が変更できません。公式リリースページから更新をダウンロードしてください。',
+        'update_error_source_checkout': '自動更新はパッケージ版でのみ利用できます。公式リリースページから最新バージョンをダウンロードしてください。',
+        'update_error_modified_install': 'アプリの一部のファイルが変更されているため、安全に更新できません。元のファイルに戻すか、公式リリースページをご利用ください。',
+        'update_error_busy': 'インストールする前に、録画、録画ファイルの保存、変換が終わるまでお待ちください。',
+        'update_error_shutdown_timeout': '更新はインストールされていません。旧アプリはまだ終了中の可能性があります。終了するまで待ってから、NeuralScreen '
+                                         'を手動で起動してください。',
+        'update_error_apply_failed': '更新に失敗しました。以前のアプリファイルは復元されました。',
+        'update_error_relaunch_failed': 'NeuralScreen '
+                                        'を再起動できませんでした。アプリのフォルダーから手動で起動してください。復旧ファイルは保持されています。',
+        'update_error_environment_conflict': '起動環境の設定により、この更新後に安全に再起動できません。公式リリースページから手動で更新してください。',
+        'update_error_recovery_required': 'NeuralScreen を安全に起動できません。復旧ファイルを残し、復旧手順に従ってください。',
+        'update_error_restart_required': 'インストール前に更新プログラムが停止しました。復元ファイルを保持してください。NeuralScreen を閉じて再起動してから、もう一度お試しください。',
+        'update_preparing': '更新を準備しています…',
+        'update_error_prepare_failed': '更新を安全に準備できなかったため、インストールは許可されていません。再試行するか、公式リリースページを開いてください。'},
+ 'ko': {'update_check': '업데이트 확인',
+        'update_checking': '업데이트 확인 중…',
+        'update_current': '최신 버전을 사용 중입니다.',
+        'update_available': '{version} 버전을 사용할 수 있습니다.',
+        'update_download': '업데이트 다운로드',
+        'update_downloading': '다운로드 중… {percent}%',
+        'update_ready': '{version} 버전을 설치할 준비가 되었습니다.',
+        'update_install_restart': '설치 후 다시 시작',
+        'update_confirmation': '{version} 버전을 설치하고 NeuralScreen을 다시 시작할까요? 업데이트 중 앱이 종료됩니다. 공식 '
+                               '릴리스는 포크 사용자 지정 내용을 제거할 수 있습니다. 업데이트 프로그램이 NeuralScreen을 다시 시작할 때까지 '
+                               '기다려 주세요.',
+        'update_confirm': '확인',
+        'update_cancel': '취소',
+        'update_retry': '다시 시도',
+        'update_official_release_fallback': '공식 릴리스 페이지 열기',
+        'update_busy': '설치 전에 녹화, 녹화 파일 저장, 변환이 모두 끝날 때까지 기다리세요.',
+        'update_error_network': '공식 릴리스 서비스에 연결할 수 없습니다. 연결을 확인한 뒤 다시 시도하세요.',
+        'update_error_rate_limit': '공식 릴리스 서비스에 요청이 너무 많습니다. 나중에 다시 시도하세요.',
+        'update_error_invalid_release': '최신 릴리스 정보를 사용할 수 없습니다. 수동으로 업데이트하려면 공식 릴리스 페이지를 여세요.',
+        'update_error_checksum': '다운로드한 파일이 무결성 검사를 통과하지 못해 설치되지 않았습니다. 다시 다운로드하세요.',
+        'update_error_invalid_package': '이 업데이트 패키지를 사용할 수 없습니다. 아무것도 설치되지 않았습니다. 공식 릴리스 페이지를 '
+                                        '확인하세요.',
+        'update_error_disk_space': '업데이트를 설치할 공간이 부족합니다. 공간을 확보한 뒤 다시 시도하세요.',
+        'update_error_install_readonly': 'NeuralScreen이 이 폴더의 파일을 변경할 수 없습니다. 공식 릴리스 페이지에서 업데이트를 '
+                                         '받으세요.',
+        'update_error_source_checkout': '자동 업데이트는 패키지 버전에서만 사용할 수 있습니다. 공식 릴리스 페이지에서 최신 버전을 받으세요.',
+        'update_error_modified_install': '일부 앱 파일이 변경되어 NeuralScreen이 안전하게 업데이트할 수 없습니다. 원래 파일로 '
+                                         '복원하거나 공식 릴리스 페이지를 이용하세요.',
+        'update_error_busy': '설치 전에 녹화, 녹화 파일 저장, 변환이 모두 끝날 때까지 기다리세요.',
+        'update_error_shutdown_timeout': '업데이트가 설치되지 않았습니다. 이전 앱이 아직 종료 중일 수 있습니다. 종료될 때까지 기다린 뒤 '
+                                         'NeuralScreen을 직접 실행하세요.',
+        'update_error_apply_failed': '업데이트에 실패했습니다. 이전 앱 파일을 복원했습니다.',
+        'update_error_relaunch_failed': 'NeuralScreen을 다시 시작하지 못했습니다. 앱 폴더에서 직접 실행하세요. 복구 파일은 '
+                                        '보존되었습니다.',
+        'update_error_environment_conflict': '시작 환경 설정으로 인해 이 업데이트 후 안전하게 다시 시작할 수 없습니다. 공식 릴리스 '
+                                             '페이지에서 수동으로 업데이트하세요.',
+        'update_error_recovery_required': 'NeuralScreen을 안전하게 시작할 수 없습니다. 복구 파일을 보존하고 복구 안내를 따르세요.',
+        'update_error_restart_required': '설치 전에 업데이트 도구가 중지되었습니다. 복구 파일을 보존하세요. NeuralScreen을 닫고 다시 시작한 뒤 재시도하세요.',
+        'update_preparing': '업데이트 준비 중…',
+        'update_error_prepare_failed': '업데이트를 안전하게 준비하지 못해 설치가 승인되지 않았습니다. 다시 시도하거나 공식 릴리스 페이지를 '
+                                       '여세요.'}}
+
+for _lang, _extra in _UPDATE_STRINGS.items():
+    STRINGS[_lang].update(_extra)
+del _lang, _extra, _UPDATE_STRINGS
