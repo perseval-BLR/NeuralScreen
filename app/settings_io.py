@@ -1612,6 +1612,20 @@ def menu_payload(st) -> dict:
             else f"{int(compatibility.passed)}/{int(compatibility.attempted)} "
                  f"(expected {int(compatibility.expected)})"
         )
+    update_state = getattr(st, "update_state", None)
+    update_error_code = getattr(update_state, "error_code", None)
+    if update_error_code not in {
+            "network", "rate_limit", "invalid_release", "checksum",
+            "invalid_package", "disk_space", "install_readonly",
+            "source_checkout", "modified_install", "busy",
+            "shutdown_timeout", "apply_failed", "relaunch_failed",
+            "environment_conflict", "recovery_required", "prepare_failed"}:
+        update_error_code = None
+    convert_queue = getattr(st, "convert_queue", None)
+    update_busy = bool(
+        getattr(st, "recorder", None) is not None
+        or getattr(st, "recording_finalizer", None) is not None
+        or (convert_queue is not None and convert_queue.busy))
     return {
         "nr": not st.paused,
         "work_scale": st.work_scale,
@@ -1747,6 +1761,14 @@ def menu_payload(st) -> dict:
                       gpu=st.gpu_text or ""),
         "compatibility_status": compatibility_status,
         "compatibility_score": compatibility_score,
+        "update_phase": str(getattr(update_state, "phase", "idle") or "idle"),
+        "update_latest_version": getattr(update_state, "latest_version", None),
+        "update_received_bytes": int(getattr(update_state, "received_bytes", 0) or 0),
+        "update_total_bytes": int(getattr(update_state, "total_bytes", 0) or 0),
+        "update_error_code": update_error_code,
+        "update_can_install": bool(getattr(update_state, "can_install", False)),
+        "update_busy": update_busy,
+        "update_confirming": bool(getattr(st, "update_confirming", False)),
         "gpu_ok": st.gpu_ok,
         "window_mode": st.window_hwnd is not None,
         "monitor_devicename": st.capture.devicename,

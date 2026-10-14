@@ -61,10 +61,74 @@ signed with a paid certificate. Click *More info* → *Run anyway*, or use
 `NeuralScreen.vbs` next to it.
 
 There is no installer: to remove the program, delete the folder. Autostart is
-the one thing written outside it — turn it off before you move or delete it.
+stored outside it. Update backups and recovery files live in a sibling folder;
+keep that folder while you may need the previous version. Turn autostart off
+before moving or deleting the app folder.
 
 > **Do not use it in competitive online games.** A fullscreen overlay over a
 > game is what anti-cheat systems look for.
+
+## Update
+
+Open **Settings → Program → About** and choose **Check for updates**, then **Download
+update** if a newer official stable release is available. Checks are manual;
+NeuralScreen does not check at startup. You can check and download during
+recording or conversion. Installation stays unavailable until recording, final
+file saving, and conversions finish. **Install and restart** asks for a
+separate **Confirm**. After confirming, wait for the updater to restart
+NeuralScreen.
+
+Installing an official release replaces this fork's managed app files, so
+fork-only features may disappear. The updater preserves the config file,
+presets, hotkeys, menu layout, media, and unowned custom libraries. It refuses to
+replace modified, unsupported, or unwritable installations. A checksum
+mismatch or unsafe package is rejected before app files are replaced. A source
+checkout can check and download, but must use the [official releases
+page](https://github.com/perseval-BLR/NeuralScreen/releases) for manual
+installation. Installation is also refused when free space is insufficient.
+
+For an update around the size of v2.4.0 (about 229 MB compressed and 450 MB
+expanded), allow roughly 1 GB of additional free space. The download, staged
+copy, helper runtime, and one previous managed version all need space; later
+releases may need more. The updater retains one previous version and a snapshot
+of the effective config file, including when started with an external
+`--config` path.
+
+### Restore the previous version
+
+The recovery directory is beside the app folder and is named
+`.neuralscreen-update-<install_id>/`. It contains `owner.json`; the full
+`install_id` is a 64-character hexadecimal identity for the absolute install
+path. Its `previous.json` points to `txn-<transaction_id>/plan.json`; the
+`transaction_id` is 32 hexadecimal characters. The plan is kept with the
+rollback files, standalone helper, and config snapshots. Close all NeuralScreen
+and updater windows before manual recovery. The interrupted-update notice shows
+the exact PowerShell command when `owner.json` and the install's recovery marker
+validate to an owned transaction. The command path comes from that marker; a
+corrupt plan can still make the helper refuse recovery. If ownership or the
+marker cannot be validated, the notice omits the command. Its form is:
+
+```powershell
+& '<control-dir>\txn-<transaction-id>\bootstrap\runtime\python.exe' -I -S '<control-dir>\txn-<transaction-id>\bootstrap\update_apply.py' --restore '<control-dir>\txn-<transaction-id>\plan.json'
+```
+
+Use the full absolute paths from the notice. If the command is omitted or the
+helper rejects an invalid plan, keep the recovery files and use the official
+releases page; do not construct a different command. If replacement fails while verified previous
+bytes remain available, the helper restores them automatically. For a later
+rendering problem, run the manual restore command. When a pre-update config
+snapshot exists, it saves the current config as `config-snapshots/after` if
+present before restoring `config-snapshots/before`, even for an external
+`--config` path. An
+older release may not understand the newer config schema. Manual restore
+finishes the file restoration but does not
+restart the app; start NeuralScreen from its folder afterward, using the same
+`--config` path if you normally pass one. Keep recovery files until recovery is
+complete. Disk failure or deleted backups can prevent restoration.
+
+Automated disposable-install tests and the implemented menu demonstration
+cover this updater. A real public-release upgrade, full-app relaunch, and GPU
+behavior remain unverified.
 
 ## Using it
 

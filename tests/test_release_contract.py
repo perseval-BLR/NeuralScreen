@@ -89,7 +89,7 @@ class ReleaseFixture:
         builder.THIRD_PARTY_NOTICES,
     )
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, module_sources: tuple[str, ...] = ()):
         self.root = root
         self.dist = root / "dist"
         (root / "native" / "libraries").mkdir(parents=True)
@@ -109,6 +109,10 @@ class ReleaseFixture:
         (root / "app" / "settings_io.py").write_text(
             f'APP_VERSION = "{self.version}"\n', encoding="utf-8"
         )
+        for relative in module_sources:
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((ROOT / relative).read_bytes())
         self.write_launcher_version(self.version)
         (root / "native" / "all.cpp").write_text("// cpp\n", encoding="utf-8")
         (root / "native" / "all.h").write_text("// h\n", encoding="utf-8")
@@ -258,6 +262,37 @@ class ReleaseContractTests(unittest.TestCase):
                 builder.THIRD_PARTY_NOTICES, builder.CHECKSUMS,
                 "native/libraries/README.md",
             } <= names)
+
+    def test_updater_modules_ship_in_the_existing_schema3_package(self) -> None:
+        modules = (
+            "app/updates.py",
+            "app/update_package.py",
+            "app/update_apply.py",
+        )
+        with tempfile.TemporaryDirectory(prefix="ns-updater-package-") as temp:
+            fixture = ReleaseFixture(Path(temp), module_sources=modules)
+            archive = fixture.build()
+            manifest = json.loads(
+                (fixture.root / builder.RUNTIME_MANIFEST).read_text(encoding="utf-8")
+            )
+            self.assertEqual(3, manifest["schema_version"])
+            self.assertNotIn("updater", manifest)
+            records = {
+                item["path"]: item for item in manifest["package"]["files"]
+            }
+            self.assertTrue(set(modules) <= set(records))
+            with zipfile.ZipFile(archive) as bundle:
+                for name in modules:
+                    data = (ROOT / name).read_bytes()
+                    self.assertEqual(data, bundle.read(name))
+                    self.assertEqual(
+                        hashlib.sha256(data).hexdigest(), records[name]["sha256"]
+                    )
+
+            self.assertEqual([], verifier.validate_release_set(
+                fixture.dist, tag=fixture.tag,
+                tag_commit=fixture.commit, repo=fixture.root,
+            ))
 
     def test_crlf_attributed_launcher_ships_with_crlf(self) -> None:
         # cmd.exe needs CRLF, .gitattributes says *.bat eol=crlf, and a clone
