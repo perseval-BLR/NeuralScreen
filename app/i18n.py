@@ -3789,6 +3789,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
                                              'page to update manually.',
         'update_error_recovery_required': 'NeuralScreen cannot start safely. Keep the recovery '
                                           'files and follow the recovery instructions.',
+        'update_error_restart_required': 'The updater stopped before installation. Keep the recovery files. Close and restart NeuralScreen before trying again.',
         'update_preparing': 'Preparing update…',
         'update_error_prepare_failed': 'The update could not be prepared safely, so installation '
                                        'was not authorized. Try again or open the official release '
@@ -3848,6 +3849,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_recovery_required': 'NeuralScreen не может безопасно запуститься. Не '
                                           'удаляйте файлы восстановления и следуйте инструкциям по '
                                           'восстановлению.',
+        'update_error_restart_required': 'Помощник остановился до установки. Сохраните файлы восстановления. Закройте и перезапустите NeuralScreen перед новой попыткой.',
         'update_preparing': 'Подготовка обновления…',
         'update_error_prepare_failed': 'Не удалось безопасно подготовить обновление, поэтому '
                                        'установка не была разрешена. Повторите попытку или '
@@ -3911,6 +3913,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_recovery_required': 'NeuralScreen ne peut pas démarrer en toute sécurité. Ne '
                                           'supprimez pas les fichiers de récupération et suivez '
                                           'les instructions de récupération.',
+        'update_error_restart_required': 'La mise à jour s’est arrêtée avant l’installation. Conservez les fichiers de récupération. Fermez et redémarrez NeuralScreen avant de réessayer.',
         'update_preparing': 'Préparation de la mise à jour…',
         'update_error_prepare_failed': 'La mise à jour n’a pas pu être préparée en toute sécurité, '
                                        'l’installation n’a donc pas été autorisée. Réessayez ou '
@@ -3972,6 +3975,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_recovery_required': 'NeuralScreen kann nicht sicher starten. Bewahre die '
                                           'Wiederherstellungsdateien auf und befolge die '
                                           'Wiederherstellungsanweisungen.',
+        'update_error_restart_required': 'Der Updater wurde vor der Installation beendet. Bewahre die Wiederherstellungsdateien auf. Schließe NeuralScreen und starte es vor einem neuen Versuch erneut.',
         'update_preparing': 'Update wird vorbereitet…',
         'update_error_prepare_failed': 'Das Update konnte nicht sicher vorbereitet werden, daher '
                                        'wurde die Installation nicht freigegeben. Versuchen Sie es '
@@ -4033,6 +4037,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_recovery_required': 'NeuralScreen no puede iniciarse de forma segura. '
                                           'Conserva los archivos de recuperación y sigue las '
                                           'instrucciones de recuperación.',
+        'update_error_restart_required': 'El actualizador se detuvo antes de la instalación. Conserva los archivos de recuperación. Cierra y reinicia NeuralScreen antes de volver a intentarlo.',
         'update_preparing': 'Preparando la actualización…',
         'update_error_prepare_failed': 'No se pudo preparar la actualización de forma segura, así '
                                        'que no se autorizó la instalación. Inténtelo de nuevo o '
@@ -4096,6 +4101,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_recovery_required': 'NeuralScreen non può avviarsi in sicurezza. Conserva i '
                                           'file di ripristino e segui le istruzioni per il '
                                           'ripristino.',
+        'update_error_restart_required': 'L’aggiornamento si è interrotto prima dell’installazione. Conserva i file di ripristino. Chiudi e riavvia NeuralScreen prima di riprovare.',
         'update_preparing': 'Preparazione dell’aggiornamento…',
         'update_error_prepare_failed': 'Non è stato possibile preparare l’aggiornamento in '
                                        'sicurezza, quindi l’installazione non è stata autorizzata. '
@@ -4156,6 +4162,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_recovery_required': 'O NeuralScreen não pode iniciar com segurança. Preserve '
                                           'os arquivos de recuperação e siga as instruções de '
                                           'recuperação.',
+        'update_error_restart_required': 'O atualizador parou antes da instalação. Guarde os arquivos de recuperação. Feche e reinicie o NeuralScreen antes de tentar novamente.',
         'update_preparing': 'Preparando a atualização…',
         'update_error_prepare_failed': 'Não foi possível preparar a atualização com segurança, '
                                        'então a instalação não foi autorizada. Tente novamente ou '
@@ -4216,6 +4223,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_recovery_required': 'NeuralScreen nie może bezpiecznie się uruchomić. '
                                           'Zachowaj pliki odzyskiwania i postępuj zgodnie z '
                                           'instrukcjami odzyskiwania.',
+        'update_error_restart_required': 'Aktualizator zatrzymał się przed instalacją. Zachowaj pliki odzyskiwania. Zamknij i uruchom ponownie NeuralScreen przed kolejną próbą.',
         'update_preparing': 'Przygotowywanie aktualizacji…',
         'update_error_prepare_failed': 'Nie udało się bezpiecznie przygotować aktualizacji, więc '
                                        'instalacja nie została autoryzowana. Spróbuj ponownie lub '
@@ -4272,6 +4280,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_recovery_required': 'NeuralScreen не може безпечно запуститися. Збережіть '
                                           'файли відновлення та виконайте інструкції з '
                                           'відновлення.',
+        'update_error_restart_required': 'Помічник зупинився до встановлення. Збережіть файли відновлення. Закрийте та перезапустіть NeuralScreen перед новою спробою.',
         'update_preparing': 'Підготовка оновлення…',
         'update_error_prepare_failed': 'Не вдалося безпечно підготувати оновлення, тому '
                                        'встановлення не було дозволено. Спробуйте ще раз або '
@@ -4306,6 +4315,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_relaunch_failed': 'NeuralScreen 无法重新启动。请从其文件夹中手动启动。恢复文件已保留。',
         'update_error_environment_conflict': '启动环境设置会阻止此更新后的安全重启。请从官方发行页手动更新。',
         'update_error_recovery_required': 'NeuralScreen 无法安全启动。请保留恢复文件，并按照恢复说明操作。',
+        'update_error_restart_required': '更新程序在安装前停止。请保留恢复文件。请关闭并重新启动 NeuralScreen 后重试。',
         'update_preparing': '正在准备更新…',
         'update_error_prepare_failed': '无法安全准备此更新，因此未授权安装。请重试或打开官方发行页。'},
  'ja': {'update_check': '更新を確認',
@@ -4342,6 +4352,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
                                         'を再起動できませんでした。アプリのフォルダーから手動で起動してください。復旧ファイルは保持されています。',
         'update_error_environment_conflict': '起動環境の設定により、この更新後に安全に再起動できません。公式リリースページから手動で更新してください。',
         'update_error_recovery_required': 'NeuralScreen を安全に起動できません。復旧ファイルを残し、復旧手順に従ってください。',
+        'update_error_restart_required': 'インストール前に更新プログラムが停止しました。復元ファイルを保持してください。NeuralScreen を閉じて再起動してから、もう一度お試しください。',
         'update_preparing': '更新を準備しています…',
         'update_error_prepare_failed': '更新を安全に準備できなかったため、インストールは許可されていません。再試行するか、公式リリースページを開いてください。'},
  'ko': {'update_check': '업데이트 확인',
@@ -4381,6 +4392,7 @@ _UPDATE_STRINGS = {'en': {'update_check': 'Check for updates',
         'update_error_environment_conflict': '시작 환경 설정으로 인해 이 업데이트 후 안전하게 다시 시작할 수 없습니다. 공식 릴리스 '
                                              '페이지에서 수동으로 업데이트하세요.',
         'update_error_recovery_required': 'NeuralScreen을 안전하게 시작할 수 없습니다. 복구 파일을 보존하고 복구 안내를 따르세요.',
+        'update_error_restart_required': '설치 전에 업데이트 도구가 중지되었습니다. 복구 파일을 보존하세요. NeuralScreen을 닫고 다시 시작한 뒤 재시도하세요.',
         'update_preparing': '업데이트 준비 중…',
         'update_error_prepare_failed': '업데이트를 안전하게 준비하지 못해 설치가 승인되지 않았습니다. 다시 시도하거나 공식 릴리스 페이지를 '
                                        '여세요.'}}

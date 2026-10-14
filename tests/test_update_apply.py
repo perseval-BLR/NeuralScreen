@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 import update_apply as apply
 from updates import UpdateController
-from test_updates import BundleFixture, ArchiveOpener
+from test_updates import BundleFixture, ArchiveOpener, api_payload
 from update_package import stage_release
 
 
@@ -358,6 +358,247 @@ raise SystemExit(a.run_helper(Path({str(fixture.path)!r}), parent_pid={parent.pi
 
 
 class TransactionTests(unittest.TestCase):
+    def preparation_fixture(self, root):
+        fixture = Fixture(root)
+        backup = fixture.transaction / "rollback"
+        backup.mkdir()
+        (backup / "keep.bin").write_bytes(b"previous recovery bytes")
+        apply.atomic_json(fixture.transaction.parent / "previous.json", apply.identity(fixture.plan))
+        controller = UpdateController("2.4.0", fixture.install)
+        self.addCleanup(controller.close)
+        self.download_candidate(controller, fixture)
+        return fixture, controller
+
+    def download_candidate(self, controller, fixture):
+        metadata = ArchiveOpener(json.dumps(api_payload(fixture.new.release)).encode("utf-8"))
+        with mock.patch("updates.urllib.request.build_opener", return_value=metadata):
+            self.assertTrue(controller.check())
+            self.wait_controller(controller, "available")
+        with mock.patch("update_package.urllib.request.build_opener",
+                        return_value=ArchiveOpener(fixture.new.path.read_bytes())):
+            self.assertTrue(controller.download())
+            self.wait_controller(controller, "ready")
+        self.assertTrue(controller.poll().can_install)
+        return controller.staged_release
+
+    def preparation_preserved_bytes(self, fixture):
+        roots = (fixture.install, fixture.transaction)
+        return {path: path.read_bytes() for root in roots for path in root.rglob("*") if path.is_file()} | {
+            fixture.config: fixture.config.read_bytes(),
+            fixture.transaction.parent / "owner.json": (fixture.transaction.parent / "owner.json").read_bytes(),
+            fixture.transaction.parent / "previous.json": (fixture.transaction.parent / "previous.json").read_bytes(),
+        }
+
+    def assert_preparation_preserved(self, fixture, before):
+        self.assertEqual(self.preparation_preserved_bytes(fixture), before)
+        fixture.unchanged(self)
+
+    def assert_preparation_error(self, controller, fixture, code, launch):
+        self.assertTrue(controller.arm_install(config_path=fixture.config,
+                                              original_cwd=fixture.root, messages=MESSAGES))
+        self.wait_controller(controller, "error")
+        self.assertEqual(controller.poll().error_code, code)
+        self.assertFalse(controller.poll_armed())
+        self.assertFalse(launch.called)
+
+    def test_preparation_partial_bootstrap_failure_cleans_owned_candidate_before_retry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            staged = controller.staged_release
+            transaction = staged.transaction_dir
+            copied = []
+            copyfile = apply.shutil.copyfile
+            def partial_copy(source, target, *args, **kwargs):
+                self.assertIsNot(threading.current_thread(), threading.main_thread())
+                copied.append(Path(target))
+                if len(copied) == 2:
+                    Path(target).write_bytes(b"partial bootstrap bytes")
+                    raise OSError("fixture bootstrap copy failed")
+                return copyfile(source, target, *args, **kwargs)
+            with mock.patch.dict(os.environ, {}, clear=True), \
+                    mock.patch("updates.subprocess.Popen") as launch, \
+                    mock.patch.object(apply.shutil, "copyfile", side_effect=partial_copy):
+                self.assert_preparation_error(controller, fixture, "prepare_failed", launch)
+            self.assertEqual(len(copied), 2)
+            self.assert_preparation_preserved(fixture, before)
+            with self.subTest(cleanup="owned candidate and partial bootstrap"):
+                self.assertFalse(transaction.exists(), "failed preparation leaked its owned transaction")
+            replacement = self.download_candidate(controller, fixture)
+            self.assertNotEqual(replacement.transaction_dir, transaction)
+            self.assertEqual(set(transaction.parent.glob("txn-*")),
+                             {fixture.transaction, replacement.transaction_dir})
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_preparation_disk_space_failure_cleans_owned_candidate_before_retry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            transaction = controller.staged_release.transaction_dir
+            with mock.patch.dict(os.environ, {}, clear=True), \
+                    mock.patch("updates.subprocess.Popen") as launch, \
+                    mock.patch.object(apply.shutil, "disk_usage", return_value=types.SimpleNamespace(free=0)):
+                self.assert_preparation_error(controller, fixture, "disk_space", launch)
+            self.assert_preparation_preserved(fixture, before)
+            with self.subTest(cleanup="owned download and candidate"):
+                self.assertFalse(transaction.exists(), "low-space preparation leaked its owned transaction")
+            replacement = self.download_candidate(controller, fixture)
+            self.assertNotEqual(replacement.transaction_dir, transaction)
+            self.assertEqual(set(transaction.parent.glob("txn-*")),
+                             {fixture.transaction, replacement.transaction_dir})
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_preparation_cleanup_permission_error_retains_candidate_and_blocks_retry_until_allowed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            staged = controller.staged_release
+            transaction = staged.transaction_dir
+            transactions = set(transaction.parent.glob("txn-*"))
+            rmtree = apply.shutil.rmtree
+            cleanup_threads = []
+            def denied(path, *args, **kwargs):
+                self.assertEqual(Path(path).resolve(), transaction.resolve())
+                cleanup_threads.append(threading.current_thread())
+                raise PermissionError("fixture cleanup denied")
+            with mock.patch.dict(os.environ, {}, clear=True), mock.patch("updates.subprocess.Popen") as launch:
+                with mock.patch.object(apply.shutil, "rmtree", side_effect=denied), \
+                        mock.patch.object(apply.shutil, "disk_usage", return_value=types.SimpleNamespace(free=0)):
+                    self.assert_preparation_error(controller, fixture, "disk_space", launch)
+                with mock.patch.object(apply.shutil, "rmtree", side_effect=denied), \
+                        mock.patch("updates.urllib.request.build_opener",
+                                   return_value=ArchiveOpener(b"")) as transport:
+                    for retry in (controller.check, controller.download):
+                        with self.subTest(retry=retry.__name__):
+                            started = retry()
+                            if started:
+                                self.wait_controller(controller, "error")
+                            self.assertTrue(controller.staged_release is staged,
+                                            "denied cleanup retry must retain the staged reference")
+                            self.assertEqual(set(transaction.parent.glob("txn-*")), transactions)
+                            self.assertFalse(transport.called)
+                self.assertTrue(cleanup_threads, "cleanup must reach the OS deletion boundary")
+                self.assertTrue(all(thread is not threading.main_thread() for thread in cleanup_threads),
+                                "cleanup I/O must run on the background worker")
+                self.assert_preparation_preserved(fixture, before)
+                allowed_threads = []
+                def allowed(path, *args, **kwargs):
+                    allowed_threads.append(threading.current_thread())
+                    return rmtree(path, *args, **kwargs)
+                with mock.patch.object(apply.shutil, "rmtree", side_effect=allowed):
+                    replacement = self.download_candidate(controller, fixture)
+                self.assertNotEqual(replacement.transaction_dir, transaction)
+                self.assertFalse(transaction.exists())
+                self.assertEqual(set(transaction.parent.glob("txn-*")),
+                                 {fixture.transaction, replacement.transaction_dir})
+                self.assertTrue(allowed_threads)
+                self.assertTrue(all(thread is not threading.main_thread() for thread in allowed_threads))
+                self.assertFalse(launch.called)
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_preparation_cleanup_refuses_unmanaged_entry_and_retains_candidate_on_retry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            staged = controller.staged_release
+            transaction = staged.transaction_dir
+            (transaction / "user-notes.txt").write_bytes(b"unexpected user bytes")
+            candidate_before = {path: path.read_bytes() for path in transaction.rglob("*") if path.is_file()}
+            transactions = set(transaction.parent.glob("txn-*"))
+            with mock.patch.dict(os.environ, {}, clear=True), mock.patch("updates.subprocess.Popen") as launch:
+                with mock.patch.object(apply.shutil, "disk_usage", return_value=types.SimpleNamespace(free=0)):
+                    self.assert_preparation_error(controller, fixture, "disk_space", launch)
+                with mock.patch("updates.urllib.request.build_opener",
+                                return_value=ArchiveOpener(b"")) as transport:
+                    for retry in (controller.check, controller.download):
+                        with self.subTest(retry=retry.__name__):
+                            started = retry()
+                            if started:
+                                self.wait_controller(controller, "error")
+                            self.assertTrue(controller.staged_release is staged,
+                                            "uncertain ownership must retain the staged reference")
+                            self.assertEqual({path: path.read_bytes() for path in transaction.rglob("*") if path.is_file()},
+                                             candidate_before)
+                            self.assertEqual(set(transaction.parent.glob("txn-*")), transactions)
+                            self.assertFalse(transport.called)
+                self.assertFalse(launch.called)
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_close_discards_completed_staging_and_preserves_previous_and_user_bytes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            transaction = controller.staged_release.transaction_dir
+            controller.close()
+            self.assertFalse(transaction.exists())
+            self.assertIsNone(controller.staged_release)
+            self.assertFalse(controller.check())
+            self.assertFalse(controller.download())
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_close_reclaims_a_download_finishing_during_close(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            available, finish = threading.Event(), threading.Event()
+            stages = []
+            def late_stage(*args, **kwargs):
+                staged = stage_release(*args, **kwargs)
+                stages.append(staged)
+                available.set()
+                if not finish.wait(5):
+                    raise AssertionError("fixture download was not released")
+                return staged
+            with mock.patch("updates.check_latest", return_value=fixture.new.release):
+                self.assertTrue(controller.check())
+                self.wait_controller(controller, "available")
+            with mock.patch("update_package.urllib.request.build_opener",
+                            return_value=ArchiveOpener(fixture.new.path.read_bytes())), \
+                    mock.patch("updates.stage_release", side_effect=late_stage):
+                self.assertTrue(controller.download())
+                worker = controller._thread
+                try:
+                    self.assertTrue(available.wait(5))
+                    controller.close()
+                finally:
+                    finish.set()
+                    worker.join(timeout=5)
+                self.assertFalse(worker.is_alive())
+            self.assertEqual(len(stages), 1)
+            deadline = time.monotonic() + 5
+            while controller.staged_release is not None or stages[0].transaction_dir.exists():
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(.01)
+            self.assertFalse(stages[0].transaction_dir.exists())
+            self.assertIsNone(controller.staged_release)
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_dead_helper_without_journal_retains_transaction_and_blocks_retry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            staged = controller.staged_release
+            process = types.SimpleNamespace(poll=lambda: 1)
+            with mock.patch.dict(os.environ, {}, clear=True), \
+                    mock.patch("updates.subprocess.Popen", return_value=process) as launch:
+                self.assertTrue(controller.arm_install(config_path=fixture.config,
+                                                      original_cwd=fixture.root, messages=MESSAGES))
+                self.wait_controller(controller, "error")
+                self.assertEqual(controller.poll().error_code, "restart_required")
+                self.assertTrue(launch.called)
+                self.assertFalse(controller.poll_armed())
+            self.assertFalse((staged.transaction_dir / "journal.jsonl").exists())
+            self.assertFalse((fixture.install / apply.MARKER).exists())
+            before = {p: p.read_bytes() for p in Path(temp).rglob("*") if p.is_file()}
+            with mock.patch("updates.urllib.request.build_opener") as transport:
+                self.assertFalse(controller.check())
+                self.assertFalse(controller.download())
+                self.assertFalse(transport.called)
+            self.assertIs(controller.staged_release, staged)
+            self.assertEqual({p: p.read_bytes() for p in Path(temp).rglob("*") if p.is_file()}, before)
+            controller.close()
+            self.assertEqual({p: p.read_bytes() for p in Path(temp).rglob("*") if p.is_file()}, before)
+            fixture.unchanged(self)
+
     def test_ready_snapshot_survives_cached_archive_removal_before_poll(self):
         with tempfile.TemporaryDirectory() as temp:
             fixture = Fixture(Path(temp))

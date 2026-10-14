@@ -189,6 +189,7 @@ class UpdateController:
         self._events: queue.SimpleQueue = queue.SimpleQueue()
         self._lock = threading.Lock()
         self._active = False
+        self._worker_running = False
         self._closed = False
         self._thread: threading.Thread | None = None
         self._release: ReleaseInfo | None = None
@@ -216,6 +217,7 @@ class UpdateController:
             if self._closed or self._active:
                 return False
             self._active = True
+            self._worker_running = True
             self._state = UpdateState(
                 phase=phase,
                 latest_version=latest_version,
@@ -226,16 +228,21 @@ class UpdateController:
             )
 
             def run() -> None:
+                event = None
                 try:
-                    work()
+                    event = work()
                 except UpdateError as exc:
-                    self._events.put(("error", exc.code))
+                    event = ("error", exc.code)
                 except OSError:
-                    self._events.put(("error", "prepare_failed" if phase == "installing" else "network"))
+                    event = ("error", "prepare_failed" if phase == "installing" else "network")
                 except Exception:
-                    self._events.put(("error", "prepare_failed" if phase == "installing" else "invalid_package"))
+                    event = ("error", "prepare_failed" if phase == "installing" else "invalid_package")
                 finally:
-                    self._events.put(("done", None))
+                    with self._lock:
+                        self._worker_running = False
+                        if event is not None:
+                            self._events.put(event)
+                        self._events.put(("done", None))
 
             thread = threading.Thread(target=run, name="NeuralScreen updater", daemon=True)
             self._thread = thread
@@ -243,6 +250,7 @@ class UpdateController:
                 thread.start()
             except RuntimeError:
                 self._active = False
+                self._worker_running = False
                 self._state = UpdateState(phase="error", error_code="network")
                 return False
             return True
@@ -253,16 +261,25 @@ class UpdateController:
             if self._closed or self._active or not self._settle_install():
                 return False
             self._release = None
-            self._staged = None
 
-        def work() -> None:
-            self._events.put(("checked", check_latest(self.current_version)))
+        def work():
+            self._discard_staged()
+            return ("checked", check_latest(self.current_version))
 
         return self._start("checking", self.current_version, 0, work)
 
     def create_download_transaction(self) -> Path:
         """Create a new owned sibling transaction, never a reused authorization."""
         return update_apply.create_transaction(self.install_dir)
+
+    def _discard_staged(self) -> None:
+        with self._lock:
+            staged = self._staged
+        if staged is not None:
+            update_apply.discard_staged(staged, self.install_dir)
+            with self._lock:
+                if self._staged is staged:
+                    self._staged = None
 
     def _settle_install(self) -> bool:
         """Called under the controller lock before starting another operation."""
@@ -313,13 +330,14 @@ class UpdateController:
         def progress(received: int, total: int) -> None:
             self._events.put(("progress", (received, total)))
 
-        def work() -> None:
+        def work():
+            self._discard_staged()
             destination = transaction_dir if transaction_dir is not None else self.create_download_transaction()
             staged = stage_release(
                 release, destination, install_dir=self.install_dir,
                 progress=progress, response_callback=track_response,
             )
-            self._events.put(("ready", staged))
+            return ("ready", staged)
 
         return self._start("downloading", release.version_text, release.size, work)
 
@@ -354,9 +372,10 @@ class UpdateController:
                     update_apply.write_protocol(plan, "cancel")
                     raise UpdateError("prepare_failed")
                 if update_apply.protocol(plan, "armed"):
-                    self._events.put(("armed", None))
-                    return
+                    return ("armed", None)
                 if process.poll() is not None:
+                    if not (path.parent / "journal.jsonl").exists():
+                        raise UpdateError("restart_required")
                     break
                 time.sleep(0.025)
             update_apply.write_protocol(plan, "cancel")
@@ -364,13 +383,18 @@ class UpdateController:
 
         def work():
             try:
-                prepare_and_arm()
+                return prepare_and_arm()
             except Exception:
                 with self._lock:
                     plan = self._apply_plan
                 if plan is not None:
                     try:
                         update_apply.write_protocol(plan, "cancel")
+                    except (OSError, UpdateError):
+                        pass
+                else:
+                    try:
+                        self._discard_staged()
                     except (OSError, UpdateError):
                         pass
                 raise
@@ -467,22 +491,49 @@ class UpdateController:
                     self._active = False
                     self._response = None
             if (self._apply_plan is not None and not self._authorized
+                    and not self._worker_running
                     and self._helper is not None and self._helper.poll() is not None
                     and self._state.phase == "installing"):
                 self._arm_acknowledged = False
+                journal = Path(self._apply_plan["bootstrap_dir"]).parent / "journal.jsonl"
                 self._state = UpdateState(phase="error", latest_version=self._state.latest_version,
-                                          error_code="prepare_failed")
+                                          error_code="prepare_failed" if journal.exists() else "restart_required")
             return self._state
 
-    def close(self) -> None:
-        """Stop accepting work and close any currently streamed response."""
-        self.cancel_install()
+    def _cleanup_closed(self) -> None:
+        self.poll()
         with self._lock:
+            if self._authorized or not self._settle_install():
+                return
+        try:
+            self._discard_staged()
+        except (OSError, UpdateError):
+            pass
+
+    def close(self) -> None:
+        """Cancel streamed work and reclaim safe staging during ordinary teardown."""
+        with self._lock:
+            if self._closed:
+                return
             self._closed = True
             response = self._response
             self._response = None
+            worker = self._thread if self._worker_running else None
+        self.cancel_install()
         if response is not None:
             try:
                 response.close()
             except OSError:
                 pass
+        if worker is None:
+            self._cleanup_closed()
+        else:
+            def finish():
+                worker.join()
+                self._cleanup_closed()
+            # Normal teardown continues, but Python waits for staging reclamation.
+            cleanup = threading.Thread(target=finish, name="NeuralScreen update cleanup", daemon=False)
+            try:
+                cleanup.start()
+            except RuntimeError:
+                finish()

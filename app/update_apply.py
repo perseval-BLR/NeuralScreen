@@ -556,6 +556,66 @@ def cleanup_previous(previous, current):
         return
 
 
+def discard_staged(staged, install_dir):
+    """Discard an owned candidate only before arming or after settled abandonment."""
+    try:
+        root, transaction = Path(install_dir), Path(staged.transaction_dir)
+        _ensure_no_reparse(root)
+        _ensure_no_reparse(transaction)
+        root = root.resolve()
+        control = control_dir_for(root)
+        if (transaction.parent != control or re.fullmatch(r"txn-[0-9a-f]{32}", transaction.name) is None
+                or Path(staged.candidate_dir) != transaction / "candidate"
+                or Path(staged.archive_path) != transaction / "release.zip"
+                or read_json(control / "owner.json") != {
+                    "schema_version": 1, "install_id": install_id_for(root), "install_dir": str(root)}):
+            raise UpdateError("recovery_required")
+        marker = root / MARKER
+        if marker.exists() or marker.is_symlink():
+            raise UpdateError("recovery_required")
+        previous = control / "previous.json"
+        _ensure_no_reparse(previous)
+        if previous.exists():
+            value = read_json(previous)
+            if (not isinstance(value, dict) or not isinstance(value.get("plan_path"), str)
+                    or Path(value["plan_path"]).resolve() == transaction / "plan.json"):
+                raise UpdateError("recovery_required")
+        if not transaction.exists():
+            return
+        if not transaction.is_dir():
+            raise UpdateError("recovery_required")
+        allowed = {"release.zip", "plan.json"}
+        allowed.update("candidate/" + r.path for r in staged.new_inventory)
+        for record in staged.old_inventory:
+            if record.path.startswith("runtime/") and not record.path.startswith("runtime/Lib/"):
+                allowed.add("bootstrap/" + record.path)
+            elif record.path in {"app/update_apply.py", "app/update_package.py"}:
+                allowed.add("bootstrap/" + Path(record.path).name)
+        journal = transaction / "journal.jsonl"
+        _ensure_no_reparse(journal)
+        if journal.exists():
+            plan = load_plan(transaction / "plan.json")
+            records = read_journal(plan)
+            if any(r["event"] == "intent" for r in records) or not any(r["event"] == "abandoned" for r in records):
+                raise UpdateError("recovery_required")
+            allowed.update({"journal.jsonl", "updater.log"})
+            for name in ("armed", "proceed", "cancel", "cancelled"):
+                if protocol(plan, name):
+                    allowed.add(name + ".json")
+        directories = {"candidate", "bootstrap"}
+        for name in allowed:
+            directories.update(p.as_posix() for p in Path(name).parents if str(p) != ".")
+        for folder, dirs, files in os.walk(transaction, followlinks=False):
+            for name in dirs + files:
+                entry = Path(folder) / name
+                _ensure_no_reparse(entry)
+                if entry.relative_to(transaction).as_posix() not in (directories if entry.is_dir() else allowed):
+                    raise UpdateError("recovery_required")
+        shutil.rmtree(transaction)
+    except OSError as exc:
+        raise UpdateError("prepare_failed") from exc
+
+
 class WindowsHandles:
     """Own exclusion on the helper's calling thread and pin the exact parent."""
     def __init__(self):

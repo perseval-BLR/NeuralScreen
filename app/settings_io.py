@@ -1619,7 +1619,7 @@ def menu_payload(st) -> dict:
             "invalid_package", "disk_space", "install_readonly",
             "source_checkout", "modified_install", "busy",
             "shutdown_timeout", "apply_failed", "relaunch_failed",
-            "environment_conflict", "recovery_required", "prepare_failed"}:
+            "environment_conflict", "recovery_required", "prepare_failed", "restart_required"}:
         update_error_code = None
     convert_queue = getattr(st, "convert_queue", None)
     update_busy = bool(

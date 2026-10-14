@@ -14,6 +14,7 @@ from unittest import mock
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 sys.path.insert(0, str(BASE / "app"))
+sys.path.insert(0, str(BASE / "tests"))
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
@@ -23,6 +24,9 @@ import pygame  # noqa: E402
 import commands  # noqa: E402
 import overlay_ui  # noqa: E402
 from i18n import STRINGS  # noqa: E402
+from settings_io import menu_payload  # noqa: E402
+from test_menu_state_keys import _state as _payload_state  # noqa: E402
+from updates import UpdateState  # noqa: E402
 
 
 def _font(size: int, **_kwargs):
@@ -102,7 +106,7 @@ def capture_update_demos(destination: Path) -> list[dict]:
           "update_can_install": True, "update_busy": True,
           "update_confirming": True}),
         ("error-dark", "dark", 1280, 900, 1.0,
-         {"update_phase": "error", "update_error_code": "prepare_failed"}),
+         {"update_phase": "error", "update_error_code": "restart_required"}),
         ("confirmation-narrow", "light", 1024, 900, 1.0,
          {"update_phase": "ready", "update_latest_version": "2.5.0",
           "update_can_install": True, "update_confirming": True}),
@@ -285,6 +289,23 @@ class UpdateMenuBehaviorTests(unittest.TestCase):
                     setattr(st, field, object())
                 commands.apply_menu_action(st, action[0])
                 self.assertEqual(busy_controller.download_calls, 1)
+
+    def test_restart_required_explains_recovery_and_disables_retry(self):
+        for lang, strings in STRINGS.items():
+            with self.subTest(lang=lang):
+                state = _payload_state()
+                state.lang = lang
+                state.update_state = UpdateState(phase="error", error_code="restart_required")
+                payload = menu_payload(state)
+                self.assertEqual(payload["update_error_code"], "restart_required")
+                menu = _menu(**payload)
+                retry = _find(menu, "button", "update_retry")
+                self.assertTrue(retry.extra.get("disabled"))
+                self.assertEqual(_click(menu, retry), [])
+                self.assertEqual(_find(menu, "note", "update_status").extra["text"],
+                                 strings["update_error_restart_required"])
+                self.assertIn("NeuralScreen", strings["update_error_restart_required"])
+                self.assertIsNotNone(_find(menu, "button", "update_official_release"))
 
     def test_update_snapshots_render_status_and_gated_actions(self):
         cases = (

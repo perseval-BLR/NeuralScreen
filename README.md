@@ -112,11 +112,21 @@ marker cannot be validated, the notice omits the command. Its form is:
 & '<control-dir>\txn-<transaction-id>\bootstrap\runtime\python.exe' -I -S '<control-dir>\txn-<transaction-id>\bootstrap\update_apply.py' --restore '<control-dir>\txn-<transaction-id>\plan.json'
 ```
 
-Use the full absolute paths from the notice. If the command is omitted or the
-helper rejects an invalid plan, keep the recovery files and use the official
-releases page; do not construct a different command. If replacement fails while verified previous
-bytes remain available, the helper restores them automatically. For a later
-rendering problem, run the manual restore command. When a pre-update config
+Use the full absolute paths from an interrupted-update notice. If that notice
+omits the command or the helper rejects the plan, keep the recovery files and
+use the official releases page; do not guess another command.
+
+A successful update does not display a restore command. For a later rendering
+problem, close NeuralScreen and all updater windows, then find the sibling
+recovery directory whose `owner.json` names your app folder in `install_dir`.
+Read `plan_path` in that directory's `previous.json`. It must be the absolute
+path to `plan.json` inside that same recovery directory's `txn-<transaction_id>`
+folder. Use that transaction folder for all three paths in the command above.
+If either JSON file is missing, unreadable, or points elsewhere, keep the recovery
+files and use the official releases page instead of guessing paths.
+
+If replacement fails while verified previous bytes remain available, the helper
+restores them automatically. When a pre-update config
 snapshot exists, it saves the current config as `config-snapshots/after` if
 present before restoring `config-snapshots/before`, even for an external
 `--config` path. An

@@ -1994,7 +1994,8 @@ class OverlayMenu:
                         error_code = error_code or "invalid_release"
                         status = s.get(f"update_error_{error_code}", s.get(
                             "update_error_invalid_release", "The update could not be used."))
-                        buttons = [("update_retry", s.get("update_retry", "Retry"), False),
+                        buttons = [("update_retry", s.get("update_retry", "Retry"),
+                                    error_code == "restart_required"),
                                    ("update_official_release", s.get(
                                        "update_official_release_fallback",
                                        "Open the official release page"), False)]
