@@ -556,6 +556,53 @@ def cleanup_previous(previous, current):
         return
 
 
+def discard_download(transaction_dir, install_dir):
+    """Discard a failed, internally allocated download before any helper preparation."""
+    try:
+        root, transaction = Path(install_dir), Path(transaction_dir)
+        _ensure_no_reparse(root)
+        _ensure_no_reparse(transaction)
+        root = root.resolve()
+        control = control_dir_for(root)
+        if (transaction.parent != control or re.fullmatch(r"txn-[0-9a-f]{32}", transaction.name) is None
+                or read_json(control / "owner.json") != {
+                    "schema_version": 1, "install_id": install_id_for(root), "install_dir": str(root)}):
+            raise UpdateError("recovery_required")
+        marker = root / MARKER
+        if marker.exists() or marker.is_symlink():
+            raise UpdateError("recovery_required")
+        previous = control / "previous.json"
+        _ensure_no_reparse(previous)
+        if previous.exists():
+            value = read_json(previous)
+            if (not isinstance(value, dict) or not isinstance(value.get("plan_path"), str)
+                    or "\0" in value["plan_path"] or not Path(value["plan_path"]).is_absolute()
+                    or Path(value["plan_path"]).resolve().is_relative_to(transaction)):
+                raise UpdateError("recovery_required")
+        if not transaction.exists():
+            return
+        if not transaction.is_dir():
+            raise UpdateError("recovery_required")
+        pending = [transaction]
+        while pending:
+            for entry in pending.pop().iterdir():
+                _ensure_no_reparse(entry)
+                directory = entry.is_dir()
+                if entry.parent == transaction and (
+                        entry.name not in {"release.zip", "release.zip.part", "candidate"}
+                        or directory != (entry.name == "candidate")):
+                    raise UpdateError("recovery_required")
+                if directory:
+                    pending.append(entry)
+                elif not entry.is_file():
+                    raise UpdateError("recovery_required")
+        shutil.rmtree(transaction)
+    except ValueError as exc:
+        raise UpdateError("recovery_required") from exc
+    except OSError as exc:
+        raise UpdateError("prepare_failed") from exc
+
+
 def discard_staged(staged, install_dir):
     """Discard an owned candidate only before arming or after settled abandonment."""
     try:

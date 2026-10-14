@@ -194,6 +194,7 @@ class UpdateController:
         self._thread: threading.Thread | None = None
         self._release: ReleaseInfo | None = None
         self._staged = None
+        self._download_transaction = None
         self._response = None
         self._apply_plan = None
         self._helper = None
@@ -275,11 +276,17 @@ class UpdateController:
     def _discard_staged(self) -> None:
         with self._lock:
             staged = self._staged
+            transaction = self._download_transaction
         if staged is not None:
             update_apply.discard_staged(staged, self.install_dir)
             with self._lock:
                 if self._staged is staged:
                     self._staged = None
+        if transaction is not None:
+            update_apply.discard_download(transaction, self.install_dir)
+            with self._lock:
+                if self._download_transaction == transaction:
+                    self._download_transaction = None
 
     def _settle_install(self) -> bool:
         """Called under the controller lock before starting another operation."""
@@ -333,10 +340,23 @@ class UpdateController:
         def work():
             self._discard_staged()
             destination = transaction_dir if transaction_dir is not None else self.create_download_transaction()
-            staged = stage_release(
-                release, destination, install_dir=self.install_dir,
-                progress=progress, response_callback=track_response,
-            )
+            if transaction_dir is None:
+                with self._lock:
+                    self._download_transaction = destination
+            try:
+                staged = stage_release(
+                    release, destination, install_dir=self.install_dir,
+                    progress=progress, response_callback=track_response,
+                )
+            except Exception:
+                if transaction_dir is None:
+                    try:
+                        self._discard_staged()
+                    except (OSError, UpdateError):
+                        pass
+                raise
+            with self._lock:
+                self._download_transaction = None
             return ("ready", staged)
 
         return self._start("downloading", release.version_text, release.size, work)

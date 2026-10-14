@@ -14,6 +14,8 @@ import time
 import ctypes
 import zipfile
 import unittest
+from contextlib import nullcontext
+from dataclasses import replace
 from unittest import mock
 from pathlib import Path
 
@@ -22,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 import update_apply as apply
 from updates import UpdateController
-from test_updates import BundleFixture, ArchiveOpener, api_payload
+from test_updates import BundleFixture, ArchiveOpener, ReadTimeoutResponse, api_payload
 from update_package import stage_release
 
 
@@ -358,6 +360,250 @@ raise SystemExit(a.run_helper(Path({str(fixture.path)!r}), parent_pid={parent.pi
 
 
 class TransactionTests(unittest.TestCase):
+    def test_failed_download_reclaims_its_internal_transaction(self):
+        for code in ("network", "checksum", "invalid_package", "disk_space"):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as temp:
+                fixture, controller = self.preparation_fixture(Path(temp))
+                before = self.preparation_preserved_bytes(fixture)
+                body = b"not an archive" if code == "invalid_package" else fixture.new.path.read_bytes()
+                release = fixture.new.release
+                if code == "invalid_package":
+                    release = replace(release, size=len(body), sha256=hashlib.sha256(body).hexdigest())
+                opener = ArchiveOpener(b"" if code == "checksum" else body)
+                if code == "network":
+                    opener.response = ReadTimeoutResponse(body)
+                with mock.patch("updates.check_latest", return_value=release):
+                    self.assertTrue(controller.check())
+                    self.wait_controller(controller, "available")
+                transactions = set(fixture.transaction.parent.glob("txn-*"))
+                space = mock.patch.object(apply.shutil, "disk_usage", return_value=types.SimpleNamespace(free=0))
+                with (space if code == "disk_space" else nullcontext()), \
+                        mock.patch("update_package.urllib.request.build_opener", return_value=opener):
+                    self.assertTrue(controller.download())
+                    self.wait_controller(controller, "error")
+                self.assertEqual(controller.poll().error_code, code)
+                self.assertEqual(set(fixture.transaction.parent.glob("txn-*")), transactions,
+                                 "failed download left an unreachable owned transaction")
+                self.assert_preparation_preserved(fixture, before)
+
+    def test_failed_download_cleanup_denial_blocks_retries_and_later_reclaims(self):
+        for recovery in ("check", "close"):
+            with self.subTest(recovery=recovery), tempfile.TemporaryDirectory() as temp:
+                fixture, controller = self.preparation_fixture(Path(temp))
+                before = self.preparation_preserved_bytes(fixture)
+                with mock.patch("updates.check_latest", return_value=fixture.new.release):
+                    controller.check()
+                    self.wait_controller(controller, "available")
+                control = fixture.transaction.parent
+                transactions = set(control.glob("txn-*"))
+                unlink, rmtree = Path.unlink, apply.shutil.rmtree
+                cleanup_threads = []
+                def deny_unlink(path, *args, **kwargs):
+                    if path.name == "release.zip.part":
+                        raise PermissionError("fixture partial archive is locked")
+                    return unlink(path, *args, **kwargs)
+                def deny_remove(path, *args, **kwargs):
+                    self.assertEqual(Path(path).parent, control)
+                    self.assertNotIn(Path(path), transactions)
+                    cleanup_threads.append(threading.current_thread())
+                    raise PermissionError("fixture transaction is locked")
+                opener = ArchiveOpener(b"")
+                opener.response = ReadTimeoutResponse(fixture.new.path.read_bytes())
+                with mock.patch.object(Path, "unlink", new=deny_unlink), \
+                        mock.patch.object(apply.shutil, "rmtree", side_effect=deny_remove):
+                    with mock.patch("update_package.urllib.request.build_opener", return_value=opener):
+                        self.assertTrue(controller.download())
+                        self.wait_controller(controller, "error")
+                    self.assertEqual(controller.poll().error_code, "network")
+                    retained = set(control.glob("txn-*")) - transactions
+                    self.assertEqual(len(retained), 1)
+                    transaction = retained.pop()
+                    self.assertEqual((transaction / "release.zip.part").stat().st_size, 16)
+                    with mock.patch("updates.urllib.request.build_opener") as transport:
+                        for retry in (controller.download, controller.check):
+                            self.assertTrue(retry())
+                            self.wait_controller(controller, "error")
+                            self.assertEqual(set(control.glob("txn-*")), transactions | {transaction})
+                            self.assertFalse(transport.called)
+                    self.assertTrue(cleanup_threads)
+                    self.assertTrue(all(t is not threading.main_thread() for t in cleanup_threads))
+                if recovery == "check":
+                    with mock.patch("updates.check_latest", return_value=fixture.new.release):
+                        self.assertTrue(controller.check())
+                        self.wait_controller(controller, "available")
+                else:
+                    controller.close()
+                self.assertFalse(transaction.exists())
+                self.assertEqual(set(control.glob("txn-*")), transactions)
+                self.assert_preparation_preserved(fixture, before)
+
+    def test_failed_download_reclaims_partial_candidate_left_by_best_effort_cleanup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            with mock.patch("updates.check_latest", return_value=fixture.new.release):
+                controller.check()
+                self.wait_controller(controller, "available")
+            control = fixture.transaction.parent
+            transactions = set(control.glob("txn-*"))
+            unlink = Path.unlink
+            denied = []
+            def deny_candidate(path, *args, **kwargs):
+                if "candidate" in path.parts and path.is_relative_to(control):
+                    denied.append(path)
+                    raise PermissionError("fixture cannot unlink partial candidate")
+                return unlink(path, *args, **kwargs)
+            def partial_copy(source, output, *args):
+                output.write(source.read(8))
+                raise OSError("fixture extraction interrupted")
+            with mock.patch("update_package.urllib.request.build_opener",
+                            return_value=ArchiveOpener(fixture.new.path.read_bytes())), \
+                    mock.patch.object(apply.shutil, "copyfileobj", side_effect=partial_copy), \
+                    mock.patch.object(Path, "unlink", new=deny_candidate):
+                self.assertTrue(controller.download())
+                self.wait_controller(controller, "error")
+            self.assertTrue(denied, "stage cleanup must leave an actual partial candidate")
+            self.assertEqual(controller.poll().error_code, "disk_space")
+            self.assertEqual(set(control.glob("txn-*")), transactions)
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_close_reclaims_an_internal_download_that_fails_during_close(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            with mock.patch("updates.check_latest", return_value=fixture.new.release):
+                controller.check()
+                self.wait_controller(controller, "available")
+            control = fixture.transaction.parent
+            transactions = set(control.glob("txn-*"))
+            blocked, finish = threading.Event(), threading.Event()
+            response = ReadTimeoutResponse(fixture.new.path.read_bytes())
+            read = response.read
+            def wait_read(size):
+                if response.read_count:
+                    blocked.set()
+                    if not finish.wait(timeout=5):
+                        raise AssertionError("close did not unblock the fixture transport")
+                return read(size)
+            response.read = wait_read
+            response.close = finish.set
+            opener = ArchiveOpener(b"")
+            opener.response = response
+            with mock.patch("update_package.urllib.request.build_opener", return_value=opener):
+                self.assertTrue(controller.download())
+                self.assertTrue(blocked.wait(timeout=5))
+                controller.close()
+                deadline = time.monotonic() + 5
+                while set(control.glob("txn-*")) != transactions:
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(.01)
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_close_reclaims_successful_internal_staging_before_poll(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            with mock.patch("updates.check_latest", return_value=fixture.new.release):
+                controller.check()
+                self.wait_controller(controller, "available")
+            control = fixture.transaction.parent
+            transactions = set(control.glob("txn-*"))
+            with mock.patch("update_package.urllib.request.build_opener",
+                            return_value=ArchiveOpener(fixture.new.path.read_bytes())):
+                self.assertTrue(controller.download())
+                controller._thread.join(timeout=5)
+                self.assertFalse(controller._thread.is_alive())
+            self.assertEqual(len(set(control.glob("txn-*")) - transactions), 1)
+            controller.close()
+            self.assertEqual(set(control.glob("txn-*")), transactions)
+            self.assert_preparation_preserved(fixture, before)
+
+    def test_failed_download_preserves_caller_supplied_transaction_roots(self):
+        for owned in (False, True):
+            with self.subTest(owned=owned), tempfile.TemporaryDirectory() as temp:
+                fixture, controller = self.preparation_fixture(Path(temp))
+                before = self.preparation_preserved_bytes(fixture)
+                with mock.patch("updates.check_latest", return_value=fixture.new.release):
+                    controller.check()
+                    self.wait_controller(controller, "available")
+                transaction = controller.create_download_transaction() if owned else Path(temp) / "provided"
+                transaction.mkdir(exist_ok=True)
+                note = transaction / "user-notes.txt"
+                note.write_bytes(b"caller-owned bytes")
+                with mock.patch("update_package.urllib.request.build_opener", return_value=ArchiveOpener(b"")):
+                    self.assertTrue(controller.download(transaction))
+                    self.wait_controller(controller, "error")
+                controller.close()
+                self.assertTrue(transaction.is_dir())
+                self.assertEqual(note.read_bytes(), b"caller-owned bytes")
+                self.assert_preparation_preserved(fixture, before)
+
+    def test_failed_download_cleanup_preflights_uncertain_or_recoverable_state(self):
+        for obstruction in ("owner", "marker", "previous", "invalid-pointer", "relative-pointer", "empty-pointer",
+                            "plan.json", "journal.jsonl",
+                            "bootstrap", "user-notes.txt", "enumeration"):
+            with self.subTest(obstruction=obstruction), tempfile.TemporaryDirectory() as temp:
+                fixture, controller = self.preparation_fixture(Path(temp))
+                transaction = apply.create_transaction(fixture.install)
+                (transaction / "release.zip.part").write_bytes(b"owned partial archive")
+                candidate = transaction / "candidate"
+                candidate.mkdir()
+                (candidate / "partial.py").write_bytes(b"owned partial candidate")
+                if obstruction == "owner":
+                    apply.atomic_json(transaction.parent / "owner.json", {})
+                elif obstruction == "marker":
+                    apply.atomic_json(fixture.install / apply.MARKER, apply.identity(fixture.plan))
+                elif obstruction == "previous":
+                    apply.atomic_json(transaction.parent / "previous.json", {"plan_path": str(transaction / "plan.json")})
+                elif obstruction == "invalid-pointer":
+                    apply.atomic_json(transaction.parent / "previous.json", {"plan_path": "\u0000"})
+                elif obstruction in {"relative-pointer", "empty-pointer"}:
+                    apply.atomic_json(transaction.parent / "previous.json",
+                                      {"plan_path": "other/plan.json" if obstruction == "relative-pointer" else ""})
+                elif obstruction not in {"enumeration"}:
+                    (transaction / obstruction).write_bytes(b"uncertain ownership")
+                before = {p: p.read_bytes() for p in Path(temp).rglob("*") if p.is_file()}
+                iterdir = Path.iterdir
+                def denied(path):
+                    if path == candidate:
+                        raise PermissionError("fixture cannot enumerate candidate")
+                    return iterdir(path)
+                enumeration = mock.patch.object(Path, "iterdir", new=denied)
+                with (enumeration if obstruction == "enumeration" else nullcontext()), \
+                        mock.patch.object(apply.shutil, "rmtree") as remove, \
+                        self.assertRaises(apply.UpdateError):
+                    apply.discard_download(transaction, fixture.install)
+                self.assertFalse(remove.called, "cleanup must preflight the entire transaction before deleting")
+                self.assertEqual({p: p.read_bytes() for p in Path(temp).rglob("*") if p.is_file()}, before)
+
+    def test_failed_download_cleanup_refuses_a_real_candidate_junction(self):
+        if sys.platform != "win32":
+            self.skipTest("NTFS directory junction fixture")
+        with tempfile.TemporaryDirectory() as temp:
+            fixture, controller = self.preparation_fixture(Path(temp))
+            before = self.preparation_preserved_bytes(fixture)
+            transaction = apply.create_transaction(fixture.install)
+            archive = transaction / "release.zip.part"
+            archive.write_bytes(b"owned partial archive")
+            target = Path(temp) / "outside candidate"
+            target.mkdir()
+            note = target / "user-notes.txt"
+            note.write_bytes(b"outside user bytes")
+            junction = transaction / "candidate"
+            linked = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(target)],
+                                    capture_output=True, timeout=10)
+            self.assertEqual(linked.returncode, 0, "fixture could not create an NTFS junction")
+            try:
+                with mock.patch.object(apply.shutil, "rmtree") as remove, self.assertRaises(apply.UpdateError):
+                    apply.discard_download(transaction, fixture.install)
+                self.assertFalse(remove.called)
+                self.assertEqual(archive.read_bytes(), b"owned partial archive")
+                self.assertEqual(note.read_bytes(), b"outside user bytes")
+                self.assert_preparation_preserved(fixture, before)
+            finally:
+                junction.rmdir()
+
+
     def preparation_fixture(self, root):
         fixture = Fixture(root)
         backup = fixture.transaction / "rollback"
