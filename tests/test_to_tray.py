@@ -139,6 +139,9 @@ def main() -> int:
         def set_menu_input(self, *a):
             pass
 
+        def apply_menu_mode_input(self):
+            pass
+
         def refresh_colorkey(self):
             pass
 

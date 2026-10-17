@@ -164,9 +164,6 @@ def palette(theme: str) -> dict:
     """The theme palette. The alerts in display.py need it too - same look."""
     return THEMES.get(theme, THEMES["light"])
 
-#: What mini mode keeps until someone chooses otherwise: the switches a
-#: person reaches for during a session. Nothing that is set once and left.
-DEFAULT_MINI_ROWS = ("nr", "boost", "frame_generation", "profile")
 
 
 # --- Base layout (1440p units) --------------------------------------------
@@ -205,6 +202,11 @@ ACTION_H = 36      # action/primary button: one line of text, the mockup's
                    # so 25 of those units held nothing.
 STAT_PAD = 14
 RADIUS = 10
+#: Redesign B (v2.6.0): the main page's four state tiles, the fold-out headers
+#: and the collapsed bar (C) that replaced mini mode.
+TILE_H = 60
+FOLD_H = 42
+BAR_H = 48
 
 FONT_SIZE = 17
 TITLE_SIZE = 21
@@ -272,11 +274,6 @@ def _window_record(value: Any) -> dict:
     return {"hwnd": hwnd,
             "label": title if hwnd is not None else legacy,
             "identity": legacy if hwnd is not None else value}
-
-
-#: The kinds mini mode can keep or drop. Buttons and info rows are not
-#: among them: the action strip and what it says are the panel's floor.
-MINI_PICKABLE = ("toggle", "slider", "choice", "segmented")
 
 
 @dataclass
@@ -352,16 +349,15 @@ class OverlayMenu:
         # Manual multiplier: needed before the fonts are created, they size
         # themselves through _u
         self.user_scale = 1.0
-        #: Mini mode: the main page carries only the rows in `mini_rows`.
-        #: The other pages are untouched - settings is where you go to set
-        #: something, and a shortened settings page would just be a page
-        #: with things missing.
+        #: Collapsed to the bar (redesign C, v2.6.0): the main page becomes
+        #: one row at the top of the screen. The other pages are untouched.
+        #: Kept under its old name - `menu_mini` in the config - so a saved
+        #: "mini" layout comes back collapsed rather than lost.
         self.mini = False
-        #: Choosing what mini mode keeps. While this is on, every row is
-        #: laid out again, so a row that was dropped can be put back where
-        #: it used to sit: the way out of a mode has to live inside it.
-        self.mini_pick = False
-        self.mini_rows: set = set(DEFAULT_MINI_ROWS)
+        #: Where the bar sits, from the top centre of the screen.
+        self.bar_offset = [0, 0]
+        #: The open fold-outs of the main page (redesign B).
+        self.folds: set = set()
         self._load_font = font_loader
         self.visible = False
         self.lang = "en"
@@ -673,18 +669,9 @@ class OverlayMenu:
         self.user_scale = value
         self._build_fonts()
 
-    def mini_hides(self, key: str) -> bool:
-        """Whether mini mode leaves this row out of the main page."""
-        return (self.mini and not self.mini_pick and self.page == "main"
-                and key not in self.mini_rows)
-
-    def mini_keep(self, key: str) -> bool:
-        """Keep or drop a row; returns whether mini mode keeps it now."""
-        if key in self.mini_rows:
-            self.mini_rows.discard(key)
-        else:
-            self.mini_rows.add(key)
-        return key in self.mini_rows
+    def _bar_mode(self) -> bool:
+        """Collapsed to the bar (redesign C) - the main page only."""
+        return bool(self.mini) and self.page == "main"
 
     def toggle(self) -> bool:
         self.visible = not self.visible
@@ -868,7 +855,7 @@ class OverlayMenu:
         return item.kind in {
             "tab",
             "icon", "action", "hotkey", "button", "toggle", "choice",
-            "slider", "segmented", "option",
+            "slider", "segmented", "option", "tile", "fold",
         }
 
     def _focusables(self) -> list[Item]:
@@ -999,8 +986,17 @@ class OverlayMenu:
             self.scroll = 0
             self.capturing = None
             out.append(("capture", None))
-        elif item.kind == "toggle":
+        elif item.kind in ("toggle", "tile"):
             out.append(("nr",) if item.key == "nr" else ("toggle", item.key))
+        elif item.kind == "fold":
+            # The menu's own state: open or close the block, and say so for
+            # the saved layout.
+            if item.key in self.folds:
+                self.folds.discard(item.key)
+            else:
+                self.folds.add(item.key)
+            self._relayout()
+            out.append(("folds", sorted(self.folds)))
         elif item.kind == "button":
             out.extend(self._button_click(item.key))
         elif item.kind == "option":
@@ -1066,8 +1062,8 @@ class OverlayMenu:
                 self._keep_option_visible()
                 self._relayout()
             return []
-        if item.kind == "toggle" and event.key in (pygame.K_LEFT,
-                                                    pygame.K_RIGHT):
+        if item.kind in ("toggle", "tile") and event.key in (pygame.K_LEFT,
+                                                              pygame.K_RIGHT):
             return self._step_toggle(item, direction > 0)
         return []
 
@@ -1089,6 +1085,10 @@ class OverlayMenu:
         of the tallest tab's panel, on every tab).
         """
         self._layout_size = (int(screen_w), int(screen_h))
+        if self.mini and self.page == "main":
+            # Collapsed (redesign C): one row, laid out by its own method.
+            self._layout_bar(int(screen_w), int(screen_h))
+            return
         if self.page == "settings" and not getattr(self, "_measuring", False):
             tallest = 0
             saved_tab = self.settings_tab
@@ -1118,11 +1118,6 @@ class OverlayMenu:
         act_h = self._u(ACTION_H)
 
         items: list[Item] = []
-        #: Mini mode, and not choosing: the page is the kept rows plus the
-        #: action strip. Named once here because three blocks outside the
-        #: row builders have to honour it.
-        mini_short = (self.mini and not self.mini_pick
-                      and self.page == "main")
         # Header icons: help, settings and the collapse button. The collapse
         # used to be a footer button next to "quit the program" - the two
         # looked equally harmless, even though one hides the menu and the
@@ -1131,9 +1126,7 @@ class OverlayMenu:
         iw = self._u(ICON_W)
         igap = self._u(8)
         iy = self._u(TITLE_H) // 2 - iw // 2
-        order = (["help", "gear"]
-                 + (["pick"] if self.mini else [])
-                 + ["mini", "min"]
+        order = (["help", "gear", "mini", "min"]
                  if self.page == "main"
                  else ["close"] if self.page == "settings"
                  else [])  # the windows page: no header icons at all - the
@@ -1205,11 +1198,6 @@ class OverlayMenu:
             squares = squares_here
             if not show:
                 return
-            # Mini mode is a handful of rows, not an outline of them: four
-            # titles over four rows is more furniture than content. The
-            # flags above are still set - the builders below read them.
-            if self.mini and self.page == "main":
-                return
             # Measured from what is actually on the page, not from whatever the
             # last builder left in `cy`: each of them adds its own trailing air
             # (one adds ROW_GAP, the preset row adds 8, a hinted slider adds a
@@ -1238,7 +1226,7 @@ class OverlayMenu:
                    mark: float | None = None, bare: bool = False,
                    ticks: int = 5) -> None:
             nonlocal cy
-            if not show or self.mini_hides(key):
+            if not show:
                 return
             # `bare`: the track alone, with no caption line and no value cell.
             # The ruler under it carries the position instead - for a control
@@ -1290,7 +1278,7 @@ class OverlayMenu:
         def choice(key: str, label: str, current: str, options: list,
                    labels: list | None = None, hint: str = "") -> None:
             nonlocal cy
-            if not show or self.mini_hides(key):
+            if not show:
                 return
             extra = {"label": label, "current": current,
                      "labels": list(labels or options),
@@ -1327,8 +1315,6 @@ class OverlayMenu:
             expand/collapse machinery; here both options are visible at once.
             """
             nonlocal cy
-            if self.mini_hides(key):
-                return
             if not show:
                 return
             if label:
@@ -1361,7 +1347,7 @@ class OverlayMenu:
                    inline_right: list[tuple[str, str, bool]] | None = None,
                    segments_only: bool = False) -> None:
             nonlocal cy
-            if not show or self.mini_hides(key):
+            if not show:
                 return
             # Small inline buttons at the row's right end, beside the switch:
             # the multiplier rides the FG row itself (user, 14.09) instead of
@@ -1460,6 +1446,24 @@ class OverlayMenu:
                     pygame.Rect(group_x, group_y, group_w, cell_h),
                     tuple(splits)))
             cy += ctrl_h + hint_h + gap
+
+        def fold(key: str, label: str, summary: str) -> bool:
+            """A fold-out header (redesign B). True while its block is open.
+
+            The header says what the block holds even when it is closed - a
+            closed block that hides its state is a setting nobody can see.
+            Which blocks are open is the menu's own state, saved with the
+            layout ("folds")."""
+            nonlocal cy
+            if not show:
+                return False
+            is_open = key in self.folds
+            items.append(Item("fold", key,
+                              pygame.Rect(pad, cy, inner_w, self._u(FOLD_H)),
+                              value=1.0 if is_open else 0.0,
+                              extra={"label": label, "summary": summary}))
+            cy += self._u(FOLD_H) + (self._u(12) if is_open else 0)
+            return is_open
 
         # The windows page: the full list of capturable windows, one row per
         # window. Hovering a row highlights the real window's outline on the
@@ -1900,6 +1904,15 @@ class OverlayMenu:
                       str(self.state.get("process_priority", "normal")),
                       ["normal", "above_normal", "high"],
                       [s["prio_normal"], s["prio_above"], s["prio_high"]])
+            # The interface scale (it lived above Quit on the main page until
+            # redesign B; a folded main page fits 1080p at 100%, and the
+            # corner grip still scales the panel where it stands).
+            scale_now = float(getattr(self, "user_scale", 1.0))
+            step_now = min(SCALE_STEPS, key=lambda v: abs(v - scale_now))
+            segmented("menu_scale", s.get("ui_scale", "Scale"),
+                      f"{step_now:g}", [f"{v:g}" for v in SCALE_STEPS],
+                      labels=[f"{int(round(v * 100))}%" for v in SCALE_STEPS])
+            items[-1].extra["state_default"] = "1"
             # No extra gap here: segmented() already ends with one, and
             # section() opens with its own - three stacked was a hole
             # (user, 13.09: the padding below is excessive).
@@ -1961,41 +1974,41 @@ class OverlayMenu:
                     # a full PAD on top of that was the second hole.
                     cy += act_h + self._u(6)
         else:
-            section(s["sec_processing"], squares_here=True)
+            # The main page (v2.6.0, redesign B): the four switches people
+            # reach for during a game as tiles, the profile and its strength,
+            # then four fold-outs for the rest. The page it replaced ran to
+            # 1356 px at 100% - past a 1080p screen - and the camera added
+            # seven rows on top. Folded, this one fits; each fold names what
+            # is inside it, so a closed block still answers "what is set".
             nr_on = bool(self.state.get("nr"))
-            # No key name here. The main page used to print "Num1" beside the
-            # switch, and every control that had a key printed it - furniture
-            # nobody reads twice, in the one place where the picture is being
-            # judged. The keys live on the settings page, which is where you
-            # go when you want to know or change them (user, 13.09).
-            # The row is named for what the feature is, not for its state -
-            # the switch at the right end already carries on/off (user, 14.09).
-            toggle("nr", "DLSS 5 NR", nr_on)
-
-            # Boost: the network runs at a reduced resolution and the detail
-            # comes back off the native frame (the matched residual
-            # composite). It sits directly under the DLSS 5 switch because it
-            # is the same subject - how hard the network works - and because
-            # nobody found it where it was.
-            #
-            # Measured on a 5070 Ti at 4K, 12.09: the network costs 16.0 ms
-            # against 5.0-7.3 ms, the whole program runs 45.7 -> 72.6 fps at
-            # 0.65, and at 1:1 on text, a game scene and photographic content
-            # the difference is not visible. The residual is what makes that
-            # true: without it the same setting is visibly soft.
             fg = bool(self.state.get("frame_generation"))
             multiplier = int(self.state.get("frame_multiplier", 2))
-            # The multiplier rides the FG row: three small buttons between the
-            # label and the switch, the selected one filled (user, 14.09).
-            # Selectable whether or not FG runs (user, 15.09): it is a
-            # preference for the next attempt, not a live control - locking it
-            # behind the switch deadlocked a 40-series card (caps at 2x) when
-            # the first attempt refused and flipped itself back off.
-            # The live step, when the runtime refused the pick and the worker
-            # stepped down (issue #100). The buttons show the PREFERENCE (they
-            # stay where the user put them, so the next attempt asks for it
-            # again); this hint says what is actually running, so a 4x pick on
-            # a 2x-capable card does not silently differ from the FPS counter.
+            boost = bool(self.state.get("nr_small"))
+            lens_on = bool(self.state.get("lens"))
+            on_s = s.get("tile_on", "On")
+            off_s = s.get("tile_off", "Off")
+            tile_gap = self._u(8)
+            tile_h = self._u(TILE_H)
+            tiles = (("nr", "NR", on_s if nr_on else off_s, nr_on),
+                     ("frame_generation", "FG",
+                      f"×{multiplier}" if fg else off_s, fg),
+                     ("boost", s["boost"], on_s if boost else off_s, boost),
+                     ("lens", s["lens"], on_s if lens_on else off_s, lens_on))
+            tile_w = (inner_w - tile_gap * (len(tiles) - 1)) // len(tiles)
+            for idx, (key, label, value_text, on) in enumerate(tiles):
+                tx = pad + idx * (tile_w + tile_gap)
+                w_here = (pad + inner_w - tx if idx == len(tiles) - 1 else tile_w)
+                items.append(Item("tile", key,
+                                  pygame.Rect(tx, cy, w_here, tile_h),
+                                  value=1.0 if on else 0.0,
+                                  extra={"label": label,
+                                         "value_text": value_text}))
+            cy += tile_h + gap
+
+            # The multiplier, always on screen: a preference for the next
+            # attempt as much as a live control. A step picked with FG off
+            # turns it on (commands.apply_menu_action) - one click, and a
+            # 40-series card that steps down is never stranded behind the tile.
             live = self.state.get("frame_multiplier_active")
             fg_hint = ""
             if fg and isinstance(live, int) and live != multiplier:
@@ -2004,192 +2017,23 @@ class OverlayMenu:
                     "the runtime caps this card at x{live} - FG runs there, "
                     "your x{want} is asked for again on the next attempt"
                 ).format(live=live, want=multiplier)
-            toggle("frame_generation", "DLSS 4.5 FG", fg, hint=fg_hint,
-                   segments_only=True,
-                   inline_right=[("frame_generation:off", s.get("off", "off"))]
-                   + [(f"frame_multiplier:{m}", f"×{m}")
-                      for m in range(2, FG_MULTIPLIER_MAX + 1)])
-            # The cells are ONE segment group (the mockup's direction): Off
-            # plus the steps, the live one filled. Off is filled while FG
-            # is off, a step while it runs - so the group always says exactly
-            # what is happening.
-            #
-            # The steps stay clickable with FG off, and that is deliberate: they
-            # are a preference for the NEXT attempt, not a live control. Locking
-            # them behind the switch deadlocked a 40-series card (caps at x2)
-            # when the first attempt was refused and flipped itself back off.
-            # Picking a step with FG off therefore also asks for FG on - one
-            # click instead of two, and no dead end.
+            # Named "DLSS 4.5 FG", not "Frame multiplier": five cells leave
+            # 251 px for the caption, and the translated word needs up to 288
+            # (es) - test_fg_row_fits measures it in every language.
+            toggle("frame_multiplier", "DLSS 4.5 FG",
+                   fg, hint=fg_hint, segments_only=True,
+                   inline_right=[(f"frame_multiplier:{m}", f"×{m}")
+                                 for m in range(2, FG_MULTIPLIER_MAX + 1)])
             steps = list(range(2, FG_MULTIPLIER_MAX + 1))
-            first = len(items) - len(steps) - 1
-            for idx, value in enumerate(steps, start=1):
+            first = len(items) - len(steps)
+            for idx, value in enumerate(steps):
                 items[first + idx].extra["filled"] = fg and multiplier == value
-            items[first].extra["filled"] = not fg
 
-            limit_mode = str(self.state.get("frame_limit_mode", "unlimited"))
-            # The hint is not decoration: the cap paces how often a frame is
-            # taken from the worker, so it counts SOURCE frames. Frame
-            # Generation runs inside the worker and reports its own rate, which
-            # is why a 60 cap and a 170 fps counter are both true at once. The
-            # reporter had to work that out from the numbers (#109).
-            choice("frame_limit_mode", s.get("frame_limit", "Frame limit"),
-                   limit_mode, ["30", "60", "custom", "unlimited"],
-                   labels=[s.get("frame_limit_30", "30 fps"),
-                           s.get("frame_limit_60", "60 fps"),
-                           s.get("frame_limit_custom", "Custom"),
-                           s.get("frame_limit_unlimited", "Unlimited")],
-                   hint=s.get("frame_limit_hint", ""))
-            if limit_mode == "custom":
-                custom = int(self.state.get("frame_limit_custom", 90))
-                slider("frame_limit_custom", 15, 240, custom,
-                       s.get("frame_limit_custom_value", "Custom limit"),
-                       value_text=f"{custom} fps")
-
-            boost = bool(self.state.get("nr_small"))
-            toggle("boost", s["boost"], boost)
-
-            # The resolution the network runs at - only while Boost is on.
-            #
-            # Without Boost this slider changes nothing whatsoever: the
-            # network runs at the full frame size no matter where the knob
-            # is, and the output frames come back bit-identical at every
-            # position (measured on four real 4K frames, 12.09). That is why
-            # the two used to be one control, with the top step standing in
-            # for "off" - a slider that answers and does nothing is worse
-            # than no slider. The switch above carries that meaning now, so
-            # the slider carries only the resolution, and it is simply not on
-            # screen when it would be inert.
-            if boost:
-                # No section heading of its own: the slider belongs to the
-                # switch above it, and "PROCESSING / Boost / RESOLUTION /
-                # Resolution the network runs at" says the same word three
-                # times before saying anything.
-                # The top of the range is the NGX cap where one binds (0.65
-                # on a 4K screen, where 2560x1440 is reached) and the whole
-                # source where it does not - on 1440p and below the scale
-                # runs all the way to 1.00.
-                cap = float(self.state.get("work_scale_cap", 1.0))
-                pos = float(self.state.get("work_scale", cap))
-                # The size the network actually runs at. It used to say
-                # "3840x2160 - full" at the top, which is not true on a 4K
-                # screen: NGX is capped at 2560x1440 and the network never
-                # saw more than that (user, 12.09).
-                work = str(self.state.get("work_size") or "")
-                value_text = work if work else f"{pos:.2f}"
-                # The lower bound follows WORK_SCALE_MIN (0.1), not a
-                # hardcoded 0.30: a config value below the slider range would
-                # put the knob at the bottom while the label shows a
-                # different resolution.
-                lo = float(self.state.get("work_scale_min", 0.1))
-                # No caption under this one. It used to name the trade at
-                # both ends of the track; the redesign replaced the two words
-                # with the ruler and stopped drawing them, so all the pair did
-                # afterwards was reserve a blank line - the hole under this
-                # slider (user, 20.09). The value cell says the size, which is
-                # the number the choice is actually made on.
-                slider("nr_res", lo, cap, pos, s["nr_res"],
-                       value_text=value_text)
-                # The cascade. It lives under Boost because it only runs in
-                # that mode - outside it the network writes the full-res
-                # output directly and a second pass would need a full-res
-                # scratch. An experiment, and priced like one: each extra
-                # pass is another full evaluation. Measured: the second
-                # pass costs about a THIRD of the frame rate (not the half
-                # this comment used to claim), and each extra pass carries its
-                # own network - about 640 MB at a 2560x1440 work size, scaling
-                # with that size. Four passes took the worker to 3 GB.
-                passes_now = int(self.state.get("nr_passes", 1) or 1)
-                segmented("nr_passes", s.get("nr_passes", "NR passes"),
-                          str(max(1, min(4, passes_now))),
-                          ["1", "2", "3", "4"], labels=["1", "2", "3", "4"])
-                items[-1].extra["state_default"] = "1"
-                # What passes 2..N do. Only shown from two passes: with one
-                # pass there is nothing for a second set to apply to, and the
-                # row would be a control that cannot do anything - the same
-                # reason the resolution slider is hidden without Boost.
-                #
-                # This is the point of the whole cascade. Every pass used to
-                # read the same numbers, so pass 2 repeated pass 1 exactly: the
-                # frame cost a third of the frame rate more and looked the
-                # same. Measured 22.09: pass 2 on Faithful against a Strong
-                # main set moves 100% of pixels (mean 9.4 codes, max 20) while
-                # sending the same numbers through the same command moves
-                # none - so the difference is the numbers, not the command.
-                per_pass = self.state.get("nr_pass_params") or {}
-                if passes_now >= 2:
-                    # The switch first, then what it governs: with the set off
-                    # there is nothing under it, and a row of sliders that
-                    # silently do nothing is the worst of the three states.
-                    #
-                    # The hint goes through the toggle's own argument rather
-                    # than into extra afterwards: the row's height is worked
-                    # out from the hint when the item is built, so a hint set
-                    # later is drawn inside a rect that was measured without
-                    # it - the text is then clipped by the next row.
-                    toggle("pass_params", s.get("pass_params", "Own set"),
-                           bool(per_pass), s.get("pass_params_hint", ""))
-                    if per_pass:
-                        # Style picks which network runs, so it is the first
-                        # control of the set - the same order the main section
-                        # uses, one section up.
-                        segmented("pass_style", s["style"],
-                                  str(int(per_pass.get("style", 1))),
-                                  ["0", "1", "2"],
-                                  labels=[s["style_0"], s["style_1"],
-                                          s["style_2"]])
-                        defaults = self.state.get("pass_param_defaults") or {}
-                        ranges = self.state.get("pass_param_ranges") or {}
-                        for key in PARAM_KEYS:
-                            lo, hi = ranges.get(key) or PARAM_FALLBACK
-                            val = float(per_pass.get(key, 0.0))
-                            # The same four names as the main sliders, on
-                            # purpose: they are the same four parameters, and
-                            # translating a second copy of each into twelve
-                            # languages would be twelve copies of the same
-                            # word. The switch above them is what says whose
-                            # set this is.
-                            slider(f"pass_{key}", float(lo), float(hi), val,
-                                   s[key], value_text=f"{val:.2f}",
-                                   mark=defaults.get(key))
-
-            # What is being processed - the first question anyone has, and
-            # until now the only one answered on another page. The segment
-            # sends what the Actions buttons used to send; the list of
-            # windows still opens on its own page.
-            section(s["sec_source"], squares_here=True)
-            in_window = bool(self.state.get("window_mode"))
-            segmented("source", "", "window" if in_window else "fullscreen",
-                      ["fullscreen", "window"],
-                      labels=[s["mode_fullscreen"], s["mode_window"]],
-                      height=act_h)
-            # Which window, only in window mode. On the whole screen the
-            # source is the monitor, and the monitor is chosen on the
-            # settings page - naming it here as well was the same thing
-            # said twice (user, 12.09).
-            if in_window:
-                current = _window_record(self.state.get("window_current"))
-                items.append(Item("info", "source_now",
-                                  pygame.Rect(pad, cy, inner_w, self._u(LABEL_H)),
-                                  extra={"label": (current["label"]
-                                                   or s["mode_window"]),
-                                         # A number, so it is drawn in the same
-                                         # cell as every other number (1c rule).
-                                         "cell": True,
-                                         "value": str(self.state.get("work_size")
-                                                      or "")}))
-                cy += self._u(LABEL_H) + gap
-
-            # The profile and the four effect sliders are their own subject -
-            # what the picture looks like, not how hard the network works.
-            section(s["sec_effect"])
+            # What the picture looks like: the profile, and how strongly.
             choice("profile", s["profile"], str(self.state.get("profile", "")),
                    list(self.state.get("profiles") or []))
-            # "modified - revert", and only when it is true. A profile is a
-            # starting point, and until now the menu gave no way to tell
-            # whether you were still on one: the tick under each slider says
-            # where the profile put THAT value, and nothing said "you have
-            # moved four of them". Reverting is picking the same profile
-            # again, which is exactly what the command already does.
+            # "modified - revert", only when it is true: the profile is a
+            # starting point, and this says you have left it.
             if self._profile_modified():
                 items.append(Item("button", "revert_profile",
                                   pygame.Rect(pad, cy, inner_w,
@@ -2197,67 +2041,109 @@ class OverlayMenu:
                                   extra={"label": s["profile_modified"],
                                          "flat": True}))
                 cy += self._u(SMALL_SIZE) + self._u(6) + self._u(4)
-            # Called "Model" in the interface and `style` in the code: the
-            # three values really do select three different networks, and
-            # "style" next to the visual styles of a picture reads as a look
-            # rather than a choice of engine (user, 13.09). The key, the wire
-            # field and the config entry keep NVIDIA's name - DLSSNR.Style -
-            # because renaming those would break every saved config for a
-            # word.
-            # Style picks WHICH look the network produces; the profile and
-            # the sliders under it say how strongly. Measured, it is the
-            # biggest lever there is - the three values are three different
-            # outputs, not three strengths - and until now it was buried
-            # inside the profile with no way to reach it. Default is the one
-            # that suits a desktop; the other two are tuned for games and
-            # soften photographs and text (README says so at length; a menu
-            # hint would not fit on one line).
-            segmented("style", s["style"],
-                      str(int(self.state.get("style", 1))),
-                      ["0", "1", "2"],
-                      labels=[s["style_0"], s["style_1"], s["style_2"]])
             params = self.state.get("params") or {}
             defaults = self.state.get("param_defaults") or {}
-            for key in PARAM_KEYS:
-                ranges = self.state.get("param_ranges") or {}
+            ranges = self.state.get("param_ranges") or {}
+
+            def param_slider(key: str) -> None:
                 lo, hi = ranges.get(key) or PARAM_FALLBACK
                 val = float(params.get(key, 0.0))
                 slider(key, float(lo), float(hi), val, s[key],
                        value_text=f"{val:.2f}", mark=defaults.get(key))
-            # Save / Delete preset: the user presets live in the same list
-            # as the built-in profiles. Delete is only offered while a user
-            # preset is active - the built-in profiles are not deletable.
-            # One strip, two cells, like the SOURCE control: a pair of
-            # bordered boxes weighed as much as anything on the page, and the
-            # strip says "these two belong together" without spending a border
-            # each to say it (user, 20.09).
-            bw = inner_w // 2
-            for idx, (key, label) in enumerate(() if mini_short else (
-                    ("save_preset", s["save_preset"]),
-                    ("delete_preset", s["delete_preset"]))):
-                cw = bw if idx == 0 else inner_w - bw
-                items.append(Item("button", key,
-                                  pygame.Rect(pad + idx * bw, cy, cw, act_h),
-                                  extra={"label": label,
-                                         "filled": False,
-                                         "pair": "left" if idx == 0 else "right",
-                                         "disabled": key == "delete_preset"
-                                         and not self.state.get("preset_active")}))
-            if not mini_short:
-                cy += act_h + self._u(8)
-            # The camera over the processed picture (native/lens.inl): what
-            # the picture looks like, so it closes this block. A row and not a
-            # block of its own - the main page has to fit a 1080p screen, and
-            # a title costs as much height as the row (test_ui_scale_fit).
-            # Everything under it is on screen only while it is on, like the
-            # resolution slider under Boost. The fisheye is a part that can be
-            # off (#159: the noise over an unbent picture); its angle is the
-            # game's own field of view - what the lens needs to know which
-            # pixels stand for which angles, and a larger one is a stronger
-            # look. The four amounts are 0..1, 0 is off.
-            lens_on = bool(self.state.get("lens"))
-            toggle("lens", s["lens"], lens_on)
-            if lens_on:
+
+            param_slider("intensity")
+
+            # The fold-outs. Each header carries a summary of what it holds.
+            limit_mode = str(self.state.get("frame_limit_mode", "unlimited"))
+            custom_fps = int(self.state.get("frame_limit_custom", 90))
+            limit_labels = {"30": s.get("frame_limit_30", "30 fps"),
+                            "60": s.get("frame_limit_60", "60 fps"),
+                            "custom": f"{custom_fps} fps",
+                            "unlimited": s.get("frame_limit_unlimited", "Unlimited")}
+            passes_now = int(self.state.get("nr_passes", 1) or 1)
+            net_bits = []
+            if boost:
+                net_bits.append(str(self.state.get("work_size") or ""))
+                if passes_now > 1:
+                    net_bits.append(f"{s.get('nr_passes', 'NR passes')} {passes_now}")
+            net_bits.append(limit_labels.get(limit_mode, limit_mode))
+            if fold("net", s.get("fold_net", "Network"),
+                    " · ".join(b for b in net_bits if b)):
+                # The hint says what the cap counts: source frames, which is
+                # why a 60 cap and a 170 fps FG reading are true together (#109).
+                choice("frame_limit_mode", s.get("frame_limit", "Frame limit"),
+                       limit_mode, ["30", "60", "custom", "unlimited"],
+                       labels=[s.get("frame_limit_30", "30 fps"),
+                               s.get("frame_limit_60", "60 fps"),
+                               s.get("frame_limit_custom", "Custom"),
+                               s.get("frame_limit_unlimited", "Unlimited")],
+                       hint=s.get("frame_limit_hint", ""))
+                if limit_mode == "custom":
+                    slider("frame_limit_custom", 15, 240, custom_fps,
+                           s.get("frame_limit_custom_value", "Custom limit"),
+                           value_text=f"{custom_fps} fps")
+                # The work size and the cascade only exist under Boost: without
+                # it the network runs at the full frame and both would be
+                # controls that change nothing (measured 12.09).
+                if boost:
+                    cap = float(self.state.get("work_scale_cap", 1.0))
+                    pos = float(self.state.get("work_scale", cap))
+                    work = str(self.state.get("work_size") or "")
+                    lo = float(self.state.get("work_scale_min", 0.1))
+                    slider("nr_res", lo, cap, pos, s["nr_res"],
+                           value_text=work if work else f"{pos:.2f}")
+                    segmented("nr_passes", s.get("nr_passes", "NR passes"),
+                              str(max(1, min(4, passes_now))),
+                              ["1", "2", "3", "4"], labels=["1", "2", "3", "4"])
+                    items[-1].extra["state_default"] = "1"
+                    per_pass = self.state.get("nr_pass_params") or {}
+                    if passes_now >= 2:
+                        toggle("pass_params", s.get("pass_params", "Own set"),
+                               bool(per_pass), s.get("pass_params_hint", ""))
+                        if per_pass:
+                            segmented("pass_style", s["style"],
+                                      str(int(per_pass.get("style", 1))),
+                                      ["0", "1", "2"],
+                                      labels=[s["style_0"], s["style_1"],
+                                              s["style_2"]])
+                            pdefaults = self.state.get("pass_param_defaults") or {}
+                            pranges = self.state.get("pass_param_ranges") or {}
+                            for key in PARAM_KEYS:
+                                lo, hi = pranges.get(key) or PARAM_FALLBACK
+                                val = float(per_pass.get(key, 0.0))
+                                slider(f"pass_{key}", float(lo), float(hi), val,
+                                       s[key], value_text=f"{val:.2f}",
+                                       mark=pdefaults.get(key))
+
+            style_now = int(self.state.get("style", 1))
+            if fold("tune", s.get("fold_tune", "Fine tuning"),
+                    s.get(f"style_{style_now}", "")):
+                # "Model" picks which network runs - three different outputs,
+                # not three strengths - so it opens the block.
+                segmented("style", s["style"], str(style_now), ["0", "1", "2"],
+                          labels=[s["style_0"], s["style_1"], s["style_2"]])
+                for key in PARAM_KEYS:
+                    if key != "intensity":
+                        param_slider(key)
+                # Save / Delete preset: one strip, two cells. Delete only while
+                # a user preset is active - the built-in profiles stay.
+                bw = inner_w // 2
+                for idx, (key, label) in enumerate((
+                        ("save_preset", s["save_preset"]),
+                        ("delete_preset", s["delete_preset"]))):
+                    cw = bw if idx == 0 else inner_w - bw
+                    items.append(Item("button", key,
+                                      pygame.Rect(pad + idx * bw, cy, cw, act_h),
+                                      extra={"label": label, "filled": False,
+                                             "pair": "left" if idx == 0 else "right",
+                                             "disabled": key == "delete_preset"
+                                             and not self.state.get("preset_active")}))
+                cy += act_h + gap
+
+            # The camera over the processed picture (native/lens.inl). Its
+            # on/off is the tile; the block holds what it does, and can be set
+            # up before it is turned on.
+            if fold("camera", s["lens"], on_s if lens_on else off_s):
                 bend = self.state.get("lens_bend", True) is not False
                 toggle("lens_bend", s["lens_bend"], bend)
                 if bend:
@@ -2265,10 +2151,6 @@ class OverlayMenu:
                     fov = float(self.state.get("lens_fov", 110.0))
                     slider("lens_fov", float(lo), float(hi), fov, s["lens_fov"],
                            value_text=f"{int(fov)}°", hint=s["lens_fov_hint"])
-                # Webcam noise: soft specks, stronger in the shadows, renewed
-                # 30 times a second. Then the vignette, the colour fringes of
-                # a cheap wide lens, a small sensor's narrow range and, apart
-                # from it (#168), its softness towards the corners.
                 for key, default in (("lens_noise", 0.3), ("lens_vignette", 0.0),
                                      ("lens_aberration", 0.0), ("lens_sensor", 0.0),
                                      ("lens_soft", 0.0)):
@@ -2276,34 +2158,31 @@ class OverlayMenu:
                     slider(key, 0.0, 1.0, amount, s[key],
                            value_text=f"{int(round(amount * 100))}%")
 
-            section(s["sec_compare"])
+            in_window = bool(self.state.get("window_mode"))
             split_val = float(self.state.get("split", 0.0))
-            # The track alone: no row label, no percentage cell (user,
-            # 20.09). The block title already says what this is, and the wipe's
-            # subject is the picture behind the panel, not a number on it - the
-            # user is looking at the seam, not reading a percentage. The ruler
-            # carries the position: eleven ticks, so it reads in tenths rather
-            # than in the quarters five would give. The one-line hint under it
-            # stays - it says what the wipe is FOR, which no tick can.
-            slider("split", 0.0, 1.0, split_val, s["split"],
-                   hint=s["split_hint"], bare=True, ticks=11)
-
-            section(s["sec_actions"])
-            # Two rows of two: Select window + Fullscreen on top, Screenshot
-            # + Record below (user rule 10.09: the capture actions belong
-            # together in one section, the footer keeps only Exit).
-            # Select window and Fullscreen left this section for the source
-            # segment above: picking what to process is not an action, it is
-            # a setting, and it belongs where the source is named.
-            #
-            # Convert joined them as a third cell: it is the third way a
-            # picture leaves the program (a still of the screen, the screen
-            # over time, a file on disk), and behind the gear on the Media tab
-            # nobody found it. The cell opens the conversion page, and while a
-            # file converts it carries the running file's percentage. Measured
-            # with the product font at the small size: the longest caption in
-            # any language, es "Captura de pantalla", is 121 px of the 123 a
-            # third of the strip leaves it beside its icon.
+            src_bits = [s["mode_window"] if in_window else s["mode_fullscreen"]]
+            if split_val > 0:
+                src_bits.append(f"{int(round(split_val * 100))}%")
+            if fold("source", s.get("fold_source", "Source and comparison"),
+                    " · ".join(src_bits)):
+                segmented("source", "", "window" if in_window else "fullscreen",
+                          ["fullscreen", "window"],
+                          labels=[s["mode_fullscreen"], s["mode_window"]],
+                          height=act_h)
+                # Which window, only in window mode; clicking it opens the list.
+                if in_window:
+                    current = _window_record(self.state.get("window_current"))
+                    items.append(Item("info", "source_now",
+                                      pygame.Rect(pad, cy, inner_w, self._u(LABEL_H)),
+                                      extra={"label": (current["label"]
+                                                       or s["mode_window"]),
+                                             "cell": True,
+                                             "value": str(self.state.get("work_size")
+                                                          or "")}))
+                    cy += self._u(LABEL_H) + gap
+                slider("split", 0.0, 1.0, split_val, s["split"],
+                       hint=s["split_hint"], bare=True, ticks=11)
+            cy += self._u(10)
             progress = self.state.get("convert_progress")
             convert_label = s.get("convert", "Convert")
             if isinstance(progress, (int, float)):
@@ -2378,18 +2257,6 @@ class OverlayMenu:
         if self.page == "settings" and not getattr(self, "_measuring", False):
             cy = max(cy, self._settings_content_h - self._u(14) - self._u(6)
                      - self._u(ACTION_H) - self._u(PAD))
-        if self.page == "main":
-            # The interface scale, above Quit (user, 20.09). It lives on the
-            # main page rather than behind the gear because it is the answer
-            # to "everything is too big", and somebody asking that question is
-            # looking at this page, not hunting through settings.
-            scale_now = float(getattr(self, "user_scale", 1.0))
-            step_now = min(SCALE_STEPS,
-                           key=lambda v: abs(v - scale_now))
-            segmented("menu_scale", s.get("ui_scale", "Scale"),
-                      f"{step_now:g}", [f"{v:g}" for v in SCALE_STEPS],
-                      labels=[f"{int(round(v * 100))}%" for v in SCALE_STEPS])
-            items[-1].extra["state_default"] = "1"
         cy += self._u(6)
         self._rule_rel = pygame.Rect(pad, cy, inner_w, 1)
         cy += self._u(14)
@@ -2425,13 +2292,9 @@ class OverlayMenu:
                                   extra={"label": s["back"],
                                          "filled": False}))
             cy += act_h + pad
-        elif not mini_short:
+        else:
             # The name and nothing else, centred: the key and the
             # explanation under it turned one button into a paragraph.
-            #
-            # Not in mini mode: the panel is four rows there, and a
-            # full-width red button under four rows is the one that gets
-            # pressed by accident. The menu still quits from settings.
             items.append(Item("action", "exit",
                               pygame.Rect(pad, cy, inner_w, act_h),
                               extra={"label": s["exit_full"], "danger": True,
@@ -2859,22 +2722,12 @@ class OverlayMenu:
                 self._resize_h_from = (event.pos[1], int(base))
                 return out
             if self._title_bar.collidepoint(event.pos):
-                self._move_from = (event.pos, tuple(self.offset))
+                # The bar keeps a position of its own: it lives at the top of
+                # the screen, the panel where the user put it.
+                base = self.bar_offset if self._bar_mode() else self.offset
+                self._move_from = (event.pos, tuple(base))
                 self._capture_mouse(True)
                 return out
-            if self.mini_pick and self.page == "main":
-                # Choosing, so the ROW is the target and not its control: a
-                # click that both kept a row and moved its slider would be
-                # one nobody could undo. This cannot go through `hit` - that
-                # one answers with the CONTROL's own rectangle by design
-                # (rule 16.09), which while choosing is the one place a
-                # click must not land, and which leaves the dot and the
-                # label dead.
-                picked = self._mini_hit(event.pos)
-                if picked is not None:
-                    self.mini_keep(picked.key)
-                    self._set_focus(picked, from_mouse=True)
-                    return out + [("mini_rows", sorted(self.mini_rows))]
             item = self.hit(event.pos)
             if item is None:
                 self._drag_item = None
@@ -2902,8 +2755,12 @@ class OverlayMenu:
             self.user_height = max(1, base + event.pos[1] - start_y)
         elif event.type == pygame.MOUSEMOTION and self._move_from is not None:
             start, base = self._move_from
-            self.offset = [base[0] + event.pos[0] - start[0],
-                           base[1] + event.pos[1] - start[1]]
+            moved = [base[0] + event.pos[0] - start[0],
+                     base[1] + event.pos[1] - start[1]]
+            if self._bar_mode():
+                self.bar_offset = moved
+            else:
+                self.offset = moved
         elif event.type == pygame.MOUSEMOTION and self._resize_from is not None:
             start, base = self._resize_from
             # Dragging right and down grows the panel. The step is chosen so
@@ -2935,17 +2792,11 @@ class OverlayMenu:
         if key == "help":
             return [("button", "github")]
         if key == "mini":
+            # Collapse to the bar (redesign C), or open the panel from it.
             self.mini = not self.mini
-            # Leaving mini mode ends the choosing with it: the dots mean
-            # nothing on a page that shows everything anyway.
-            if not self.mini:
-                self.mini_pick = False
             self.scroll = 0
+            self.open_choice = None
             return [("mini", self.mini)]
-        if key == "pick":
-            self.mini_pick = not self.mini_pick
-            self.scroll = 0
-            return [("mini_pick", self.mini_pick)]
         if key == "gear":
             self.page = "settings"
             self.scroll = 0
@@ -3316,6 +3167,9 @@ class OverlayMenu:
             return
         self.layout(surface.get_width(), surface.get_height())
         s = STRINGS.get(self.lang, STRINGS["en"])
+        if self.mini and self.page == "main":
+            self._draw_bar(surface, s)
+            return
         pad = self._u(PAD)
         r = self.panel_rect
 
@@ -3390,6 +3244,7 @@ class OverlayMenu:
                              (g.right - self._u(3), g.bottom - off), width)
         for item in self.items:
             {"toggle": self._draw_toggle, "slider": self._draw_slider,
+             "tile": self._draw_tile, "fold": self._draw_fold,
              "choice": self._draw_choice, "button": self._draw_button,
              "segmented": self._draw_segmented,
              "tab": self._draw_tab,
@@ -3406,8 +3261,6 @@ class OverlayMenu:
              # option items, like the entries of an expanded list).
              "option": lambda *_: None}[item.kind](surface, item, s)
         self._draw_segment_groups(surface)
-        if self.mini_pick and self.page == "main":
-            self._draw_mini_marks(surface)
         if self.open_choice and self.options:
             # The expanded list fades at its edges: a soft gradient around
             # the rows (top/bottom/left/right) instead of dimming the whole
@@ -3453,46 +3306,6 @@ class OverlayMenu:
         if focused is not None and focused.kind == "icon":
             self._draw_focus_ring(surface, focused)
         self._draw_scrollbar(surface)
-
-    def _mini_hit(self, pos) -> "Item | None":
-        """The row under the pointer while choosing what mini mode keeps.
-
-        The whole width of the panel, so the dot in the left margin, the
-        label and the control are one target: the row is what is kept or
-        dropped, and three outcomes for one row would be three ways to be
-        surprised.
-        """
-        if self._viewport.h > 0 and not self._viewport.collidepoint(pos):
-            return None
-        for item in self.items:
-            if item.kind not in MINI_PICKABLE:
-                continue
-            row = pygame.Rect(self.panel_rect.x, item.rect.y,
-                              self.panel_rect.w, item.rect.h)
-            if row.collidepoint(pos):
-                return item
-        return None
-
-    def _draw_mini_marks(self, surface) -> None:
-        """While choosing: a dot per row, and the dropped ones stand back.
-
-        The dot sits in the panel's left margin rather than in the row, so
-        it cannot land on a switch or a slider track - every row kind has
-        something at both ends, and the margin belongs to no control.
-        """
-        radius = max(3, self._u(4))
-        x = self.panel_rect.x + self._u(11)
-        for item in self.items:
-            if item.kind not in MINI_PICKABLE:
-                continue
-            kept = item.key in self.mini_rows
-            if not kept:
-                veil = pygame.Surface(item.rect.size, pygame.SRCALPHA)
-                veil.fill((*_rgb(self.c["bg"]), 150))
-                surface.blit(veil, item.rect.topleft)
-            centre = (x, item.rect.y + min(self._u(17), item.rect.h // 2))
-            pygame.draw.circle(surface, _rgb(self.c["accent"]), centre,
-                               radius, 0 if kept else max(1, self._u(1)))
 
     def _draw_focus_ring(self, surface, item: Item) -> None:
         """The keyboard focus ring - never drawn for a mouse click.
@@ -4561,22 +4374,6 @@ class OverlayMenu:
                              border_radius=self._u(1))
             pygame.draw.rect(surface, _rgb(col), low, fill,
                              border_radius=self._u(1))
-        elif item.key == "pick":
-            # A pencil on the diagonal: a body and a point. It was a ring
-            # with a dot in it - the same mark the rows wear while they are
-            # chosen - but an icon has to say what pressing it DOES, and
-            # every interface the user has says that with a pencil.
-            if self.mini_pick:
-                col = self.c["accent"]
-            off = max(1, self._u(2))
-            tip = (cx - self._u(6), cy + self._u(6))
-            base = (cx - self._u(3), cy + self._u(3))
-            end = (cx + self._u(6), cy - self._u(6))
-            pygame.draw.line(surface, _rgb(col), base, end,
-                             max(2, self._u(4)))
-            pygame.draw.polygon(surface, _rgb(col),
-                                [tip, (base[0] + off, base[1] + off),
-                                 (base[0] - off, base[1] - off)])
         elif item.key == "close":
             d = max(3, self._u(5))
             pygame.draw.line(surface, _rgb(col), (cx - d, cy - d),
@@ -4777,6 +4574,206 @@ class OverlayMenu:
         surface.blit(txt, (field.centerx - txt.get_width() // 2,
                            field.centery - txt.get_height() // 2))
         item.extra["field"] = field
+
+    # -- redesign B / C (v2.6.0) ----------------------------------------------
+
+    def _layout_bar(self, screen_w: int, screen_h: int) -> None:
+        """The collapsed menu (redesign C): one row at the top of the screen.
+
+        It replaced mini mode, which kept a hand-picked subset of the panel's
+        rows: the bar holds the switches a game is played with - NR, FG and
+        its step, Boost, the camera - the two capture actions, and the way
+        back to the full panel. Nothing in it changes on its own (no live
+        rate), so the HUD layer under it is not redrawn while it is on screen
+        (#166: every redraw of that layer costs the compositor a frame).
+        """
+        s = STRINGS.get(self.lang, STRINGS["en"])
+        h = self._u(BAR_H)
+        edge = self._u(8)
+        gap = self._u(6)
+        btn_h = h - 2 * edge
+        handle_w = self._u(26)
+        fg = bool(self.state.get("frame_generation"))
+        multiplier = int(self.state.get("frame_multiplier", 2))
+        tiles = (("nr", "NR", bool(self.state.get("nr"))),
+                 ("frame_generation", f"FG ×{multiplier}" if fg else "FG", fg),
+                 ("boost", s["boost"], bool(self.state.get("nr_small"))),
+                 ("lens", s["lens"], bool(self.state.get("lens"))))
+        items: list[Item] = []
+        x = edge + handle_w + gap
+        for key, label, on in tiles:
+            tw = self._small_font.size(label)[0] + self._u(24)
+            items.append(Item("tile", key, pygame.Rect(x, edge, tw, btn_h),
+                              value=1.0 if on else 0.0,
+                              extra={"label": label, "compact": True}))
+            x += tw + gap
+        x += self._u(6)
+        for key in ("screenshot", "record"):
+            items.append(Item("button", key, pygame.Rect(x, edge, btn_h, btn_h),
+                              extra={"label": s["screenshot"] if key == "screenshot"
+                                     else s["record"],
+                                     "icon": key, "bar": True,
+                                     "disabled": key == "record" and bool(
+                                         self.state.get("recording_finalizing"))}))
+            x += btn_h + gap
+        x += self._u(6)
+        iw = btn_h
+        for key in ("mini", "min"):
+            items.append(Item("icon", key, pygame.Rect(x, edge, iw, iw)))
+            x += iw + gap
+        w = x - gap + edge
+        bx = (screen_w - w) // 2 + int(self.bar_offset[0])
+        by = self._u(12) + int(self.bar_offset[1])
+        bx = min(max(bx, 0), max(0, screen_w - w))
+        by = min(max(by, 0), max(0, screen_h - h))
+        for it in items:
+            it.rect = it.rect.move(bx, by)
+        self.panel_rect = pygame.Rect(bx, by, w, h)
+        # The handle is the drag zone, like the panel's title bar.
+        self._title_bar = pygame.Rect(bx, by, edge + handle_w, h)
+        self._grip = pygame.Rect(0, 0, 0, 0)
+        self._edge = pygame.Rect(0, 0, 0, 0)
+        self._viewport = pygame.Rect(self.panel_rect)
+        empty = pygame.Rect(0, 0, 0, 0)
+        self._stats_rect = self._stats_line1 = self._gpu_rect = empty
+        self._hint_rect = self._rule_rect = empty
+        self._sections, self._section_rects = [], []
+        self._segment_groups, self._segment_rects = [], []
+        self._scroll_track = self._scroll_thumb = empty
+        self.scroll = 0
+        self._max_scroll = 0
+        self.content_height = h
+        self.open_choice = None
+        self.options = []
+        self.items = items
+        if not getattr(self, "_measuring", False):
+            self._reconcile_focus()
+
+    def _draw_bar(self, surface, s: dict) -> None:
+        r = self.panel_rect
+        radius = self._u(RADIUS)
+        pygame.draw.rect(surface, _rgb(self.c["bg"]), r, border_radius=radius)
+        pygame.draw.rect(surface, _rgb(self.c["border"]), r, self._u(1),
+                         border_radius=radius)
+        # The handle: the processing dot over two short grip lines.
+        tb = self._title_bar
+        hot = self.hover == "title" or self._move_from is not None
+        dot = self.c["ok"] if self.state.get("nr") else self.c["muted"]
+        cx = tb.x + self._u(8) + self._u(13)
+        pygame.draw.circle(surface, _rgb(dot), (cx, tb.centery - self._u(6)),
+                           max(3, self._u(4)))
+        tone = self.c["accent"] if hot else self.c["border"]
+        for dy in (self._u(4), self._u(9)):
+            pygame.draw.line(surface, _rgb(tone),
+                             (cx - self._u(6), tb.centery + dy),
+                             (cx + self._u(6), tb.centery + dy),
+                             max(1, self._u(2)))
+        for item in self.items:
+            if item.kind == "tile":
+                self._draw_tile(surface, item, s)
+            elif item.kind == "button":
+                self._draw_bar_button(surface, item)
+            elif item.kind == "icon":
+                self._draw_icon(surface, item, s)
+        focused = self.focused_item
+        if focused is not None:
+            self._draw_focus_ring(surface, focused)
+
+    def _draw_bar_button(self, surface, item: Item) -> None:
+        """A square icon button of the bar (screenshot, record)."""
+        hot = self.hover == f"button:{item.key}"
+        disabled = bool(item.extra.get("disabled"))
+        radius = self._u(RADIUS // 2)
+        pygame.draw.rect(surface, _rgb(self.c["surface"]), item.rect,
+                         border_radius=radius)
+        pygame.draw.rect(surface, _rgb(self.c["accent"] if hot and not disabled
+                                       else self.c["border"]),
+                         item.rect, self._u(1), border_radius=radius)
+        name = str(item.extra.get("icon") or item.key)
+        if name == "record" and self.state.get("recording"):
+            # Recording: a filled square says "stop", like the panel's cell.
+            side = self._u(10)
+            pygame.draw.rect(surface, _rgb(self.c["danger"]),
+                             pygame.Rect(item.rect.centerx - side // 2,
+                                         item.rect.centery - side // 2, side, side))
+            return
+        self._action_icon(surface, name, item.rect.centerx, item.rect.centery)
+
+    def _draw_tile(self, surface, item: Item, s: dict) -> None:
+        """A state tile: a switch shown as what it is set to.
+
+        The border carries the state - accent while on - so the accent stays
+        a signal of "active" and not decoration (the design brief's budget).
+        The full tile names the feature on top and its state below; the
+        bar's compact one is the name alone."""
+        on = item.value > 0.5
+        hot = self.hover == f"tile:{item.key}"
+        radius = self._u(8 if not item.extra.get("compact") else RADIUS // 2)
+        pygame.draw.rect(surface, _rgb(self.c["surface"]), item.rect,
+                         border_radius=radius)
+        border = (self.c["accent"] if on
+                  else self.c["focus"] if hot else self.c["border"])
+        pygame.draw.rect(surface, _rgb(border), item.rect,
+                         max(1, self._u(1)), border_radius=radius)
+        if hot and on:
+            pygame.draw.rect(surface, _rgb(self.c["focus"]), item.rect,
+                             max(1, self._u(2)), border_radius=radius)
+        label = str(item.extra.get("label", item.key))
+        if item.extra.get("compact"):
+            img = self._clip(self._small_font, label,
+                             _rgb(self.c["text"] if on else self.c["muted"]),
+                             item.rect.w - self._u(8))
+            surface.blit(img, (item.rect.centerx - img.get_width() // 2,
+                               item.rect.centery - img.get_height() // 2))
+            return
+        inset = self._u(10)
+        cap = self._clip(self._small_font, label, _rgb(self.c["muted"]),
+                         item.rect.w - 2 * inset)
+        surface.blit(cap, (item.rect.x + inset, item.rect.y + self._u(8)))
+        value = self._clip(self._font, str(item.extra.get("value_text", "")),
+                           _rgb(self.c["text"] if on else self.c["muted"]),
+                           item.rect.w - 2 * inset)
+        surface.blit(value, (item.rect.x + inset,
+                             item.rect.bottom - self._u(8) - value.get_height()))
+
+    def _draw_fold(self, surface, item: Item, s: dict) -> None:
+        """A fold-out header: a hairline, the name, what it holds, a chevron."""
+        rect = item.rect
+        is_open = item.value > 0.5
+        hot = self.hover == f"fold:{item.key}"
+        if hot:
+            pygame.draw.rect(surface, _rgb(self.c["surface"]), rect,
+                             border_radius=self._u(4))
+        pygame.draw.line(surface, _rgb(self.c["border"]),
+                         (rect.x, rect.y), (rect.right, rect.y), max(1, self._u(1)))
+        inset = self._u(4)
+        label = self._clip(self._font, str(item.extra.get("label", item.key)),
+                           _rgb(self.c["accent"] if hot else self.c["text"]),
+                           rect.w // 2)
+        surface.blit(label, (rect.x + inset,
+                             rect.centery - label.get_height() // 2))
+        # The chevron: pointing right while closed, down while open.
+        cx, cy = rect.right - self._u(10), rect.centery
+        d = self._u(4)
+        lw = max(2, self._u(2))
+        tone = _rgb(self.c["muted"])
+        if is_open:
+            pygame.draw.lines(surface, tone, False,
+                              [(cx - d, cy - d // 2), (cx, cy + d // 2),
+                               (cx + d, cy - d // 2)], lw)
+        else:
+            pygame.draw.lines(surface, tone, False,
+                              [(cx - d // 2, cy - d), (cx + d // 2, cy),
+                               (cx - d // 2, cy + d)], lw)
+        summary = str(item.extra.get("summary") or "")
+        if summary:
+            room = (cx - self._u(14)) - (rect.x + inset + label.get_width()
+                                         + self._u(16))
+            if room > self._u(24):
+                img = self._clip(self._small_font, summary,
+                                 _rgb(self.c["muted"]), room)
+                surface.blit(img, (cx - self._u(14) - img.get_width(),
+                                   rect.centery - img.get_height() // 2))
 
     def _draw_button(self, surface, item: Item, s: dict) -> None:
         hot = self.hover == f"button:{item.key}"

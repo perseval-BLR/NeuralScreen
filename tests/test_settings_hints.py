@@ -79,6 +79,7 @@ def main() -> int:
         menu.lang = lang
         menu.set_state(dict(STATE, lang=lang))
         menu.visible = True
+        menu.folds = {"net", "tune", "camera", "source"}   # every fold-out open (v2.6.0)
         for page, tab in [("main", None)] + [("settings", t)
                                             for t in SETTINGS_TABS]:
             menu.page = page
@@ -118,6 +119,7 @@ def main() -> int:
         menu.lang = lang
         menu.set_state(dict(STATE, lang=lang))
         menu.visible = True
+        menu.folds = {"net", "tune", "camera", "source"}   # every fold-out open (v2.6.0)
         for page, tab in [("main", None)] + [("settings", t)
                                             for t in SETTINGS_TABS]:
             menu.page = page

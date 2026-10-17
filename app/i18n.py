@@ -2466,6 +2466,19 @@ STRINGS["ru"].update({
     "hk_framegen": "Генерация кадров вкл/выкл",
 })
 
+# Redesign B (v2.6.0): the state tiles and the fold-out headers.
+STRINGS["en"].update({"tile_on": "On", "tile_off": "Off", "fold_net": "Network", "fold_tune": "Fine tuning", "fold_source": "Source and comparison"})
+STRINGS["ru"].update({"tile_on": "Вкл", "tile_off": "Выкл", "fold_net": "Сеть", "fold_tune": "Тонкая настройка", "fold_source": "Источник и сравнение"})
+STRINGS["fr"].update({"tile_on": "Oui", "tile_off": "Non", "fold_net": "Réseau", "fold_tune": "Réglages fins", "fold_source": "Source et comparaison"})
+STRINGS["de"].update({"tile_on": "An", "tile_off": "Aus", "fold_net": "Netz", "fold_tune": "Feineinstellung", "fold_source": "Quelle und Vergleich"})
+STRINGS["es"].update({"tile_on": "Sí", "tile_off": "No", "fold_net": "Red", "fold_tune": "Ajuste fino", "fold_source": "Fuente y comparación"})
+STRINGS["it"].update({"tile_on": "On", "tile_off": "Off", "fold_net": "Rete", "fold_tune": "Regolazione fine", "fold_source": "Sorgente e confronto"})
+STRINGS["pt"].update({"tile_on": "Lig.", "tile_off": "Desl.", "fold_net": "Rede", "fold_tune": "Ajuste fino", "fold_source": "Fonte e comparação"})
+STRINGS["pl"].update({"tile_on": "Wł.", "tile_off": "Wył.", "fold_net": "Sieć", "fold_tune": "Dostrajanie", "fold_source": "Źródło i porównanie"})
+STRINGS["uk"].update({"tile_on": "Увімк", "tile_off": "Вимк", "fold_net": "Мережа", "fold_tune": "Тонке налаштування", "fold_source": "Джерело і порівняння"})
+STRINGS["zh"].update({"tile_on": "开", "tile_off": "关", "fold_net": "网络", "fold_tune": "微调", "fold_source": "来源与对比"})
+STRINGS["ja"].update({"tile_on": "オン", "tile_off": "オフ", "fold_net": "ネットワーク", "fold_tune": "微調整", "fold_source": "ソースと比較"})
+STRINGS["ko"].update({"tile_on": "켜짐", "tile_off": "꺼짐", "fold_net": "네트워크", "fold_tune": "미세 조정", "fold_source": "소스 및 비교"})
 # The camera hotkey (#164): its row in the hotkey list and the pop-up it shows.
 STRINGS["en"].update({"hk_lens": "Camera on/off", "lens_on": "Camera ON", "lens_off": "Camera OFF"})
 STRINGS["ru"].update({"hk_lens": "Камера вкл/выкл", "lens_on": "Камера ВКЛ", "lens_off": "Камера ВЫКЛ"})

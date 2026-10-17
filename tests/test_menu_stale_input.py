@@ -145,7 +145,7 @@ def main() -> int:
             failures.append("the command path did not open the menu")
         disp.menu.layout(disp.width, disp.height)
         nr = next((i for i in disp.menu.items
-                   if i.kind == "toggle" and i.key == "nr"), None)
+                   if i.kind == "tile" and i.key == "nr"), None)
         if nr is None:
             failures.append("no NR switch on the main page - nothing to focus")
             raise SystemExit

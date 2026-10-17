@@ -1505,6 +1505,7 @@ def main() -> int:
                 # the user drags it).
                 st.cfg["menu_offset"] = [int(st.display.menu.offset[0]),
                                       int(st.display.menu.offset[1])]
+                st.cfg["menu_bar_offset"] = [int(v) for v in st.display.menu.bar_offset]
                 st.cfg["menu_scale"] = round(st.display.menu.user_scale, 2)
                 st.cfg["menu_height"] = (None if st.display.menu.user_height is None
                                       else int(st.display.menu.user_height))
@@ -1539,6 +1540,7 @@ def main() -> int:
                 saved = st.cfg.get("menu_offset")
                 if isinstance(saved, (list, tuple)) and len(saved) == 2:
                     st.display.menu.offset = [int(saved[0]), int(saved[1])]
+                settings_io.restore_menu_extras(st.display.menu, st.cfg)
                 # The height the snapshot above took, like rebuild_pipeline
                 # restores it: without it the new menu came back at its
                 # default height and the next save_menu_layout wrote
@@ -1604,7 +1606,7 @@ def main() -> int:
                     st.display.menu.set_state(settings_io.menu_payload(st))
                     st.display.menu.visible = True
                     st.display.set_menu_opaque(True)
-                    st.display.set_menu_input(True)
+                    st.display.apply_menu_mode_input()
                     print("[main] menu opened at startup")
                 else:
                     st.display.alert(UI_STRINGS[st.lang]["started"], 3.5)

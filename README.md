@@ -98,8 +98,9 @@ place, with no black moment. Minimising the window pauses processing.
 
 ## The menu
 
-The dot next to your graphics card is green when neural rendering really runs
-on it, red when it is not.
+Four tiles on top (NR, FG, Boost, Camera), the profile, then fold-outs: Network,
+Fine tuning, Camera, Source and comparison. The bar icon folds the panel into a
+bar at the top that stays over a game. The dot is green while NR really runs.
 
 - **Source** — the whole screen or one window, and which window.
 - **Profile** — how strong the effect is, from *Faithful* to *Extreme*;
@@ -134,11 +135,10 @@ on it, red when it is not.
   flips back off with a short notice** — no silent ON. Validated on RTX
   50-series; adapters beyond it are unconfirmed.
 
-Everything else is behind the sliders icon: monitor/GPU, a 30/60/custom/off
-frame limiter, HDR, media folders, file conversion, Spout2, the recording
-indicator, an on-screen frame counter, minimise/close to tray, key
+Behind the sliders icon: monitor/GPU, HDR, media folders, file conversion,
+Spout2, the recording indicator, an on-screen frame counter, tray options, key
 assignments, keyboard navigation, **Notifications**, **Process priority**,
-theme and **12** languages, and **Scale** above Quit, which sizes the panel.
+**Scale**, theme and **12** languages. The frame limit is under **Network**.
 
 ## Swapping a runtime
 

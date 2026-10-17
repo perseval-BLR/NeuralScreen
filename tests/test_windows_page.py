@@ -83,6 +83,7 @@ def main() -> int:
 
     # 1. The window list opens from the source segment on the main page -
     #    the "Windows..." button moved there with the rest of the source.
+    menu.folds = {"source"}     # the source lives in its fold-out (v2.6.0)
     menu.draw(pygame.Surface((3840, 2160)))
     seg = next((i for i in menu.items
                 if i.kind == "segmented" and i.key == "source"), None)

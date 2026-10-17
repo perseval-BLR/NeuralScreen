@@ -1200,17 +1200,18 @@ def apply_menu_action(st, action: tuple) -> None:
         # Same reason as the theme above: the menu has applied it to
         # itself, and st.cfg is what a rebuilt menu is restored from.
         st.cfg["menu_mini"] = bool(action[1])
-        print(f"[main] mini mode -> {'on' if action[1] else 'off'}")
-    elif kind == "mini_pick":
-        # Choosing is a state of this session, not a setting: nobody wants
-        # to find the panel in its choosing mode after a restart.
-        print(f"[main] choosing mini rows -> "
-              f"{'on' if action[1] else 'off'}")
-    elif kind == "mini_rows":
-        rows = [str(r) for r in (action[1] or [])]
-        st.cfg["menu_mini_rows"] = rows
-        print(f"[main] mini mode keeps {len(rows)} row(s): "
-              f"{', '.join(rows) or '(none)'}")
+        if st.display.menu.visible:
+            # The panel takes the keyboard, the bar never does: switching to
+            # the bar hands the keyboard back to whatever had it.
+            st.display.apply_menu_mode_input()
+            if action[1]:
+                _give_back_focus(st)
+        print(f"[main] menu -> {'bar' if action[1] else 'panel'}")
+    elif kind == "folds":
+        # The main page's open fold-outs (redesign B): the menu's own state,
+        # kept so the panel opens the way it was left.
+        st.cfg["menu_folds"] = [str(f) for f in (action[1] or [])
+                                if f in settings_io.MENU_FOLDS]
     elif kind == "nr_passes":
         try:
             passes = int(action[1])
@@ -1547,7 +1548,10 @@ def drain_commands(st) -> bool:
                 else:
                     opened = st.display.menu.toggle()
                 st.display.set_menu_opaque(opened)
-                st.display.set_menu_input(opened)
+                if opened:
+                    st.display.apply_menu_mode_input()
+                else:
+                    st.display.set_menu_input(False)
                 if was_open and not opened:
                     _give_back_focus(st)
                 if opened:

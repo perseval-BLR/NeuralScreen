@@ -713,6 +713,7 @@ def rebuild_pipeline(st, note: str) -> None:
         # position until the user drags it).
         st.cfg["menu_offset"] = [int(st.display.menu.offset[0]),
                               int(st.display.menu.offset[1])]
+        st.cfg["menu_bar_offset"] = [int(v) for v in st.display.menu.bar_offset]
         st.cfg["menu_scale"] = round(st.display.menu.user_scale, 2)
         st.cfg["menu_height"] = (None if st.display.menu.user_height is None
                               else int(st.display.menu.user_height))
@@ -748,6 +749,7 @@ def rebuild_pipeline(st, note: str) -> None:
         saved_offset = st.cfg.get("menu_offset")
         if isinstance(saved_offset, (list, tuple)) and len(saved_offset) == 2:
             st.display.menu.offset = [int(saved_offset[0]), int(saved_offset[1])]
+        settings_io.restore_menu_extras(st.display.menu, st.cfg)
         saved_height = st.cfg.get("menu_height")
         if isinstance(saved_height, (int, float)) and saved_height > 0:
             st.display.menu.user_height = int(saved_height)
@@ -755,7 +757,7 @@ def rebuild_pipeline(st, note: str) -> None:
         st.display.menu.set_state(settings_io.menu_payload(st))
         st.display.menu.visible = True
         st.display.set_menu_opaque(True)
-        st.display.set_menu_input(True)
+        st.display.apply_menu_mode_input()
         # The saved offset is honoured as-is: the panel stays where
         # the user left it, clamped to the screen by layout() (user
         # rule 10.09: fixed position until the user drags it).

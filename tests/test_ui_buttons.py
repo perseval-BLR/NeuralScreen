@@ -57,6 +57,9 @@ def build():
     menu.set_stats({"fps": 55.0, "status": "NR ON", "resolution": "3840x2160",
                     "frames": 100})
     menu.visible = True
+    # Every fold-out open (redesign B, v2.6.0): the page with all of its
+    # controls, which is what the tests built on this one click through.
+    menu.folds = {"net", "tune", "camera", "source"}
     return menu
 
 
@@ -242,9 +245,9 @@ def main() -> int:
     # 3. The main page: toggle, profile, sliders, Actions buttons.
     menu.layout(3840, 2160)
     paint(menu)
-    toggle = find(menu, "toggle", "nr")
+    toggle = find(menu, "tile", "nr")
     if toggle is None:
-        failures.append("no DLSS 5 toggle on the main page")
+        failures.append("no DLSS 5 tile on the main page")
     else:
         out = click(menu, toggle)
         if out != [("nr",)]:
@@ -450,9 +453,9 @@ def main() -> int:
     if find(menu, "slider", "nr_res") is not None:
         failures.append("the resolution slider is laid out with Boost off, "
                         "where every position of it does the same thing")
-    boost = find(menu, "toggle", "boost")
+    boost = find(menu, "tile", "boost")
     if boost is None:
-        failures.append("no Boost switch on the main page")
+        failures.append("no Boost tile on the main page")
     else:
         out = click(menu, boost)
         if out != [("toggle", "boost")]:

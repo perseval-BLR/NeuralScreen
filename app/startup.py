@@ -50,7 +50,8 @@ from protocol import SharedFrameBuffer, WorkerReader
 from recorder import VideoRecorder
 from settings_io import (APP_VERSION, THEME_NAMES, _work_size, cascade_passes,
                          clean_per_pass, hotkey_labels,
-                         load_config, load_presets, resolve_params)
+                         load_config, load_presets, resolve_params,
+                         restore_menu_extras)
 from taskbar import TaskbarWindow
 from tray import TrayController, tray_labels
 
@@ -842,12 +843,8 @@ def bring_up(st) -> None:
     saved_theme = st.cfg.get("theme")
     if isinstance(saved_theme, str) and saved_theme in THEME_NAMES:
         st.display.menu.set_state({"theme": saved_theme})
-    # Mini mode, and what it keeps. A missing list is not an empty one:
-    # it means nobody has chosen yet, so the default set stands.
-    st.display.menu.mini = bool(st.cfg.get("menu_mini", False))
-    saved_rows = st.cfg.get("menu_mini_rows")
-    if isinstance(saved_rows, list):
-        st.display.menu.mini_rows = {str(r) for r in saved_rows}
+    # The bar, the open fold-outs and the bar's position (redesign B/C).
+    restore_menu_extras(st.display.menu, st.cfg)
 
     saved_offset = st.cfg.get("menu_offset")
     if isinstance(saved_offset, (list, tuple)) and len(saved_offset) == 2:

@@ -873,17 +873,30 @@ def _validate_config(cfg: dict) -> dict:
         cfg["menu_height"] = _as_int("menu_height", menu_height, None,
                                      minimum=1)
 
-    # menu_mini: a plain switch. menu_mini_rows: the keys mini mode keeps,
-    # and an empty list is a real answer (a panel of nothing but the action
-    # strip), so only a non-list is refused.
+    # menu_mini: the menu collapsed to the bar (redesign C; it was mini mode).
+    # menu_folds: the main page's open fold-outs (redesign B), names from
+    # MENU_FOLDS. menu_bar_offset: where the bar sits, an [x, y] pair.
+    # menu_mini_rows belonged to the old mini mode and is dropped.
+    cfg.pop("menu_mini_rows", None)
     mini = cfg.get("menu_mini")
     if mini is not None and not isinstance(mini, bool):
         _fallback("menu_mini", mini, None, "is not true or false")
-    rows = cfg.get("menu_mini_rows")
-    if rows is not None:
-        if not isinstance(rows, list) or not all(isinstance(r, str)
-                                                 for r in rows):
-            _fallback("menu_mini_rows", rows, None, "is not a list of names")
+    folds = cfg.get("menu_folds")
+    if folds is not None:
+        if (not isinstance(folds, list)
+                or not all(isinstance(f, str) and f in MENU_FOLDS for f in folds)):
+            _fallback("menu_folds", folds, None,
+                      f"is not a list of {'/'.join(MENU_FOLDS)}")
+            cfg["menu_folds"] = None
+    bar = cfg.get("menu_bar_offset")
+    if bar is not None:
+        if (isinstance(bar, (list, tuple)) and len(bar) == 2
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                        and math.isfinite(v) for v in bar)):
+            cfg["menu_bar_offset"] = [int(bar[0]), int(bar[1])]
+        else:
+            _fallback("menu_bar_offset", bar, None, "is not an [x, y] pair")
+            cfg["menu_bar_offset"] = None
 
     # theme: one of THEME_NAMES, anything else is the default.
     theme = cfg.get("theme")
@@ -979,6 +992,25 @@ LENS_NOISE_DEFAULT = 0.3
 # tone and its softness towards the corners are two (#168): the softness blurs
 # a game's HUD and text, the tone does not.
 LENS_AMOUNT_KEYS = ("lens_vignette", "lens_aberration", "lens_sensor", "lens_soft")
+
+
+#: The main page's fold-outs (redesign B, overlay_ui.layout).
+MENU_FOLDS = ("net", "tune", "camera", "source")
+
+
+def restore_menu_extras(menu, cfg: dict) -> None:
+    """Give a (new) menu back its bar state, open folds and bar position.
+
+    One place, because a menu is built three times over a session - at
+    start-up and whenever the window is recreated - and mini mode used to
+    come back only from the first of them."""
+    menu.mini = bool(cfg.get("menu_mini", False))
+    folds = cfg.get("menu_folds")
+    if isinstance(folds, list):
+        menu.folds = {str(f) for f in folds if f in MENU_FOLDS}
+    bar = cfg.get("menu_bar_offset")
+    if isinstance(bar, (list, tuple)) and len(bar) == 2:
+        menu.bar_offset = [int(bar[0]), int(bar[1])]
 
 
 def _shipped_default(key: str, fallback):
@@ -1131,10 +1163,10 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         "nr_small": bool(nr_small),
         "work_scale": round(work_scale, 2),
         "theme": menu.state.get("theme", "light"),
-        # Mini mode and the rows it keeps. The CHOOSING state is not saved:
-        # it is a thing you are doing, not a thing you have set.
+        # The bar (redesign C), the open fold-outs (B) and where the bar is.
         "menu_mini": bool(getattr(menu, "mini", False)),
-        "menu_mini_rows": sorted(getattr(menu, "mini_rows", ()) or ()),
+        "menu_folds": sorted(getattr(menu, "folds", ()) or ()),
+        "menu_bar_offset": [int(v) for v in getattr(menu, "bar_offset", (0, 0))],
         "lang": lang,
         "menu_offset": [int(menu.offset[0]), int(menu.offset[1])],
         "profile": cfg["profile"],

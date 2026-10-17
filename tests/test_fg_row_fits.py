@@ -2,8 +2,9 @@ r"""The Frame Generation row: every locale fits, and its cells react.
 
 Two properties of the same row, both regressions of the v1.17.0 redesign.
 
-1. FIT. The row is a label plus a segment group of four cells - Off, x2, x3,
-   x4 - right-aligned against the panel. The cells used to be sized to the
+1. FIT. The row is a label plus a segment group of cells - since v2.6.0 the
+   steps x2-x6, FG's on/off being its tile above - right-aligned against the
+   panel. The cells used to be sized to the
    WIDEST label, which is "off": three characters in English and eleven in
    Spanish ("desactivado"). Three two-character steps were each given that
    width, the group took 380 px of the row's 488, and the control's own name
@@ -70,7 +71,7 @@ def main() -> int:
         for lang in i18n.STRINGS:
             menu = build(lang)
             row = next((it for it in menu.items
-                        if it.kind == "toggle" and it.key == "frame_generation"),
+                        if it.kind == "toggle" and it.key == "frame_multiplier"),
                        None)
             cells = [it for it in menu.items
                      if it.kind == "button"
@@ -82,7 +83,7 @@ def main() -> int:
             # Read off the PRODUCT's own rects: the room the layout actually
             # leaves the caption, against what the caption actually measures.
             room = min(c.rect.x for c in cells) - row.rect.x - SQUARE_SHIFT
-            need = menu._font.size(str(row.extra.get("label", FG_LABEL)))[0]
+            need = menu._font.size(str(row.extra.get("label") or FG_LABEL))[0]
             group = sum(c.rect.w for c in cells)
             if room < need:
                 failures.append(
@@ -103,11 +104,11 @@ def main() -> int:
                  if it.kind == "button"
                  and str(it.key).startswith(("frame_multiplier:",
                                              "frame_generation:"))]
-        want_cells = protocol.FG_MULTIPLIER_MAX   # off and x2 .. x6 (#163)
+        want_cells = protocol.FG_MULTIPLIER_MAX - 1   # x2 .. x6 (#163, v2.6.0)
         if len(cells) != want_cells:
             failures.append(
                 f"the FG row has {len(cells)} cells, expected {want_cells} "
-                f"(off/x2..x{protocol.FG_MULTIPLIER_MAX}) - the rest of this check cannot run")
+                f"(x2..x{protocol.FG_MULTIPLIER_MAX}) - the rest of this check cannot run")
         else:
             for cell in cells:
                 menu.handle_event(pygame.event.Event(
@@ -127,7 +128,7 @@ def main() -> int:
     if failures:
         return 1
     print("OK: the FG row's name fits in all twelve languages, and each of its "
-          f"{protocol.FG_MULTIPLIER_MAX} cells takes the hover")
+          f"{protocol.FG_MULTIPLIER_MAX - 1} cells takes the hover")
     return 0
 
 

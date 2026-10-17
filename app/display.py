@@ -30,6 +30,7 @@ import os
 import struct
 import sys
 import time
+import zlib
 from ctypes import wintypes
 from typing import Dict, List
 
@@ -565,6 +566,13 @@ class Display:
         # whether the draw under way put anything on it (#166).
         self._clean_layer = None
         self._layer_drawn = False
+        #: The checksum of the menu as last flipped, when the menu was all the
+        #: layer held: a menu left alone redraws at 10 Hz with the same pixels,
+        #: and the collapsed bar (redesign C) is on screen through a whole game.
+        self._menu_sig = None
+        #: The bar's input: "none" (click-through) or "mouse" (the pointer is
+        #: over it - clicks are ours, the keyboard stays with the game).
+        self._bar_input = "none"
         # The z-order guard's decision log: signature of the last reported
         # state and when it was written. The guard runs every frame while the
         # menu is open, so an unthrottled line would drown the log; only a
@@ -883,7 +891,43 @@ class Display:
 
     # -- public API -------------------------------------------------------
 
-    def set_menu_input(self, enabled: bool) -> None:
+    def update_bar_input(self) -> None:
+        """While the menu is the collapsed bar: take the mouse only over it.
+
+        The open panel takes the mouse across the whole screen and the
+        keyboard with it (set_menu_input) - right for a settings panel, wrong
+        for a bar that stays up through a game. So the bar is click-through
+        except while the pointer is over it, and even then the window is not
+        activated: the game keeps the keyboard, and a click on the bar is the
+        only input it ever takes."""
+        menu = self.menu
+        if not (menu.visible and getattr(menu, "mini", False)
+                and menu.page == "main"):
+            if self._bar_input != "none":
+                self._bar_input = "none"
+            return
+        point = wintypes.POINT()
+        if not user32.GetCursorPos(ctypes.byref(point)):
+            return
+        ox, oy = getattr(self, "_origin", (0, 0))
+        over = menu.panel_rect.inflate(4, 4).collidepoint(point.x - ox,
+                                                          point.y - oy)
+        want = "mouse" if over or menu.dragging else "none"
+        if want != self._bar_input:
+            self._bar_input = want
+            self.set_menu_input(want == "mouse", activate=False)
+
+    def apply_menu_mode_input(self) -> None:
+        """The input the menu takes in its current form, once it is up.
+
+        The panel takes the mouse and the keyboard; the bar takes neither
+        until the pointer is over it (update_bar_input). Called when the menu
+        opens and when it switches between the two."""
+        self._bar_input = "none"
+        self.set_menu_input(bool(self.menu.visible)
+                            and not getattr(self.menu, "mini", False))
+
+    def set_menu_input(self, enabled: bool, activate: bool = True) -> None:
         """Whether input should reach our layer (while the menu is open).
 
         Normally the window is click-through: WS_EX_TRANSPARENT gives clicks to
@@ -919,8 +963,12 @@ class Display:
         WS_EX_TOOLWINDOW = 0x00000080
         SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_FRAMECHANGED = 0x2, 0x1, 0x4, 0x20
         style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        if enabled:
+        if enabled and activate:
             style &= ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
+        elif enabled:
+            # The bar: clicks are ours, activation is not (update_bar_input).
+            style &= ~WS_EX_TRANSPARENT
+            style |= WS_EX_NOACTIVATE
         else:
             style |= WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
         # WS_EX_TOOLWINDOW stays on in both states: the overlay is an
@@ -992,7 +1040,7 @@ class Display:
             self._switch_pending = (w, h)
             return
         self.screen = pygame.display.set_mode((w, h), self._flags)
-        self._clean_layer = None   # what the new window shows is not known
+        self._clean_layer = self._menu_sig = None   # the new window's content is not known
         self.width, self.height = w, h
         self._rescale_ui()
         # A set_mode can recreate the physical window; put it back on the
@@ -1028,7 +1076,7 @@ class Display:
             # surface and the layer never actually expands (user: the menu
             # was clipped and could not be dragged above the captured window).
             self.screen = pygame.display.set_mode((full_w, full_h), self._flags)
-            self._clean_layer = None   # what the new window shows is not known
+            self._clean_layer = self._menu_sig = None   # the new window's content is not known
             self.width, self.height = full_w, full_h
             self._rescale_ui()
             # set_mode alone does NOT resize the physical window in SDL2 -
@@ -1700,7 +1748,7 @@ class Display:
             try:
                 self._draw_veil(frac, time.monotonic())
                 pygame.display.flip()
-                self._clean_layer = None
+                self._clean_layer = self._menu_sig = None
             except Exception as exc:
                 print(f"Display: WARNING switch fade-in: {exc}")
                 break
@@ -2154,6 +2202,9 @@ class Display:
     def draw_overlay(self, min_interval: float = 0.1) -> None:
         """Redraw the HUD over the frame the worker is showing.
 
+        The bar's hover input is checked here too: this runs on every pass of
+        the frame loop, which is how often the pointer has to be looked at.
+
         Throttling: a 4K fill plus flip costs ~5 ms while the HUD changes a
         couple of times per second - doing it every frame is wasted time.
         Alerts appear and disappear out of band, so for them the redraw is
@@ -2163,6 +2214,7 @@ class Display:
             pygame.event.pump()
         except Exception:
             pass
+        self.update_bar_input()
         now = time.monotonic()
         alerts = len(self._alerts)
         # With the menu open the throttle is disabled - a slider under the
@@ -2198,10 +2250,10 @@ class Display:
             self._draw_switch()
             if self._switch_active:
                 pygame.display.flip()
-                self._clean_layer = None
+                self._clean_layer = self._menu_sig = None
                 return
         self.screen.fill(CHROMA_KEY)
-        self._layer_drawn = self.menu.visible
+        self._layer_drawn = False
         self._draw_alerts()
         self._draw_rec_indicator()
         self._draw_fps_badge()
@@ -2209,6 +2261,20 @@ class Display:
         self.menu.draw(self.screen)
         self._draw_window_highlight()
         self._sync_cursor()
+        others = self._layer_drawn
+        self._layer_drawn = others or self.menu.visible
+        # The menu alone, with the same pixels as the flip before: not flipped
+        # again, for the reason below. A hover, a moved slider, a new reading in
+        # the status line all change the pixels and go out at once.
+        menu_sig = None
+        if self.menu.visible and not others:
+            area = self.menu.panel_rect.clip(self.screen.get_rect())
+            if area.w > 0 and area.h > 0:
+                menu_sig = (tuple(area), zlib.crc32(pygame.image.tobytes(
+                    self.screen.subsurface(area), "RGB")))
+        if (menu_sig is not None and menu_sig == self._menu_sig
+                and not forced and not veil_drawn):
+            return
         # An empty layer that is already empty on screen is not flipped again
         # (#166). The layer is a full-screen layered window, and every flip of
         # it - even one that changes nothing - costs DWM a composition: at the
@@ -2222,6 +2288,7 @@ class Display:
             return
         pygame.display.flip()
         self._clean_layer = None if self._layer_drawn else self.screen
+        self._menu_sig = menu_sig
 
     def _draw_window_highlight(self) -> None:
         """The amber outline around the window hovered in the windows page.
@@ -2393,7 +2460,7 @@ class Display:
         if self._switch_active:
             self._draw_switch()
         pygame.display.flip()
-        self._clean_layer = None
+        self._clean_layer = self._menu_sig = None
 
     def poll_events(self) -> List[str]:
         """Return event names: 'quit' (Esc / window close), 'toggle' (Num1/F10).

@@ -75,6 +75,10 @@ class _Display:
     def set_menu_input(self, v):
         self.calls.append(("set_menu_input", v))
 
+    def apply_menu_mode_input(self):
+        # The real one: the panel takes input, the bar does not (v2.6.0).
+        self.set_menu_input(bool(self.menu.visible) and not self.menu.mini)
+
     def refresh_colorkey(self):
         pass
 

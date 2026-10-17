@@ -80,16 +80,15 @@ def main() -> int:
         failures.append(f"the header should be [help, gear, mini, min], "
                         f"got {visual}")
 
-    # Choosing what mini mode keeps appears only while mini mode is on -
-    # which is also the only place where its result can be seen.
+    # The bar (v2.6.0, it replaced mini mode) has no header: its last two
+    # buttons are the way back to the panel and the collapse.
     menu.mini = True
     menu.layout(3840, 2160)
-    mini_visual = list(reversed([i.key for i in menu.items
-                                 if i.kind == "icon"]))
-    print(f"header icons in mini mode: {mini_visual}")
-    if mini_visual != ["help", "gear", "pick", "mini", "min"]:
-        failures.append(f"mini mode's header should be "
-                        f"[help, gear, pick, mini, min], got {mini_visual}")
+    bar_visual = [i.key for i in sorted((i for i in menu.items if i.kind == "icon"),
+                                        key=lambda i: i.rect.x)]
+    print(f"bar buttons: {bar_visual}")
+    if bar_visual != ["mini", "min"]:
+        failures.append(f"the bar should end in [mini, min], got {bar_visual}")
     menu.mini = False
     menu.layout(3840, 2160)
 
@@ -119,6 +118,7 @@ def main() -> int:
     # 4. Leaving window mode is the left cell of the source segment now -
     #    the Actions button moved there with the rest of the source.
     menu.state["window_mode"] = True
+    menu.folds = {"source"}     # the source lives in its fold-out (v2.6.0)
     menu.layout(3840, 2160)
     menu.draw(pygame.Surface((3840, 2160)))
     seg = next((i for i in menu.items

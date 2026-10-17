@@ -30,6 +30,27 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **A lighter panel (redesign B).** The main page ran to 1356 px at 100% -
+  past a 1080p screen - with twenty-odd rows in one column. It is now four
+  tiles for the switches a game is played with (NR, FG, Boost, Camera), the FG
+  multiplier, the profile and its strength, and four fold-outs that name what
+  they hold while closed: Network (resolution, passes, frame limit), Fine
+  tuning (model, tone, structure, skin, presets), Camera, Source and
+  comparison. Folded it is about 670 px and fits a 1080p screen at 100%; the
+  open folds are remembered. The interface scale moved to Settings -> Program.
+* **The bar (redesign C) replaces mini mode.** The bar icon folds the panel
+  into one row at the top of the screen - NR, FG and its step, Boost, Camera,
+  screenshot, recording, back to the panel - that can stay up through a game:
+  it takes the mouse only while the pointer is over it and never the keyboard,
+  where the open panel takes both across the whole screen. It is dragged by
+  its handle and keeps its own place.
+* **An open menu no longer redraws the HUD layer for nothing.** The menu was
+  redrawn ten times a second even when nothing on it changed, and every
+  redraw of that layer costs the compositor a frame (#166). A menu whose
+  pixels are the same as on the last redraw is not sent again.
+
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 
 * **Video and capture-card pictures no longer stutter under NR (#166).** With

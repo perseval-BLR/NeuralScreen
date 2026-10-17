@@ -103,6 +103,7 @@ def main() -> int:
         # its colons, and never prepends the handle.
         menu.page = "main"
         menu.open_choice = None
+        menu.folds = {"source"}     # the source lives in its fold-out (v2.6.0)
         menu.draw(surface)
         source = next((item for item in menu.items
                        if item.kind == "info" and item.key == "source_now"), None)

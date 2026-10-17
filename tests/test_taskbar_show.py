@@ -60,6 +60,11 @@ class _Display:
     def set_menu_input(self, enabled: bool) -> None:
         self.input.append(enabled)
 
+    def apply_menu_mode_input(self) -> None:
+        # The real one: the panel takes input, the bar does not (v2.6.0).
+        self.set_menu_input(bool(self.menu.visible)
+                            and not getattr(self.menu, "mini", False))
+
     def is_visible(self) -> bool:
         return self.window_visible
 

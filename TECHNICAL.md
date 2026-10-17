@@ -332,6 +332,7 @@ a maintainer's GPU, paths or experimental switches cannot leak into a release.
 | `tray_on_minimise`, `tray_on_close` | what the taskbar button's minimise and close do; both off by default, and neither stops the neural pass |
 | `menu_scale_auto` | the panel size is still the automatic fit; cleared for good the moment a scale step is chosen by hand |
 | `menu_offset`, `menu_scale`, `menu_height` | where the menu sits, its scale and height. Written by the app, not meant to be edited by hand (`menu_height: null` — fit the content) |
+| `menu_mini`, `menu_bar_offset`, `menu_folds` | the menu collapsed to the bar (it was mini mode until v2.6.0) and where the bar sits from the top centre; the main page's open fold-outs, any of `net`, `tune`, `camera`, `source`. Written by the app |
 
 ## Architecture
 
@@ -879,9 +880,10 @@ notice, when the tray icon is not actually running: it is the only way back.
 `menu_scale` is one of five steps - 80, 90, 100, 115, 130% - and
 `menu_scale_auto` says whether the user has picked one yet. While it is set,
 a launch lays the main page out at each step and takes the largest that needs
-no scrolling on the work area (the desktop minus the taskbar). At 100% that
-page is 1165 px of content, which does not fit a 1080p desktop: it came up
-scrolled, with its last controls behind the taskbar. The fit never grows the
+no scrolling on the work area (the desktop minus the taskbar). Until v2.6.0
+that page was 1165-1356 px at 100% and came up scrolled on a 1080p desktop,
+its last controls behind the taskbar; folded into tiles and fold-outs it is
+about 670 px, so the fit now matters on smaller work areas. The fit never grows the
 panel above 100%, and it stops running for good the moment a step is chosen
 by hand.
 

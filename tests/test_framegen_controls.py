@@ -27,8 +27,10 @@ def main():
     menu = build()
     paint(menu)
     assert find(menu, "slider", "frame_multiplier") is None
-    toggle = find(menu, "toggle", "frame_generation")
-    assert toggle is not None
+    # v2.6.0: FG is a tile (on/off) and the multiplier its own row of steps.
+    tile = find(menu, "tile", "frame_generation")
+    assert tile is not None
+    assert click(menu, tile) == [("toggle", "frame_generation")]
     # The menu reports a CLICK; what that click MEANS is decided in main.
     # Picking a step with FG off therefore posts a tray command, so the stub
     # needs the queue main would have.
@@ -46,10 +48,10 @@ def main():
         assert len(btns) == protocol.FG_MULTIPLIER_MAX - 1, [i.extra["label"] for i in btns]
         assert not any(i.extra.get("disabled") for i in btns), \
             "the multiplier must be selectable while FG is off"
-        # The group carries every state: OFF is lit while FG is off, so the row
-        # always says what is happening (the direction the mockup sets).
-        off = find(menu, "button", "frame_generation:off")
-        assert off is not None and off.extra["filled"], "Off must be the lit cell"
+        # With FG off no step is lit and the tile says Off: the row never
+        # claims a multiplier is running while none is.
+        assert find(menu, "button", "frame_generation:off") is None
+        assert find(menu, "tile", "frame_generation").value == 0.0
         active = [i for i in btns if i.extra["filled"]]
         assert not active, [i.key for i in active]
         # Picking a step with FG off asks for FG on as well - one click instead
@@ -59,8 +61,7 @@ def main():
         commands.apply_menu_action(st, actions[0])
         assert st.cfg["frame_multiplier"] == 2
 
-        # The row has no switch of its own: the segment group IS the control,
-        # so FG is turned on by picking a step - the same one click a user makes.
+        # Picking a step with FG off turns it on - one click, as before.
         actions = click(menu, next(i for i in btns if i.key == "frame_multiplier:2"))
         assert actions == [("button", "frame_multiplier:2")], actions
         commands.apply_menu_action(st, actions[0])
@@ -68,13 +69,13 @@ def main():
             "picking a step with FG off turns it on"
         menu.set_state(st.cfg)
         paint(menu)
-        # The multiplier rides the FG row: three small buttons beside the
-        # switch, the selected one filled.
+        # The steps, the selected one filled, the tile showing it.
         btns = [i for i in menu.items
                 if i.kind == "button" and i.key.startswith("frame_multiplier:")]
         assert len(btns) == protocol.FG_MULTIPLIER_MAX - 1, [i.extra["label"] for i in btns]
         active = [i for i in btns if i.extra["filled"]]
         assert len(active) == 1 and active[0].key == "frame_multiplier:2"
+        assert find(menu, "tile", "frame_generation").extra["value_text"] == "×2"
         # Up to 6x (#163): DLSS 4.5's steps, the two above 4x carried by the
         # header's third multiplier bit.
         for value in range(2, protocol.FG_MULTIPLIER_MAX + 1):
@@ -105,7 +106,7 @@ def main():
                 if i.kind == "button" and i.key.startswith("frame_multiplier:")]
         filled = [i for i in btns if i.extra["filled"]]
         assert not filled, [i.key for i in filled]
-        assert find(menu, "button", "frame_generation:off").extra["filled"]
+        assert find(menu, "tile", "frame_generation").value == 0.0
         assert not any(i.extra.get("disabled") for i in btns)
         assert save.call_count == 3 + protocol.FG_MULTIPLIER_MAX - 1
     # The prepared-capture flag rides the same header, independent of FG.

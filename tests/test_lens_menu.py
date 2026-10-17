@@ -1,7 +1,7 @@
 r"""The camera from the menu: switches, an angle, amounts, a command, saved settings.
 
-The main page gets one row for the camera (closing the "effect" block) and,
-only while it is on, the fisheye switch, a field-of-view slider in whole
+The main page gets a tile for the camera and a fold-out for what it does
+(v2.6.0): the fisheye switch, a field-of-view slider in whole
 degrees while the fisheye is on, and five amounts in percent: webcam noise,
 vignette, chromatic aberration, the small sensor's tone and the softness towards
 the corners (#168: they were one amount). The noise works without
@@ -10,8 +10,8 @@ nothing is rebuilt - and the settings are saved like every other menu choice.
 
 Checked without launching anything:
 
-* the menu: with the camera off there is a switch and nothing under it; on,
-  the fisheye switch, an angle slider in degrees and the five amounts in
+* the menu: the camera is a tile; its block closed shows nothing of it, open
+  (on or off) the fisheye switch, an angle slider in degrees and the five amounts in
   percent, and the angle's hint fits the panel in all 12 languages; with the
   fisheye off the angle slider goes and the amounts stay; a click on a switch
   asks for ("toggle", key), the keyboard moves the angle 5 degrees at a time;
@@ -41,12 +41,13 @@ sys.path.insert(0, str(BASE / "app"))  # the modules live in app/
 import pygame  # noqa: E402
 
 
-def _menu(lang: str, **state):
+def _menu(lang: str, folds=("camera",), **state):
     import fonts
     import overlay_ui as ui
     menu = ui.OverlayMenu(1.0, lambda size, mono=False, bold=False: fonts.load(size, mono=mono))
     menu.visible = True
     menu.page = "main"
+    menu.folds = set(folds)
     menu.set_state(dict({"nr": True, "gpu_ok": True, "profile": "Natural",
                          "profiles": ["Natural"], "lang": lang}, **state))
     menu.layout(1920, 1080)
@@ -59,13 +60,20 @@ def _item(menu, key):
 
 def _check_menu(failures: list) -> None:
     from i18n import STRINGS
-    menu = _menu("en")
-    if _item(menu, "lens") is None:
-        failures.append("the main page has no lens switch")
+    # v2.6.0: the camera is a tile; what it does lives in its fold-out, on
+    # screen whenever that block is open - so it can be set up before the
+    # camera is turned on - and never while it is closed.
+    menu = _menu("en", folds=())
+    tile = _item(menu, "lens")
+    if tile is None or tile.kind != "tile":
+        failures.append("the main page has no camera tile")
     under = ("lens_bend", "lens_fov", "lens_noise", "lens_vignette", "lens_aberration",
              "lens_sensor", "lens_soft")
     if any(_item(menu, key) is not None for key in under):
-        failures.append("a camera control is on screen while the camera is off")
+        failures.append("a camera control is on screen while its block is closed")
+    menu = _menu("en")
+    if any(_item(menu, key) is None for key in under):
+        failures.append("the open camera block lacks a control while the camera is off")
     for lang in sorted(STRINGS):
         menu = _menu(lang, lens=True, lens_fov=125.0)
         slider = _item(menu, "lens_fov")

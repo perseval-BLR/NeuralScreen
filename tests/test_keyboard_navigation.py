@@ -38,6 +38,7 @@ def _menu():
         "window_mode": False,
     })
     menu.visible = True
+    menu.folds = {"net", "tune", "camera", "source"}   # every fold-out open (v2.6.0)
     menu.user_height = 360
     menu.draw(pygame.Surface((1280, 720)))
     return menu
@@ -129,9 +130,9 @@ def main() -> int:
             if out != [("style", "2")]:
                 failures.append(f"Right on style emitted {out}")
 
-        toggle = _find(menu, "toggle", "nr")
+        toggle = _find(menu, "tile", "nr")
         if toggle is None:
-            failures.append("no NR toggle")
+            failures.append("no NR tile")
         else:
             menu._set_focus(toggle)
             if _press(menu, pygame.K_LEFT) != [("nr",)]:

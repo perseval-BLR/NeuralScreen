@@ -1,10 +1,12 @@
 r"""The interface scale: fitted once on a first launch, chosen after that.
 
-At the shipped menu_scale of 1.0 the main page is taller than a 1080p
-desktop, so the panel came up scrolled with its last controls under the
-taskbar - measured here, and visible in a reporter's phone video (#107).
+At the shipped menu_scale of 1.0 the main page used to be taller than a
+1080p desktop, so the panel came up scrolled with its last controls under
+the taskbar - measured here, and visible in a reporter's phone video (#107).
 A first launch therefore picks the largest ladder step whose page needs no
-scrolling.
+scrolling. Since redesign B (v2.6.0) the folded main page fits a 1080p desktop
+at 1.0 - that is now required here - and the fit still steps down on a
+smaller one (a 720p work area).
 
 Three properties, because each one is a different way to get this wrong:
 
@@ -45,7 +47,8 @@ import pygame  # noqa: E402
 
 #: Work areas, not screen heights: the taskbar is not room the panel has.
 DESKTOPS = (
-    ("1080p", 1920, 1032, True),    # must step down - this is the report
+    ("720p", 1280, 680, True),      # must step down
+    ("1080p", 1920, 1032, False),   # fits at 1.0 since redesign B (#107)
     ("1440p", 2560, 1392, False),   # fits at 1.0, must not be touched
     ("4K", 3840, 2112, False),      # fits with room to spare, must not grow
 )
