@@ -1527,6 +1527,7 @@ def main() -> int:
                 st.display.set_origin(*getattr(st, "mon_origin", (0, 0)))
                 st.display.set_lang(st.lang)
                 st.display.set_alert_level(str(st.cfg.get("notifications", "all")))
+                st.display.dim_on_rebuild = st.cfg.get("dim_on_rebuild", True) is not False
                 # In one-window mode the overlay must stay visible to outside
                 # recorders: the NEW window comes up with the WDA flag set
                 # (the Display default), so state it explicitly here - the

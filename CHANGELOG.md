@@ -63,6 +63,9 @@ Scope and honesty notes:
   evidence, at least 12% of the scene moving, at most 32 rectangles over 20%
   of the frame) and the worker shows the real frame's pixels there in every
   generated frame. Off until it is measured on more games.
+* **"Dim while rebuilding" (#157).** Settings -> Program: off, a pipeline
+  rebuild leaves the desktop in view instead of the grey veil and the
+  assembling mark. On by default, as before.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

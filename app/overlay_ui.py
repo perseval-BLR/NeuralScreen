@@ -448,6 +448,7 @@ class OverlayMenu:
             # would draw as off while the opt-out was still in force.
             "keep_speed_when_hidden": True,
             "fg_ui_protect": False,
+            "dim_on_rebuild": True,
             # The hotkeys master switch (#134). Listed HERE for the reason the
             # spout/hdr entries above spell out: a key missing from this dict
             # is dropped by set_state in silence, and the toggle would draw as
@@ -1835,6 +1836,10 @@ class OverlayMenu:
                    s.get("keep_speed_when_hidden", "Keep full speed when hidden"),
                    bool(self.state.get("keep_speed_when_hidden", True)),
                    hint=s.get("keep_speed_hint", ""))
+            # #157: the grey veil and the assembling mark while the pipeline
+            # restarts - or the desktop, unchanged.
+            toggle("dim_on_rebuild", s.get("dim_on_rebuild", "Dim while rebuilding"),
+                   bool(self.state.get("dim_on_rebuild", True)))
 
             section(s["sec_hotkeys"], "keys")
             # The master switch (#134), above the individual keys because it

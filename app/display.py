@@ -569,6 +569,9 @@ class Display:
         #: Where the rate badge goes instead of this layer: a badge.BadgeChannel
         #: the worker draws from, set by main while the worker presents.
         self.badge_out = None
+        #: Whether a rebuild dims the screen behind the assembling mark (#157:
+        #: off leaves the desktop visible while the pipeline restarts).
+        self.dim_on_rebuild = True
         #: The checksum of the menu as last flipped, when the menu was all the
         #: layer held: a menu left alone redraws at 10 Hz with the same pixels,
         #: and the collapsed bar (redesign C) is on screen through a whole game.
@@ -1667,6 +1670,12 @@ class Display:
         the frozen base is re-blitted and the dimmed copy fades in over it.
         Both ramps are advanced by _draw_switch / _finish_switch_if_due.
         """
+        if not self.dim_on_rebuild and not self._switch_active:
+            # #157: no veil and no mark - the desktop stays in view while the
+            # pipeline restarts, which with automatic rebuilds is less of an
+            # interruption than a grey screen.
+            print("[main] switch overlay skipped (dimming during rebuilds is off)")
+            return
         if self._switch_active:
             # A switch during the fade-out (the pair of calls a window
             # probe makes, or a second command): bring the veil back to

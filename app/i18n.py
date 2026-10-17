@@ -2466,6 +2466,19 @@ STRINGS["ru"].update({
     "hk_framegen": "Генерация кадров вкл/выкл",
 })
 
+# #157: dim while rebuilding (v2.6.0).
+STRINGS["en"].update({"dim_on_rebuild": 'Dim while rebuilding'})
+STRINGS["ru"].update({"dim_on_rebuild": 'Затемнять при пересборке'})
+STRINGS["fr"].update({"dim_on_rebuild": 'Assombrir pendant la reconstruction'})
+STRINGS["de"].update({"dim_on_rebuild": 'Beim Neuaufbau abdunkeln'})
+STRINGS["es"].update({"dim_on_rebuild": 'Oscurecer al reconstruir'})
+STRINGS["it"].update({"dim_on_rebuild": 'Oscura durante la ricostruzione'})
+STRINGS["pt"].update({"dim_on_rebuild": 'Escurecer ao reconstruir'})
+STRINGS["pl"].update({"dim_on_rebuild": 'Przyciemniaj przy przebudowie'})
+STRINGS["uk"].update({"dim_on_rebuild": 'Затемнювати під час перебудови'})
+STRINGS["zh"].update({"dim_on_rebuild": '重建时变暗'})
+STRINGS["ja"].update({"dim_on_rebuild": '再構築中は暗くする'})
+STRINGS["ko"].update({"dim_on_rebuild": '재구성 중 어둡게'})
 # FG interface protection (v2.6.0).
 STRINGS["en"].update({"fg_ui_protect": 'Protect the interface in FG', "fg_ui_protect_hint": 'still HUD and text keep the real frame'})
 STRINGS["ru"].update({"fg_ui_protect": 'Защита интерфейса в FG', "fg_ui_protect_hint": 'неподвижный HUD и текст берутся из реального кадра'})

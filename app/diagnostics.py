@@ -648,7 +648,7 @@ _SETTINGS_KEYS = (
     # #137: whether the app asked the OS for full speed while its window is
     # hidden. A report that says "it is slow when minimised" is unanswerable
     # without knowing this switch and what the read-back said.
-    "keep_speed_when_hidden", "fg_ui_protect",
+    "keep_speed_when_hidden", "fg_ui_protect", "dim_on_rebuild",
     "hotkeys_enabled",
     "menu_scale", "menu_scale_auto",
     # Mini mode and the rows it keeps: a report from a shortened

@@ -955,6 +955,12 @@ def apply_menu_action(st, action: tuple) -> None:
             tb.to_tray_on_close = bool(st.cfg.get("tray_on_close", False))
         settings_io.save_menu_layout(st)
         print(f"[main] {name}: {'on' if st.cfg[name] else 'off'}")
+    elif kind == "toggle" and action[1] == "dim_on_rebuild":
+        st.cfg["dim_on_rebuild"] = not (st.cfg.get("dim_on_rebuild", True) is not False)
+        st.display.dim_on_rebuild = st.cfg["dim_on_rebuild"]
+        st.display.menu.set_state({"dim_on_rebuild": st.cfg["dim_on_rebuild"]})
+        settings_io.save_menu_layout(st)
+        print(f"[main] dim while rebuilding: {'on' if st.cfg['dim_on_rebuild'] else 'off'}")
     elif kind == "toggle" and action[1] == "fg_ui_protect":
         # FG's interface protection: the frame loop sends the rectangles
         # (update_ui_protection) and an empty list once it is off.

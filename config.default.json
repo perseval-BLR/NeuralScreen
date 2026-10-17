@@ -62,6 +62,7 @@
   "tray_on_close": false,
   "keep_speed_when_hidden": true,
   "fg_ui_protect": false,
+  "dim_on_rebuild": true,
   "menu_height": null,
   "menu_offset": [
     0,
