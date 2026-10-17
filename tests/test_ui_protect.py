@@ -10,6 +10,7 @@ Checked without a GPU:
 1. a textured box that stays still over a moving scene is found after the
    evidence frames, as one rectangle covering it, and nothing else is;
 2. a still scene, a flat still area and a slow pan protect nothing;
+   a repeated gray keeps the rectangles and adds no stillness;
 3. the limits hold: at most 32 rectangles, at most 20% of the picture;
 4. the command layer sends the rectangles only when they change, an empty
    list once when FG or the setting goes off, and nothing to a fresh worker
@@ -68,6 +69,23 @@ def main() -> int:
         if not (abs(x * W - 240) <= 10 and abs(y * H - 20) <= 10
                 and abs(w * W - 60) <= 10 and abs(h * H - 30) <= 10):
             failures.append(f"the rectangle {rects[0]} is not the HUD at 240,20 60x30")
+
+    # A repeated gray (the game drew slower than the loop) changes nothing:
+    # the rectangles stay, and the scene's tiles earn no stillness from it.
+    frame = with_hud(moving_scene(12))
+    again = [det.update(frame), det.update(frame.copy()), det.update(frame.copy())]
+    if any(r != rects for r in again[1:]) or not again[1]:
+        failures.append(f"a repeated gray turned the protection {again} (was {rects})")
+    det2 = up.UiDetector()
+    early = []
+    for t in range(up.EVIDENCE - 2):              # too few new frames for evidence
+        f = with_hud(moving_scene(t))
+        early = det2.update(f)
+        early = early or det2.update(f.copy())    # every frame three times
+        early = early or det2.update(f.copy())
+    if early:
+        failures.append(f"repeated frames counted as evidence: protected {early} "
+                        f"after {up.EVIDENCE - 2} new frames")
 
     # 2. Nothing to protect.
     det = up.UiDetector()

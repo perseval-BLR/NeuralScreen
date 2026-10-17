@@ -45,6 +45,7 @@ class UiDetector:
     def reset(self) -> None:
         self._prev = None
         self._streak = None
+        self._last: list[tuple[int, int, int, int]] = []
 
     def update(self, gray: np.ndarray) -> list[tuple[int, int, int, int]]:
         """The still-interface rectangles for this frame, normalised."""
@@ -61,13 +62,22 @@ class UiDetector:
             self._streak = np.zeros((th, tw), np.int32)
             return []
         diff = np.abs(g - prev).reshape(th, TILE, tw, TILE).mean(axis=(1, 3))
+        if not diff.any():
+            # The same gray again (the loop ran faster than the game drew, or
+            # the gray was not refreshed for this frame): no news. Read as a
+            # frame it is "nothing moves" - the protection went off for one
+            # frame and on again with the next, and every textured tile of
+            # the moving scene gained a frame of stillness.
+            return list(self._last)
         moving = diff > MOVE_DIFF
         still = (diff < STILL_DIFF) & (texture > TEXTURE)
         self._streak = np.where(still, self._streak + 1, 0)
         if moving.mean() < MOVING_SHARE:
+            self._last = []
             return []
         keep = self._streak >= EVIDENCE
-        return _rects(keep, w=tw * TILE, h=th * TILE)
+        self._last = _rects(keep, w=tw * TILE, h=th * TILE)
+        return list(self._last)
 
 
 def _rects(keep: np.ndarray, *, w: int, h: int) -> list[tuple[int, int, int, int]]:
