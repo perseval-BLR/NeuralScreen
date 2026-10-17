@@ -84,7 +84,7 @@ def main() -> int:
 
     # A fresh switch-on re-arms the user's choice (a newer provider or driver
     # can lift the ceiling without a restart of the program).
-    if not re.search(r"g_fg_count_limit\s*=\s*3\s*;", src):
+    if not re.search(r"g_fg_count_limit\s*=\s*kFgMaxGenerated\s*;", src):
         failures.append("switching FG off and on does not re-arm the ceiling")
 
     # The retry frame is a retry, not a dead feature: after a step-down the

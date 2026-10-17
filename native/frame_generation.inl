@@ -38,8 +38,13 @@ static NVSDK_NGX_Result FgCreateGuarded(PFN_NR_Create create, ID3D12GraphicsComm
 #include "include/nvsdk_ngx_helpers_dlssg.h"
 #undef NVSDK_NGX_D3D12_EvaluateFeature_C
 
+// The most generated frames per real one: DLSS 4.5 goes to 6x (#163) on the
+// cards whose runtime says so; a card that stops lower refuses the step and
+// FgStepDown walks it down, as it always did from 4x.
+static constexpr unsigned kFgMaxGenerated = 5;
+
 struct FgSlot {
-    winrt::com_ptr<ID3D12Resource> real, interpolated[3];
+    winrt::com_ptr<ID3D12Resource> real, interpolated[kFgMaxGenerated];
     unsigned count = 1;
     int state = 0; // free, writing, ready, presenting; protected by mutex
     UINT64 sequence = 0;
@@ -53,7 +58,7 @@ static struct FgState {
     NVSDK_NGX_Parameter *params = nullptr;
     NVSDK_NGX_Handle *feature = nullptr;
     VideoTex depth;
-    winrt::com_ptr<ID3D12Resource> output[3];
+    winrt::com_ptr<ID3D12Resource> output[kFgMaxGenerated];
     winrt::com_ptr<ID3D12Resource> disable, disable_readback;
     UINT w = 0, height = 0, mw = 0, mh = 0;
     DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
@@ -91,21 +96,21 @@ static struct FgState {
 
 static int g_fg_ui_enabled = -1;
 static unsigned g_fg_count = 1;
-// What we actually ask the runtime for, 0-based: 1 = 2x, 3 = 4x.
+// What we actually ask the runtime for, 0-based: 1 = 2x, 3 = 4x, 5 = 6x.
 //
-// It starts at the DLSS 4 ceiling and drops only when a create or evaluation
+// It starts at the DLSS 4.5 ceiling and drops only when a create or evaluation
 // is actually refused - the runtime itself answered "not that step". Two
 // refusals on a card that stops at 2x (4x, then 3x) land it on 2x and Frame
 // Generation keeps running; before this, the first refusal killed the feature
 // outright. Switching FG off and on re-arms the user's choice, so a newer
 // stock provider or driver update gets a fair try without a restart.
-static unsigned g_fg_count_limit = 3;
+static unsigned g_fg_count_limit = kFgMaxGenerated;
 // Set when a refusal was answered by stepping the multiplier down: that frame
 // is a retry, not a failure. FgPresent reads and clears it.
 static bool g_fg_retry = false;
 
 // Report-only: what the runtime says its own ceiling is, through
-// DLSSG.MultiFrameCountMax (3 = 4x, 1 = 2x only). It is advisory and never
+// DLSSG.MultiFrameCountMax (5 = 6x, 3 = 4x, 1 = 2x only). It is advisory and never
 // clamps the request - the step-down below is what adapts, because it is
 // driven by an answer this run actually got. The value is logged so that a
 // log from a card which stops at 2x names the reason on the first attempt.
@@ -493,7 +498,7 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
         Log("[fg] Init_Ext -> 0x%08X", result);
         if (NVSDK_NGX_FAILED(result)) return unload();
         // Ask the runtime what it says its own multiplier ceiling is, and log
-        // it. DLSSG.MultiFrameCountMax is 3 for 4x and 1 for a card that stops
+        // it. DLSSG.MultiFrameCountMax is 5 for 6x, 3 for 4x and 1 for a card that stops
         // at 2x. This is REPORT ONLY: the request is not clamped by it, since
         // an unverified capability answer must not silently cost a working
         // step. What adapts is FgStepDown, driven by a refusal this run really
@@ -506,7 +511,7 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
             if (!NVSDK_NGX_FAILED(caps->Get(NVSDK_NGX_DLSSG_Parameter_MultiFrameCountMax, &reported)) &&
                 reported >= 1u)
             {
-                g_fg_cap_reported = std::min(3u, reported);
+                g_fg_cap_reported = std::min(kFgMaxGenerated, reported);
                 Log("[fg] the runtime reports a %ux multiplier ceiling",
                     g_fg_cap_reported + 1);
             }
@@ -579,7 +584,7 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
     if (!WaitFenceValue(h.fence, EndCommands(), 30000)) return false;
     D3D12_RESOURCE_DESC buffer = {};
     buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    buffer.Width = 12; buffer.Height = 1; buffer.DepthOrArraySize = 1;
+    buffer.Width = 4 * kFgMaxGenerated; buffer.Height = 1; buffer.DepthOrArraySize = 1;
     buffer.MipLevels = 1; buffer.SampleDesc.Count = 1;
     buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     buffer.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -896,7 +901,9 @@ static void ConfigureFgFrame(uint32_t flags)
 {
     if (!(flags & 0x800)) return; // older clients may still use NS_FRAMEGEN
     const int enabled = (flags & 0x100) != 0;
-    const unsigned requested = std::min(3u, ((flags >> 9) & 3u) + 1u);
+    // The multiplier minus two in bits 9-10, its third bit in bit 15 (#163).
+    const unsigned step = ((flags >> 9) & 3u) | ((flags & 0x8000u) ? 4u : 0u);
+    const unsigned requested = std::min(kFgMaxGenerated, step + 1u);
     // A step the runtime already refused is not offered again in this FG
     // session: the request is clamped to the last one that worked. Switching
     // FG off and on arms the user's choice again, so a newer stock provider
@@ -904,11 +911,11 @@ static void ConfigureFgFrame(uint32_t flags)
     const unsigned count = std::min(requested, g_fg_count_limit);
     if (g_fg_ui_enabled == enabled && g_fg_count == count) return;
     CloseFgResources();
-    // A fresh switch-on is a fresh attempt: the ceiling goes back to the DLSS 4
+    // A fresh switch-on is a fresh attempt: the ceiling goes back to the DLSS 4.5
     // maximum and the user's own choice is asked for again. A step this card
     // refused earlier is worth exactly one retry after a provider or driver
     // update, and those do not restart the program.
-    if (enabled && g_fg_ui_enabled == 0) g_fg_count_limit = 3;
+    if (enabled && g_fg_ui_enabled == 0) g_fg_count_limit = kFgMaxGenerated;
     g_fg_retry = false;
     g_fg_ui_enabled = enabled;
     g_fg_count = count;

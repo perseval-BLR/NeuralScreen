@@ -27,7 +27,7 @@ from capture import devicename_for_output_idx, list_adapters, list_monitors
 from i18n import STRINGS as UI_STRINGS
 # The work caps are the worker's contract, not a setting: the same two
 # numbers size the shared motion buffer in the SHMI handshake.
-from protocol import WORK_MAX_H, WORK_MAX_W  # noqa: F401
+from protocol import FG_MULTIPLIER_MAX, WORK_MAX_H, WORK_MAX_W  # noqa: F401
 from winapi import list_capturable_windows, window_frame_rect
 from resolution_limits import safe_processing_size
 
@@ -654,7 +654,7 @@ def _validate_config(cfg: dict) -> dict:
     cfg["motion_backend"] = normalize_backend(cfg.get("motion_backend"))
     cfg["frame_generation"] = bool(cfg.get("frame_generation", False))
     try:
-        cfg["frame_multiplier"] = min(4, max(2, int(cfg.get("frame_multiplier", 2))))
+        cfg["frame_multiplier"] = min(FG_MULTIPLIER_MAX, max(2, int(cfg.get("frame_multiplier", 2))))
     except (ValueError, TypeError, OverflowError):
         cfg["frame_multiplier"] = 2
     mode = str(cfg.get("frame_limit_mode", "unlimited"))
@@ -1210,7 +1210,7 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         # as soon as one of them works (issue #33).
         "gpu_no_nr": _index_list(cfg.get("gpu_no_nr")),
         "frame_generation": bool(cfg.get("frame_generation", False)),
-        "frame_multiplier": min(4, max(2, int(cfg.get("frame_multiplier", 2)))),
+        "frame_multiplier": min(FG_MULTIPLIER_MAX, max(2, int(cfg.get("frame_multiplier", 2)))),
         "frame_limit_mode": (str(cfg.get("frame_limit_mode", "unlimited"))
                              if str(cfg.get("frame_limit_mode", "unlimited"))
                              in FRAME_LIMIT_MODES else "unlimited"),
@@ -1712,7 +1712,7 @@ def menu_payload(st) -> dict:
         "hdr": bool(st.cfg.get("hdr", False)),
         "motion_backend": st.cfg.get("motion_backend", "nvofa"),
         "frame_generation": bool(st.cfg.get("frame_generation", False)),
-        "frame_multiplier": min(4, max(2, int(st.cfg.get("frame_multiplier", 2)))),
+        "frame_multiplier": min(FG_MULTIPLIER_MAX, max(2, int(st.cfg.get("frame_multiplier", 2)))),
         # The step the presenter is REALLY running, when the runtime refused
         # the requested one and the worker stepped down (issue #100). None
         # until the worker says so; the panel marks the difference so the

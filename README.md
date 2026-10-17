@@ -125,8 +125,9 @@ on it, red when it is not.
   picture stays sharp — the result is composed onto your original frame, so
   text and edges keep full resolution. Turn it off to compare. **NR passes**
   under the slider repeats the pass: an experiment, priced in TECHNICAL.md.
-- **DLSS 4.5 FG** — Frame Generation, off by default, with a ×2 / ×3 / ×4
-  multiplier beside the switch (and on **Num7**). DLSS-G's own desktop
+- **DLSS 4.5 FG** — Frame Generation, off by default, with a ×2 to ×6
+  multiplier beside the switch (and on **Num7**; ×5 and ×6 need an RTX 50,
+  a card that stops lower runs its highest step). DLSS-G's own desktop
   build: the depth is flat and the motion is estimated, there is no engine
   cooperation, so UI and text can distort — the known cost of the approach.
   The header pairs the two honest rates when they differ: "47 / 111 fps" is

@@ -25,7 +25,7 @@ import pygame
 
 from i18n import STRINGS
 from resolution_limits import safe_processing_size
-from settings_io import THEME_NAMES
+from settings_io import FG_MULTIPLIER_MAX, THEME_NAMES
 
 # --- Themes. The accent is shared; background and text change ------------
 THEMES = {
@@ -2006,12 +2006,11 @@ class OverlayMenu:
                 ).format(live=live, want=multiplier)
             toggle("frame_generation", "DLSS 4.5 FG", fg, hint=fg_hint,
                    segments_only=True,
-                   inline_right=[("frame_generation:off", s.get("off", "off")),
-                                 ("frame_multiplier:2", "×2"),
-                                 ("frame_multiplier:3", "×3"),
-                                 ("frame_multiplier:4", "×4")])
-            # The four cells are ONE segment group (the mockup's direction): Off
-            # plus the three steps, the live one filled. Off is filled while FG
+                   inline_right=[("frame_generation:off", s.get("off", "off"))]
+                   + [(f"frame_multiplier:{m}", f"×{m}")
+                      for m in range(2, FG_MULTIPLIER_MAX + 1)])
+            # The cells are ONE segment group (the mockup's direction): Off
+            # plus the steps, the live one filled. Off is filled while FG
             # is off, a step while it runs - so the group always says exactly
             # what is happening.
             #
@@ -2021,11 +2020,11 @@ class OverlayMenu:
             # when the first attempt was refused and flipped itself back off.
             # Picking a step with FG off therefore also asks for FG on - one
             # click instead of two, and no dead end.
-            for idx, value in enumerate((2, 3, 4), start=1):
-                btn = items[-4 + idx]
-                btn.extra["filled"] = fg and multiplier == value
-            off_btn = items[-4]
-            off_btn.extra["filled"] = not fg
+            steps = list(range(2, FG_MULTIPLIER_MAX + 1))
+            first = len(items) - len(steps) - 1
+            for idx, value in enumerate(steps, start=1):
+                items[first + idx].extra["filled"] = fg and multiplier == value
+            items[first].extra["filled"] = not fg
 
             limit_mode = str(self.state.get("frame_limit_mode", "unlimited"))
             # The hint is not decoration: the cap paces how often a frame is
@@ -3175,7 +3174,7 @@ class OverlayMenu:
     def _set_slider_value(self, item: Item, value: float) -> list[tuple]:
         value = min(item.hi, max(item.lo, value))
         if item.key == "frame_multiplier":
-            value = min(4, max(2, int(value + 0.5)))
+            value = min(FG_MULTIPLIER_MAX, max(2, int(value + 0.5)))
             if value == item.value:
                 return []
             item.value = value

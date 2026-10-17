@@ -498,6 +498,12 @@ FRAME_FLAG_EARLY_REPLY = 0x2000
 # GPU idle ~2 ms a frame. The worker scores the same gray as it captures and
 # sets the reset itself; the reply brings the score back for the status line.
 FRAME_FLAG_WORKER_SCENE = 0x4000
+# The Frame Generation multiplier, 2 to FG_MULTIPLIER_MAX (#163: DLSS 4.5 goes
+# to 6x on the cards that can). Minus two it rides in bits 9-10 and, for 6x
+# and 5x, in this third bit - 0x800 between them is taken (the explicit-UI
+# flag), and an older worker that reads two bits only falls back below.
+FG_MULTIPLIER_MAX = 6
+FRAME_FLAG_FG_MULT_HIGH = 0x8000
 
 # MOTS: the motion field arrives at the optical-flow resolution (~320x180) and
 # the worker upscales it to the work resolution on the GPU. The CPU is spared
@@ -705,9 +711,11 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
     if worker_scene:
         flags |= FRAME_FLAG_WORKER_SCENE
     if frame_generation is not None:
-        # Bits 8-11: enabled, multiplier minus two, explicit UI override.
+        # Bits 8-11: enabled, multiplier minus two, explicit UI override;
+        # bit 15 the multiplier's third bit.
         flags |= 0x800 | (0x100 if frame_generation else 0)
-        flags |= (min(4, max(2, int(frame_multiplier))) - 2) << 9
+        step = min(FG_MULTIPLIER_MAX, max(2, int(frame_multiplier))) - 2
+        flags |= (step & 3) << 9 | (FRAME_FLAG_FG_MULT_HIGH if step & 4 else 0)
     if split > 0.0:
         # The wipe position rides in the high 16 bits of the same flags field:
         # there is no dedicated field in the header, and widening it for a

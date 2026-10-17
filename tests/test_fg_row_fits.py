@@ -37,6 +37,8 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame  # noqa: E402
 
+import protocol  # noqa: E402
+
 FG_LABEL = "DLSS 4.5 FG"
 #: The state square the PROCESSING section puts before every caption, plus its
 #: gap - the caption starts that far right of the row.
@@ -101,10 +103,11 @@ def main() -> int:
                  if it.kind == "button"
                  and str(it.key).startswith(("frame_multiplier:",
                                              "frame_generation:"))]
-        if len(cells) != 4:
+        want_cells = protocol.FG_MULTIPLIER_MAX   # off and x2 .. x6 (#163)
+        if len(cells) != want_cells:
             failures.append(
-                f"the FG row has {len(cells)} cells, expected 4 (off/x2/x3/x4) "
-                f"- the rest of this check cannot run")
+                f"the FG row has {len(cells)} cells, expected {want_cells} "
+                f"(off/x2..x{protocol.FG_MULTIPLIER_MAX}) - the rest of this check cannot run")
         else:
             for cell in cells:
                 menu.handle_event(pygame.event.Event(
@@ -124,7 +127,7 @@ def main() -> int:
     if failures:
         return 1
     print("OK: the FG row's name fits in all twelve languages, and each of its "
-          "four cells takes the hover")
+          f"{protocol.FG_MULTIPLIER_MAX} cells takes the hover")
     return 0
 
 

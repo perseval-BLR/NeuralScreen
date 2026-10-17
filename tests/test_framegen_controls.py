@@ -43,7 +43,7 @@ def main():
         paint(menu)
         btns = [i for i in menu.items
                 if i.kind == "button" and i.key.startswith("frame_multiplier:")]
-        assert len(btns) == 3, [i.extra["label"] for i in btns]
+        assert len(btns) == protocol.FG_MULTIPLIER_MAX - 1, [i.extra["label"] for i in btns]
         assert not any(i.extra.get("disabled") for i in btns), \
             "the multiplier must be selectable while FG is off"
         # The group carries every state: OFF is lit while FG is off, so the row
@@ -72,12 +72,13 @@ def main():
         # switch, the selected one filled.
         btns = [i for i in menu.items
                 if i.kind == "button" and i.key.startswith("frame_multiplier:")]
-        assert len(btns) == 3, [i.extra["label"] for i in btns]
+        assert len(btns) == protocol.FG_MULTIPLIER_MAX - 1, [i.extra["label"] for i in btns]
         active = [i for i in btns if i.extra["filled"]]
         assert len(active) == 1 and active[0].key == "frame_multiplier:2"
-        for value, key in ((2, "frame_multiplier:2"),
-                           (3, "frame_multiplier:3"),
-                           (4, "frame_multiplier:4")):
+        # Up to 6x (#163): DLSS 4.5's steps, the two above 4x carried by the
+        # header's third multiplier bit.
+        for value in range(2, protocol.FG_MULTIPLIER_MAX + 1):
+            key = f"frame_multiplier:{value}"
             btn = next(i for i in btns if i.key == key)
             actions = click(menu, btn)
             assert actions == [("button", key)], actions
@@ -91,7 +92,8 @@ def main():
             header = struct.unpack(protocol.FRAME_FMT, worker.stdin.getvalue()[:struct.calcsize(protocol.FRAME_FMT)])
             flags = header[3]
             assert flags & 0x800 and flags & 0x100
-            assert ((flags >> 9) & 3) + 2 == value
+            step = ((flags >> 9) & 3) | (4 if flags & protocol.FRAME_FLAG_FG_MULT_HIGH else 0)
+            assert step + 2 == value, (value, hex(flags))
             assert flags >> 16 == 32768, "FG flags changed the comparison wipe"
         commands.apply_menu_action(st, ("toggle", "frame_generation"))
         menu.set_state(st.cfg)
@@ -105,7 +107,7 @@ def main():
         assert not filled, [i.key for i in filled]
         assert find(menu, "button", "frame_generation:off").extra["filled"]
         assert not any(i.extra.get("disabled") for i in btns)
-        assert save.call_count == 6
+        assert save.call_count == 3 + protocol.FG_MULTIPLIER_MAX - 1
     # The prepared-capture flag rides the same header, independent of FG.
     worker = SimpleNamespace(stdin=io.BytesIO())
     protocol.send_frame(worker, 9, None, np.zeros((2, 2, 2), np.float16), False, 0,

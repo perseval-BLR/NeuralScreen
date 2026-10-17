@@ -57,6 +57,10 @@ Scope and honesty notes:
 * **The camera has a hotkey (#164).** Num8 turns it on and off, the way the
   switch on the main page does; it can be rebound or taken off the keyboard on
   the KEYS page like every other one.
+* **Frame Generation up to ×6 (#163).** The multiplier goes to DLSS 4.5's
+  ceiling: ×5 and ×6 on an RTX 50, for example 24 fps film on a 120 Hz screen at
+  an even ×5. A card whose runtime stops lower is walked down to its highest
+  step, as a ×3/×4 request on a ×2 card always was.
 
 ## v2.4.0 - 2026-10-11 - Shadows that no longer trail, a camera around the fisheye, the pointer in recordings, live window switching
 

@@ -317,7 +317,7 @@ a maintainer's GPU, paths or experimental switches cannot leak into a release.
 | `pixels_in_shm` | result pixels come back through a shared section instead of the pipe (`false` — pipe, as before) |
 | `flow_preset` | which DIS configuration estimates the motion field: `fast` (default, as shipped), `ultrafast`, `medium`. See "What the guides cost" |
 | `frame_limit_mode`, `frame_limit_custom` | active-pipeline cap: 30, 60, custom 15–240, or unlimited |
-| `frame_generation`, `frame_multiplier` | opt-in FG and ×2/×3/×4 requested multiplier; refusal turns it back off |
+| `frame_generation`, `frame_multiplier` | opt-in FG and the requested multiplier, ×2 to ×6; a refused step is walked down, a refused ×2 turns it back off |
 | `recording_dir`, `screenshot_dir`, `screenshot_mode`, `screenshot_format` | persistent media destinations; screenshots use Save As or a quiet unique name, PNG or JPEG |
 | `spout`, `hdr` | explicit opt-in output/capture optimisations; both default off |
 | `split` | 0–1, share of the frame left unprocessed for the before/after wipe; 0 — off |
@@ -1028,7 +1028,8 @@ feature to interpolate between consecutive output frames. The depth fed to it
 is flat and the motion is estimated per frame - there is no engine
 cooperation - so UI and text can distort where motion estimation guesses
 wrong; that is inherent to the screen-space approach, not a tuning issue.
-The multiplier is x2/x3/x4 (the DLSS-G contract caps there), the switch is
+The multiplier is x2 to x6 (DLSS 4.5's ceiling; a runtime that refuses a
+step is walked down to the one it takes), the switch is
 opt-in, and the header reports both rates - the network's and the presenter's
 - whenever they differ.
 

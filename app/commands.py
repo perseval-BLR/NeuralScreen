@@ -946,7 +946,7 @@ def apply_menu_action(st, action: tuple) -> None:
             st.fg_alerted = False
         settings_io.save_menu_layout(st)
     elif kind == "frame_multiplier":
-        st.cfg["frame_multiplier"] = min(4, max(2, int(action[1])))
+        st.cfg["frame_multiplier"] = min(settings_io.FG_MULTIPLIER_MAX, max(2, int(action[1])))
         # A different multiplier is a fresh attempt at the feature: if the
         # runtime refused the previous one, it gets to answer again (issue
         # #82 - 2x may work where 3x does not).
@@ -1340,7 +1340,8 @@ def apply_menu_action(st, action: tuple) -> None:
                   f"(frames processed {st.frame_index})")
             st.running = False
         elif name.startswith("frame_multiplier:"):
-            st.cfg["frame_multiplier"] = min(4, max(2, int(name.split(":", 1)[1])))
+            st.cfg["frame_multiplier"] = min(settings_io.FG_MULTIPLIER_MAX,
+                                             max(2, int(name.split(":", 1)[1])))
             # Same re-arm as the menu's multiplier buttons: a new value is
             # a new attempt.
             if st.cfg.get("frame_generation"):
