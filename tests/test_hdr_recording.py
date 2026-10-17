@@ -16,7 +16,11 @@ values are the desktop's own, with no network in between:
 * the captured window's white, grey and black come out in that order, white
   at the PQ level of an SDR white on an HDR desktop (80-480 nits, whatever
   the brightness slider says) - not SDR's code 235 and not PQ's 10 000-nit
-  top - and black at the floor.
+  top - and black at the floor;
+* with Frame Generation on (a PQ composite) and the colour's exposure at +1
+  (the camera off), the grey carries twice the light of the plain run's grey -
+  the colour works in light, not on PQ code values, where a stop came out as
+  several (#164).
 
 A light test: 960x540, frames paced to 60 fps, 2 s of recording per run. It
 needs an HDR display nearest the capture target and SKIPs without one. The
@@ -56,15 +60,30 @@ def luma10(frame, x: int, y: int) -> int:
     return int(frame.to_ndarray(format="yuv420p10le")[y, x])
 
 
-def run(fg: bool, folder: Path, failures: list) -> bool:
+def from_pq(n: float) -> float:
+    m1, m2, c1, c2, c3 = 0.1593017578125, 78.84375, 0.8359375, 18.8515625, 18.6875
+    p = max(0.0, min(1.0, n)) ** (1 / m2)
+    return (max(p - c1, 0.0) / (c2 - c3 * p)) ** (1 / m1)
+
+
+def to_pq(lin: float) -> float:
+    m1, m2, c1, c2, c3 = 0.1593017578125, 78.84375, 0.8359375, 18.8515625, 18.6875
+    y = max(0.0, min(1.0, lin)) ** m1
+    return ((c1 + c2 * y) / (1 + c3 * y)) ** m2
+
+
+RESULTS: dict = {}
+
+
+def run(fg: bool, folder: Path, failures: list, exposure: float = 0.0) -> bool:
     """One worker, one HDR10 recording. False when HDR capture is not on."""
     from pipeline import shutdown_worker, start_worker
-    from protocol import (SharedFrameBuffer, send_frame, send_gray,
+    from protocol import (SharedFrameBuffer, send_frame, send_gray, send_lens,
                           send_motion_size, send_resize, send_wgc, send_window)
     from recorder import GpuRecorder
     from settings_io import PROFILES
 
-    label = f"FG {'on' if fg else 'off'}"
+    label = f"FG {'on' if fg else 'off'}" + (f", exposure {exposure:+g}" if exposure else "")
     target = Target(W, H, name=f"NsHdrRecording{int(fg)}", ghost=True)
     target.set_bars(BARS)
     params = dict(PROFILES["Natural"])
@@ -100,6 +119,8 @@ def run(fg: bool, folder: Path, failures: list) -> bool:
         reader.wait_wack(10)
         send_resize(worker, params, W, H, 2, 0, 0, False, False, 1)
         reader.wait_rack(60)
+        if exposure:
+            send_lens(worker, False, 110.0, 0.0, exposure=exposure)   # the camera off
         for _ in range(30):
             frame()
         if not any("capture=FP16" in ln for ln in logs):
@@ -149,7 +170,18 @@ def run(fg: bool, folder: Path, failures: list) -> bool:
         failures.append(f"{label}: {count} frames in {RECORD_S:g} s at 60 fps")
     if bars is None:
         failures.append(f"{label}: no frame to measure")
+    elif exposure:
+        plain = RESULTS.get(fg)
+        if plain is not None:
+            # 10-bit studio range: 64 + 876 * PQ.
+            want = 64 + 876 * to_pq(2 ** exposure * from_pq((plain[1] - 64) / 876))
+            print(f"    {label}: grey {bars[1]}, the plain run's {plain[1]}, "
+                  f"a stop more light is {want:.0f}")
+            if abs(bars[1] - want) > 12:
+                failures.append(f"{label}: grey came out at {bars[1]}, not {want:.0f} "
+                                f"(twice the light of {plain[1]})")
     else:
+        RESULTS[fg] = bars
         white, grey, black = bars[0], bars[1], bars[2]
         # PQ code of an SDR white at 80-480 nits, in 10-bit studio range.
         if not 440 <= white <= 700:
@@ -174,6 +206,8 @@ def main() -> int:
     failures: list = []
     with tempfile.TemporaryDirectory() as tmp:
         ran = [run(fg, Path(tmp), failures) for fg in (False, True)]
+        if ran[1]:
+            run(True, Path(tmp), failures, exposure=1.0)
     if not any(ran):
         print("SKIP: no HDR display to capture from")
         return 0

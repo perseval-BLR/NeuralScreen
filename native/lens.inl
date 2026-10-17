@@ -46,6 +46,7 @@ cbuffer LensCB : register(b0)
     float gNoise;     // webcam noise, 0..1
     uint  gSeed;      // the noise's frame: 30 a second, from the clock
     uint  gFlags;     // bit0 bend (the fisheye), bit1 a linear (scRGB) target,
+                      // bit2 a PQ (HDR10) target,
                       // bits 8-15 the softness towards the corners, 255ths
     float gVignette;  // 0..1
     float gAberration;// 0..1
@@ -55,6 +56,7 @@ cbuffer LensCB : register(b0)
     float gContrast;  // #164: -1 half .. 0 as it is .. 1 twice, about the middle grey
     float gWarmth;    // #164: -1 cooler (blue) .. 1 warmer (red)
     float gTint;      // #164: -1 greener .. 1 more magenta
+    float gWhite;     // SDR white on an HDR target (scRGB units: 1.0 = 80 nits)
 };
 Texture2D<float4>   gSrc : register(t0);
 RWTexture2D<float4> gDst : register(u0);
@@ -142,6 +144,44 @@ float3 SmallSensor(float3 e)
     return lerp(x, y.xxx, 0.17 * gSensor);
 }
 
+// PQ (SMPTE ST 2084) code values to linear light, 1.0 = 10000 nits, and back.
+float3 FromPq(float3 n)
+{
+    const float m1 = 0.1593017578125, m2 = 78.84375;
+    const float c1 = 0.8359375, c2 = 18.8515625, c3 = 18.6875;
+    float3 p = pow(saturate(n), 1.0 / m2);
+    return pow(max(p - c1, 0.0) / (c2 - c3 * p), 1.0 / m1);
+}
+
+float3 ToPq(float3 l)
+{
+    const float m1 = 0.1593017578125, m2 = 78.84375;
+    const float c1 = 0.8359375, c2 = 18.8515625, c3 = 18.6875;
+    float3 y = pow(saturate(l), m1);
+    return pow((c1 + c2 * y) / (1.0 + c3 * y), m2);
+}
+
+// The colour (#164) on 2.2-encoded light: exposure and the balance as gains
+// in linear light (the balance keeps the luminance, so it moves the colour
+// and not the brightness), contrast about the middle grey, saturation.
+float3 Colour(float3 e)
+{
+    if (gExposure != 0.0 || gWarmth != 0.0 || gTint != 0.0)
+    {
+        float3 gain = float3(exp2(0.25 * gWarmth), exp2(-0.25 * gTint), exp2(-0.25 * gWarmth));
+        gain *= exp2(gExposure) / dot(gain, float3(0.2126, 0.7152, 0.0722));
+        e = pow(pow(max(e, 0.0), 2.2) * gain, 1.0 / 2.2);
+    }
+    if (gContrast != 0.0)
+        e = max((e - 0.5) * exp2(gContrast) + 0.5, 0.0);
+    if (gSaturation != 0.0)
+    {
+        float y = dot(e, float3(0.2126, 0.7152, 0.0722));
+        e = lerp(y.xxx, e, 1.0 + gSaturation);
+    }
+    return e;
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
@@ -202,21 +242,19 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         e = SmallSensor(e);
     // Exposure, white balance, contrast and saturation (#164), after the
     // sensor's tone and before the vignette and the noise: a camera's ISP sets
-    // them before the lens falls off and before its readout noise. Exposure
-    // and the balance are gains in linear light; the balance keeps the
-    // luminance, so it moves the colour and not the brightness.
-    if (gExposure != 0.0 || gWarmth != 0.0 || gTint != 0.0)
+    // them before the lens falls off and before its readout noise. On a PQ
+    // target (HDR10 with FG, the HDR recording) the code values are not
+    // display terms - a stop of exposure on them is several - so the colour
+    // works on the same 2.2-encoded light relative to SDR white as the other
+    // targets, and goes back to PQ after.
+    if (gExposure != 0.0 || gWarmth != 0.0 || gTint != 0.0 || gContrast != 0.0 ||
+        gSaturation != 0.0)
     {
-        float3 gain = float3(exp2(0.25 * gWarmth), exp2(-0.25 * gTint), exp2(-0.25 * gWarmth));
-        gain *= exp2(gExposure) / dot(gain, float3(0.2126, 0.7152, 0.0722));
-        e = pow(pow(max(e, 0.0), 2.2) * gain, 1.0 / 2.2);
-    }
-    if (gContrast != 0.0)
-        e = max((e - 0.5) * exp2(gContrast) + 0.5, 0.0);
-    if (gSaturation != 0.0)
-    {
-        float y = dot(e, float3(0.2126, 0.7152, 0.0722));
-        e = lerp(y.xxx, e, 1.0 + gSaturation);
+        bool pq = (gFlags & 4u) != 0;
+        float nits = 80.0 * max(gWhite, 1.0);
+        float3 g = pq ? pow(FromPq(e) * (10000.0 / nits), 1.0 / 2.2) : e;
+        g = Colour(g);
+        e = pq ? ToPq(pow(max(g, 0.0), 2.2) * (nits / 10000.0)) : g;
     }
     // The vignette before the noise: the darkened corners are where a small
     // sensor's noise shows most.
@@ -299,7 +337,7 @@ static bool LensPipeline()
         {D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 1}};
     D3D12_ROOT_PARAMETER roots[2] = {};
     roots[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    roots[0].Constants = {0, 0, 15};
+    roots[0].Constants = {0, 0, 16};
     roots[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     roots[1].DescriptorTable = {2, ranges};
     D3D12_STATIC_SAMPLER_DESC samp = {};
@@ -414,20 +452,22 @@ static ID3D12Resource *LensApply(ID3D12GraphicsCommandList *list, ID3D12Resource
     // specks, and Frame Generation's frames are not each given their own -
     // a sensor reads out at its own rate whatever the display does.
     const bool linear = desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
+    const bool pq = desc.Format == DXGI_FORMAT_R10G10B10A2_UNORM;   // HDR10 (as badge.inl)
     // With the camera off only the colour runs: the camera's parts at zero.
     const float cam = g_lens_on ? 1.0f : 0.0f;
     struct { UINT size[2]; float rect, fish, noise; UINT seed, flags;
              float vignette, aberration, sensor, saturation, exposure, contrast, warmth,
-             tint; } cb = {
+             tint, white; } cb = {
         {w, hgt}, f_rect, half_diag / corner, cam * std::clamp(g_lens_noise, 0.0f, 1.0f),
         static_cast<UINT>(GetTickCount64() / 33u),
-        (g_lens_on && g_lens_bend ? 1u : 0u) | (linear ? 2u : 0u) |
+        (g_lens_on && g_lens_bend ? 1u : 0u) | (linear ? 2u : 0u) | (pq ? 4u : 0u) |
             (static_cast<UINT>(cam * std::clamp(g_lens_soft, 0.0f, 1.0f) * 255.0f + 0.5f) << 8),
         cam * std::clamp(g_lens_vignette, 0.0f, 1.0f), cam * std::clamp(g_lens_aberration, 0.0f, 1.0f),
         cam * std::clamp(g_lens_sensor, 0.0f, 1.0f), std::clamp(g_lens_saturation, -1.0f, 1.0f),
         std::clamp(g_lens_exposure, -1.0f, 1.0f), std::clamp(g_lens_contrast, -1.0f, 1.0f),
-        std::clamp(g_lens_warmth, -1.0f, 1.0f), std::clamp(g_lens_tint, -1.0f, 1.0f)};
-    static_assert(sizeof(cb) == 60, "LensCB is 15 constants");
+        std::clamp(g_lens_warmth, -1.0f, 1.0f), std::clamp(g_lens_tint, -1.0f, 1.0f),
+        (std::max)(1.0f, g_hdr_frame_white)};
+    static_assert(sizeof(cb) == 64, "LensCB is 16 constants");
 
     const UINT step = h.dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     const UINT pair = s.ring++ % kLensPairs;
@@ -465,7 +505,7 @@ static ID3D12Resource *LensApply(ID3D12GraphicsCommandList *list, ID3D12Resource
     list->SetDescriptorHeaps(1, heaps);
     list->SetComputeRootSignature(s.root.get());
     list->SetPipelineState(s.pso.get());
-    list->SetComputeRoot32BitConstants(0, 15, &cb, 0);
+    list->SetComputeRoot32BitConstants(0, 16, &cb, 0);
     D3D12_GPU_DESCRIPTOR_HANDLE gpu = s.heap->GetGPUDescriptorHandleForHeapStart();
     gpu.ptr += static_cast<UINT64>(pair) * 2u * step;
     list->SetComputeRootDescriptorTable(1, gpu);

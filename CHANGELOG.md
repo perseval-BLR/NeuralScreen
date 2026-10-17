@@ -74,7 +74,9 @@ Scope and honesty notes:
   (green-magenta) at the luminance kept. The five colour sliders moved from the
   Camera block to a Colour block - with them the camera block was 1500 px tall
   at 1080p - and they work with the camera off; a new worker is told the
-  colour even while the camera is off.
+  colour even while the camera is off. On HDR10 output (Frame Generation with
+  HDR, the HDR recording) the colour is applied in light, not on PQ code
+  values, where a stop of exposure came out as several.
 * **Follow the focused window (#157).** Settings → Capture, off by default: in
   window mode a window that keeps the focus 2.5 s becomes the source, through
   the live switch (same monitor, no recording), at most once per 8 s. Lock
