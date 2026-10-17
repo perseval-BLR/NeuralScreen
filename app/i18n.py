@@ -2466,6 +2466,19 @@ STRINGS["ru"].update({
     "hk_framegen": "Генерация кадров вкл/выкл",
 })
 
+# FG interface protection (v2.6.0).
+STRINGS["en"].update({"fg_ui_protect": 'Protect the interface in FG', "fg_ui_protect_hint": 'still HUD and text keep the real frame'})
+STRINGS["ru"].update({"fg_ui_protect": 'Защита интерфейса в FG', "fg_ui_protect_hint": 'неподвижный HUD и текст берутся из реального кадра'})
+STRINGS["fr"].update({"fg_ui_protect": "Protéger l'interface en FG", "fg_ui_protect_hint": "le HUD fixe et le texte restent ceux de l'image réelle"})
+STRINGS["de"].update({"fg_ui_protect": 'Oberfläche in FG schützen', "fg_ui_protect_hint": 'festes HUD und Text bleiben aus dem echten Bild'})
+STRINGS["es"].update({"fg_ui_protect": 'Proteger la interfaz en FG', "fg_ui_protect_hint": 'el HUD fijo y el texto salen del fotograma real'})
+STRINGS["it"].update({"fg_ui_protect": "Proteggi l'interfaccia in FG", "fg_ui_protect_hint": 'HUD fisso e testo restano quelli del frame reale'})
+STRINGS["pt"].update({"fg_ui_protect": 'Proteger a interface no FG', "fg_ui_protect_hint": 'HUD fixo e texto vêm do quadro real'})
+STRINGS["pl"].update({"fg_ui_protect": 'Ochrona interfejsu w FG', "fg_ui_protect_hint": 'nieruchomy HUD i tekst z prawdziwej klatki'})
+STRINGS["uk"].update({"fg_ui_protect": 'Захист інтерфейсу у FG', "fg_ui_protect_hint": 'нерухомий HUD і текст беруться зі справжнього кадру'})
+STRINGS["zh"].update({"fg_ui_protect": 'FG 界面保护', "fg_ui_protect_hint": '静止的 HUD 和文字取自真实帧'})
+STRINGS["ja"].update({"fg_ui_protect": 'FG でインターフェースを保護', "fg_ui_protect_hint": '静止した HUD と文字は実フレームのまま'})
+STRINGS["ko"].update({"fg_ui_protect": 'FG 인터페이스 보호', "fg_ui_protect_hint": '고정 HUD와 텍스트는 실제 프레임 사용'})
 # Redesign B (v2.6.0): the state tiles and the fold-out headers.
 STRINGS["en"].update({"tile_on": "On", "tile_off": "Off", "fold_net": "Network", "fold_tune": "Fine tuning", "fold_source": "Source and comparison"})
 STRINGS["ru"].update({"tile_on": "Вкл", "tile_off": "Выкл", "fold_net": "Сеть", "fold_tune": "Тонкая настройка", "fold_source": "Источник и сравнение"})

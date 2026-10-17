@@ -447,6 +447,7 @@ class OverlayMenu:
             # from this dict is dropped by set_state in silence, and the toggle
             # would draw as off while the opt-out was still in force.
             "keep_speed_when_hidden": True,
+            "fg_ui_protect": False,
             # The hotkeys master switch (#134). Listed HERE for the reason the
             # spout/hdr entries above spell out: a key missing from this dict
             # is dropped by set_state in silence, and the toggle would draw as
@@ -2069,6 +2070,12 @@ class OverlayMenu:
             net_bits.append(limit_labels.get(limit_mode, limit_mode))
             if fold("net", s.get("fold_net", "Network"),
                     " · ".join(b for b in net_bits if b)):
+                # FG's interface protection (v2.6.0): the real frame's pixels
+                # where a still HUD sits over a moving picture. Off by default
+                # until it is measured on more games.
+                toggle("fg_ui_protect", s.get("fg_ui_protect", "Protect the interface in FG"),
+                       bool(self.state.get("fg_ui_protect", False)),
+                       hint=s.get("fg_ui_protect_hint", ""))
                 # The hint says what the cap counts: source frames, which is
                 # why a 60 cap and a 170 fps FG reading are true together (#109).
                 choice("frame_limit_mode", s.get("frame_limit", "Frame limit"),

@@ -1907,6 +1907,7 @@ static constexpr uint32_t PER_PASS_ACK_MAGIC = 0x50414150u; // "PAAP" -- worker 
 static constexpr uint32_t LENS_MAGIC         = 0x534E454Cu; // "LENS" -- client -> worker: the fisheye lens
 static constexpr uint32_t LENS_ACK_MAGIC     = 0x4B414E4Cu; // "LNAK" -- worker -> client reply to LENS
 static constexpr uint32_t BADGE_MAGIC        = 0x47444142u; // "BADG" -- client -> worker: the rate badge's mapping (no reply)
+static constexpr uint32_t UI_RECTS_MAGIC     = 0x43524955u; // "UIRC" -- client -> worker: FG's still-interface rectangles (no reply)
 static constexpr uint32_t PER_PASS_FLAG_ENABLED = 0x1u;     // passes 2+ use this set; clear = main set for every pass
 static constexpr uint32_t DDA_MAGIC        = 0x31414444u; // "DDA1" -- client -> worker: worker takes over capture
 static constexpr uint32_t DDA_ACK_MAGIC    = 0x4B434144u; // "DACK" -- worker -> client reply to DDA1
@@ -2120,6 +2121,16 @@ struct VideoLensCmd
     int64_t pts;
 };
 using VideoLensAck = VideoPerPassAck;   // magic LNAK, ok, two reserved, pts
+// UIRC: where the picture holds a still interface (app/ui_protect.py), in
+// 1/65535ths of the frame: x, y, w, h. Frame Generation shows the real frame
+// there instead of an interpolated one (frame_generation.inl).
+static constexpr uint32_t kUiRectsMax = 32;
+struct VideoUiRectsCmd
+{
+    uint32_t magic, count, reserved0, reserved1;
+    int64_t pts;
+    uint16_t rects[kUiRectsMax][4];
+};
 // BADG: the name of the client's badge bitmap (badge.inl); empty = none.
 struct VideoBadgeCmd
 {
@@ -2259,6 +2270,7 @@ static_assert(offsetof(VideoResultHeader, pts) == 20, "VideoResultHeader is not 
 static_assert(offsetof(VideoWgcCmd, hwnd) == 24, "VideoWgcCmd is not packed");
 static_assert(sizeof(VideoLensCmd) == 24, "VideoLensCmd != LENS_FMT");
 static_assert(sizeof(VideoBadgeCmd) == 88, "VideoBadgeCmd != BADGE_FMT");
+static_assert(sizeof(VideoUiRectsCmd) == 280, "VideoUiRectsCmd != UI_RECTS_FMT");
 static_assert(sizeof(VideoLensAck) == 24, "VideoLensAck != LENS_ACK_FMT");
 
 struct VideoTex
@@ -4560,6 +4572,7 @@ static VideoPerPassCmd         g_per_pass_cmd = {};
 // LENS, read the same way.
 static VideoLensCmd            g_lens_cmd = {};
 static VideoBadgeCmd           g_badge_cmd = {};
+static VideoUiRectsCmd         g_ui_rects = {};   // count 0: nothing protected
 // Gray downsample (GRAY): write luminance (flow size) into a client mapping.
 static HANDLE                  g_gray_file = nullptr;   // client's mapping handle
 static BYTE                   *g_gray_map = nullptr;    // mapped view
@@ -7140,6 +7153,18 @@ static int ReadVideoMessage(VideoState &v, VideoFrameHeader &fh, std::vector<BYT
         memcpy(&g_lens_cmd, &fh, sizeof(g_lens_cmd));
         return 14;   // unique, like every number here (see 13 above)
     }
+    if (fh.magic == UI_RECTS_MAGIC)
+    {
+        VideoUiRectsCmd cmd = {};
+        BYTE *p = reinterpret_cast<BYTE *>(&cmd);
+        memcpy(p, &fh, sizeof(fh));
+        if (!ReadExact(stdin, p + sizeof(fh), sizeof(cmd) - sizeof(fh))) return 0;
+        cmd.count = (std::min)(cmd.count, kUiRectsMax);
+        if (cmd.count != g_ui_rects.count)
+            Log("[fg] interface protection: %u rectangle(s)", cmd.count);
+        g_ui_rects = cmd;
+        return 16;
+    }
     if (fh.magic == BADGE_MAGIC)
     {
         BYTE *p = reinterpret_cast<BYTE *>(&g_badge_cmd);
@@ -7492,7 +7517,7 @@ static int RunVideo()
         // frame. Missing it here sent every PPRM through the "not prepared"
         // path and threw away the frame that was ready.
         if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13 && msg != 14 &&
-            msg != 15) prepared = false;
+            msg != 15 && msg != 16) prepared = false;
         // A command may change what the network makes. CAP1 (10) does not: it
         // only latches the capture the next FRM1 consumes, and on the CPU
         // motion path it precedes every frame - counting it here kept the
@@ -7500,7 +7525,9 @@ static int RunVideo()
         // LENS (14) neither: the lens is applied after the network, to its
         // output, and the held result is exactly what it bends.
         // BADG (15) neither: the badge goes on the presented picture only.
-        if (msg != 1 && msg != 10 && msg != 14 && msg != 15) { g_still_evals = 0; StabForget(); }
+        // UIRC (16) neither: it changes only what FG shows between real frames.
+        if (msg != 1 && msg != 10 && msg != 14 && msg != 15 && msg != 16)
+        { g_still_evals = 0; StabForget(); }
         if (msg < 0) return 11;   // protocol desync: not a clean end of input
         if (msg == 0)
         {
@@ -7818,6 +7845,7 @@ static int RunVideo()
             if (!WriteExact(g_wire, &ack, sizeof(ack))) return 10;
             continue;
         }
+        if (msg == 16) continue;   // UIRC: taken in ReadVideoMessage, no reply
         if (msg == 15)
         {
             // BADG: where the client keeps the rate badge (badge.inl). No

@@ -56,6 +56,13 @@ Scope and honesty notes:
   off (#166). The client now renders the badge into a small shared bitmap and
   the worker blends it over each frame it presents - SDR, HDR and Frame
   Generation's frames alike; screenshots, recordings and Spout never carry it.
+* **Interface protection for Frame Generation** (Network block, off by
+  default). DLSS-G on the desktop warps a still label with the motion around
+  it - HUD and text smear in the generated frames. With the switch on, the
+  client finds still, textured areas over a moving picture (8 frames of
+  evidence, at least 12% of the scene moving, at most 32 rectangles over 20%
+  of the frame) and the worker shows the real frame's pixels there in every
+  generated frame. Off until it is measured on more games.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

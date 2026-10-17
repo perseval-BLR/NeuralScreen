@@ -972,7 +972,7 @@ _BOOL_KEYS = (
     "pixels_in_shm", "nr_small", "nr_direct", "frame_generation",
     "record_audio", "rec_indicator", "gpu_record", "convert_audio", "spout",
     "hdr", "open_menu_on_start", "hotkeys_enabled", "keep_speed_when_hidden",
-    "lens", "lens_bend",
+    "lens", "lens_bend", "fg_ui_protect",
 )
 
 # The fisheye lens (native/lens.inl): the game's horizontal field of view, in
@@ -1201,6 +1201,7 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         # for the same reason as the hotkeys switch below - a missing key
         # means the shipped default (on).
         "keep_speed_when_hidden": cfg.get("keep_speed_when_hidden", True) is not False,
+        "fg_ui_protect": bool(cfg.get("fg_ui_protect", False)),
         # The hotkeys master switch (#134). Read with `is not False` so a
         # missing key means on (the shipped default) and only an explicit
         # false switches them off.
@@ -1735,6 +1736,7 @@ def menu_payload(st) -> dict:
         "tray_on_close": bool(st.cfg.get("tray_on_close", False)),
         # #137: the switch's live state, so the panel draws what is in force.
         "keep_speed_when_hidden": st.cfg.get("keep_speed_when_hidden", True) is not False,
+        "fg_ui_protect": bool(st.cfg.get("fg_ui_protect", False)),
         "hotkeys_enabled": st.cfg.get("hotkeys_enabled", True) is not False,
         "recording_dir": st.cfg.get("recording_dir") or "",
         "screenshot_dir": st.cfg.get("screenshot_dir") or "",

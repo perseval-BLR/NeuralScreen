@@ -30,6 +30,7 @@ from pathlib import Path
 
 import channels
 from badge import BadgeChannel
+from ui_protect import UiDetector
 import convert_jobs
 import dialogs
 import pipeline
@@ -689,6 +690,42 @@ def _hotkey_owner(st, parsed, cmd: str) -> str | None:
     return None
 
 
+def update_ui_protection(st) -> None:
+    """Frame Generation's interface protection, once per frame (v2.6.0).
+
+    While FG runs and the setting is on, the still-interface rectangles of the
+    latest gray frame go to the worker - only when they change; otherwise an
+    empty list, once, so a worker never keeps protecting a stale place."""
+    worker = getattr(st, "worker", None)
+    if worker is None or worker.poll() is not None:
+        return
+    want = (bool(st.cfg.get("fg_ui_protect", False))
+            and bool(st.cfg.get("frame_generation", False))
+            and bool(getattr(st, "gray_active", False)))
+    rects = []
+    if want:
+        if getattr(st, "ui_detector", None) is None:
+            st.ui_detector = UiDetector()
+        gray = st.shm.read_gray() if getattr(st, "shm", None) is not None else None
+        if gray is not None:
+            rects = st.ui_detector.update(gray)
+    elif getattr(st, "ui_detector", None) is not None:
+        st.ui_detector.reset()
+    sent = (worker.pid, tuple(rects))
+    last = getattr(st, "ui_rects_sent", None)
+    if last == sent:
+        return
+    if not rects and (last is None or last[0] != worker.pid):
+        st.ui_rects_sent = sent   # a new worker starts with nothing protected
+        return
+    try:
+        protocol.send_ui_rects(worker, rects)
+        st.ui_rects_sent = sent
+    except Exception as exc:
+        print(f"[main] the interface rectangles did not reach the worker ({exc})",
+              file=sys.stderr)
+
+
 def send_badge_state(st) -> None:
     """Name the rate badge to a worker that has not heard of it, and hand the
     badge to the display while the worker presents (app/badge.py)."""
@@ -918,6 +955,13 @@ def apply_menu_action(st, action: tuple) -> None:
             tb.to_tray_on_close = bool(st.cfg.get("tray_on_close", False))
         settings_io.save_menu_layout(st)
         print(f"[main] {name}: {'on' if st.cfg[name] else 'off'}")
+    elif kind == "toggle" and action[1] == "fg_ui_protect":
+        # FG's interface protection: the frame loop sends the rectangles
+        # (update_ui_protection) and an empty list once it is off.
+        st.cfg["fg_ui_protect"] = not bool(st.cfg.get("fg_ui_protect", False))
+        st.display.menu.set_state({"fg_ui_protect": st.cfg["fg_ui_protect"]})
+        print(f"[main] FG interface protection: "
+              f"{'on' if st.cfg['fg_ui_protect'] else 'off'}")
     elif kind == "toggle" and action[1] == "keep_speed_when_hidden":
         # #137: the background-speed opt-out. Applied at once rather than at
         # the next frame loop tick, so the switch and the two processes never

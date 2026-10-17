@@ -572,6 +572,11 @@ LENS_ACK_FMT = "<4Iq"            # magic, ok, reserved0, reserved1, pts
 # No reply: the worker opens the mapping and draws from it.
 BADGE_MAGIC = 0x47444142         # 'BADG'
 BADGE_FMT = "<4Iq64s"            # magic, three reserved, pts, mapping name (88)
+# UIRC: Frame Generation's still-interface rectangles (app/ui_protect.py), up
+# to 32 of x, y, w, h in 1/65535ths of the frame. No reply.
+UI_RECTS_MAGIC = 0x43524955      # 'UIRC'
+UI_RECTS_MAX = 32
+UI_RECTS_FMT = "<4Iq128H"        # magic, count, two reserved, pts, rects (280)
 LENS_FLAG_ON = 0x1
 LENS_FLAG_BEND = 0x2
 LENS_SHIFT_VIGNETTE, LENS_SHIFT_ABERRATION, LENS_SHIFT_SENSOR = 8, 16, 24
@@ -819,6 +824,16 @@ def lens_flags(enabled: bool, bend: bool = True, vignette: float = 0.0,
             | step(vignette) << LENS_SHIFT_VIGNETTE
             | step(aberration) << LENS_SHIFT_ABERRATION
             | step(sensor) << LENS_SHIFT_SENSOR)
+
+
+def send_ui_rects(worker: subprocess.Popen, rects, pts: int = 0) -> None:
+    """UIRC: where FG shows the real frame's pixels; an empty list - nowhere."""
+    rects = list(rects)[:UI_RECTS_MAX]
+    flat = [int(v) & 0xFFFF for r in rects for v in r]
+    flat += [0] * (UI_RECTS_MAX * 4 - len(flat))
+    worker.stdin.write(struct.pack(UI_RECTS_FMT, UI_RECTS_MAGIC, len(rects), 0, 0,
+                                   int(pts), *flat))
+    worker.stdin.flush()
 
 
 def send_badge(worker: subprocess.Popen, name: str, pts: int = 0) -> None:

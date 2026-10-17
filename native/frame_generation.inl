@@ -861,6 +861,38 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
             Transition(destination, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE)};
         h.list->ResourceBarrier(2, after);
     }
+    // Interface protection (v2.6.0): where the client found a still interface
+    // over a moving picture - a HUD, subtitles, a score - the generated frames
+    // show the real frame's pixels. DLSS-G warps text with the motion around
+    // it, and a still label has no motion of its own to follow. Copied before
+    // the lens and the badge, so both go on the protected frame as on any.
+    if (g_ui_rects.count > 0)
+    {
+        const auto desc = slot->real->GetDesc();
+        const UINT fw = static_cast<UINT>(desc.Width), fh = desc.Height;
+        for (unsigned i = 0; i < g_fg_count; ++i)
+        {
+            ID3D12Resource *gen = slot->interpolated[i].get();
+            auto to_dst = Transition(gen, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+            h.list->ResourceBarrier(1, &to_dst);
+            D3D12_TEXTURE_COPY_LOCATION dl = {}, sl = {};
+            dl.pResource = gen; dl.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            sl.pResource = slot->real.get(); sl.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            for (uint32_t r = 0; r < g_ui_rects.count; ++r)
+            {
+                const auto &q = g_ui_rects.rects[r];
+                const UINT x0 = static_cast<UINT>(static_cast<uint64_t>(q[0]) * fw / 65535u);
+                const UINT y0 = static_cast<UINT>(static_cast<uint64_t>(q[1]) * fh / 65535u);
+                const UINT x1 = (std::min)(fw, x0 + static_cast<UINT>(static_cast<uint64_t>(q[2]) * fw / 65535u));
+                const UINT y1 = (std::min)(fh, y0 + static_cast<UINT>(static_cast<uint64_t>(q[3]) * fh / 65535u));
+                if (x1 <= x0 || y1 <= y0) continue;
+                D3D12_BOX box = {x0, y0, 0, x1, y1, 1};
+                h.list->CopyTextureRegion(&dl, x0, y0, 0, &sl, &box);
+            }
+            auto back = Transition(gen, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            h.list->ResourceBarrier(1, &back);
+        }
+    }
     // The fisheye lens goes on what the presenter shows - the real frame and
     // each generated one, all resting in COPY_SOURCE - never on what DLSS-G
     // interpolated from: its motion field is the rectilinear picture's.
