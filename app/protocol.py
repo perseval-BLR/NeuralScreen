@@ -568,6 +568,10 @@ LENS_MAGIC = 0x534E454C          # 'LENS'
 LENS_ACK_MAGIC = 0x4B414E4C      # 'LNAK'
 LENS_FMT = "<IIffq"              # magic, flags, fov (degrees), noise (0..1), pts (24)
 LENS_ACK_FMT = "<4Iq"            # magic, ok, reserved0, reserved1, pts
+# BADG: the name of the rate badge's bitmap (app/badge.py, native/badge.inl).
+# No reply: the worker opens the mapping and draws from it.
+BADGE_MAGIC = 0x47444142         # 'BADG'
+BADGE_FMT = "<4Iq64s"            # magic, three reserved, pts, mapping name (88)
 LENS_FLAG_ON = 0x1
 LENS_FLAG_BEND = 0x2
 LENS_SHIFT_VIGNETTE, LENS_SHIFT_ABERRATION, LENS_SHIFT_SENSOR = 8, 16, 24
@@ -815,6 +819,13 @@ def lens_flags(enabled: bool, bend: bool = True, vignette: float = 0.0,
             | step(vignette) << LENS_SHIFT_VIGNETTE
             | step(aberration) << LENS_SHIFT_ABERRATION
             | step(sensor) << LENS_SHIFT_SENSOR)
+
+
+def send_badge(worker: subprocess.Popen, name: str, pts: int = 0) -> None:
+    """BADG: where the worker finds the rate badge ("" - nowhere)."""
+    worker.stdin.write(struct.pack(BADGE_FMT, BADGE_MAGIC, 0, 0, 0, int(pts),
+                                   name.encode("ascii")[:63]))
+    worker.stdin.flush()
 
 
 def send_lens(worker: subprocess.Popen, enabled: bool, fov: float,

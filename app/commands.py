@@ -29,6 +29,7 @@ import webbrowser
 from pathlib import Path
 
 import channels
+from badge import BadgeChannel
 import convert_jobs
 import dialogs
 import pipeline
@@ -686,6 +687,30 @@ def _hotkey_owner(st, parsed, cmd: str) -> str | None:
         if other_vk == vk and (other_mods & ~MOD_NOREPEAT) == (mods & ~MOD_NOREPEAT):
             return other_cmd
     return None
+
+
+def send_badge_state(st) -> None:
+    """Name the rate badge to a worker that has not heard of it, and hand the
+    badge to the display while the worker presents (app/badge.py)."""
+    present = bool(getattr(st, "present_mode", False))
+    if present and getattr(st, "badge", None) is None:
+        try:
+            st.badge = BadgeChannel()
+        except Exception as exc:   # no mapping: the HUD layer draws it, as before
+            print(f"[main] the rate badge stays on the HUD layer ({exc})", file=sys.stderr)
+            st.badge = False
+    channel = st.badge if present and st.badge else None
+    if getattr(st, "display", None) is not None:
+        st.display.badge_out = channel
+    worker = getattr(st, "worker", None)
+    if (channel is None or worker is None or worker.poll() is not None
+            or getattr(st, "badge_pid", None) == worker.pid):
+        return
+    try:
+        protocol.send_badge(worker, channel.name)
+        st.badge_pid = worker.pid
+    except Exception as exc:
+        print(f"[main] the rate badge did not reach the worker ({exc})", file=sys.stderr)
 
 
 def send_lens_state(st) -> None:

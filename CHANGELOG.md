@@ -50,6 +50,12 @@ Scope and honesty notes:
   redrawn ten times a second even when nothing on it changed, and every
   redraw of that layer costs the compositor a frame (#166). A menu whose
   pixels are the same as on the last redraw is not sent again.
+* **The on-screen counter is drawn by the worker.** With the FPS badge on,
+  the HUD layer was redrawn at every new reading and the compositor paid a
+  frame each time - on the bench a quarter of a video's frames came a refresh
+  off (#166). The client now renders the badge into a small shared bitmap and
+  the worker blends it over each frame it presents - SDR, HDR and Frame
+  Generation's frames alike; screenshots, recordings and Spout never carry it.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

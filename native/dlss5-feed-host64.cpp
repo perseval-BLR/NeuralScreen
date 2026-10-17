@@ -1906,6 +1906,7 @@ static constexpr uint32_t PER_PASS_MAGIC     = 0x4D525050u; // "PPRM" -- client 
 static constexpr uint32_t PER_PASS_ACK_MAGIC = 0x50414150u; // "PAAP" -- worker -> client reply to PPRM
 static constexpr uint32_t LENS_MAGIC         = 0x534E454Cu; // "LENS" -- client -> worker: the fisheye lens
 static constexpr uint32_t LENS_ACK_MAGIC     = 0x4B414E4Cu; // "LNAK" -- worker -> client reply to LENS
+static constexpr uint32_t BADGE_MAGIC        = 0x47444142u; // "BADG" -- client -> worker: the rate badge's mapping (no reply)
 static constexpr uint32_t PER_PASS_FLAG_ENABLED = 0x1u;     // passes 2+ use this set; clear = main set for every pass
 static constexpr uint32_t DDA_MAGIC        = 0x31414444u; // "DDA1" -- client -> worker: worker takes over capture
 static constexpr uint32_t DDA_ACK_MAGIC    = 0x4B434144u; // "DACK" -- worker -> client reply to DDA1
@@ -2119,6 +2120,13 @@ struct VideoLensCmd
     int64_t pts;
 };
 using VideoLensAck = VideoPerPassAck;   // magic LNAK, ok, two reserved, pts
+// BADG: the name of the client's badge bitmap (badge.inl); empty = none.
+struct VideoBadgeCmd
+{
+    uint32_t magic, reserved0, reserved1, reserved2;
+    int64_t pts;
+    char name[64];
+};
 // DDA1: client -> worker. "Take over capture from the desktop yourself."
 // width/height = required capture size (usually the full output size);
 // flags: bit0 WANT pixels back (screenshot), bit1 = present overlay stays on.
@@ -2250,6 +2258,7 @@ static_assert(offsetof(VideoFrameHeader, pts) == 16, "VideoFrameHeader is not pa
 static_assert(offsetof(VideoResultHeader, pts) == 20, "VideoResultHeader is not packed");
 static_assert(offsetof(VideoWgcCmd, hwnd) == 24, "VideoWgcCmd is not packed");
 static_assert(sizeof(VideoLensCmd) == 24, "VideoLensCmd != LENS_FMT");
+static_assert(sizeof(VideoBadgeCmd) == 88, "VideoBadgeCmd != BADGE_FMT");
 static_assert(sizeof(VideoLensAck) == 24, "VideoLensAck != LENS_ACK_FMT");
 
 struct VideoTex
@@ -3436,6 +3445,7 @@ static struct EarlyReply
 static void SendEarlyReply();   // defined next to WriteExact, below
 
 #include "lens.inl"
+#include "badge.inl"
 
 static bool PresentFrame(VideoState &v, UINT64 *submitted = nullptr)
 {
@@ -3488,6 +3498,9 @@ static bool PresentFrame(VideoState &v, UINT64 *submitted = nullptr)
         auto post = Transition(shown, D3D12_RESOURCE_STATE_COPY_SOURCE,
                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         h.list->ResourceBarrier(1, &post);
+        // The rate badge on what the screen gets, after the export: Spout and
+        // the recording never carry it (badge.inl).
+        shown = BadgeApply(h.list, shown, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         ProfileGpuEnd(PS_PRESENT);
         const UINT64 fv = EndCommands();
         if (submitted) *submitted = fv;
@@ -3572,6 +3585,7 @@ static bool PresentBypass(VideoState &v)
         auto post = Transition(shown, D3D12_RESOURCE_STATE_COPY_SOURCE,
                                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         h.list->ResourceBarrier(1, &post);
+        shown = BadgeApply(h.list, shown, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         ProfileGpuEnd(PS_PRESENT);
         const UINT64 fv = EndCommands();
         if (ProfileWait(PS_PRESENT, fv, 2000)
@@ -4545,6 +4559,7 @@ static VideoWgcCmd             g_wgc_cmd = {};
 static VideoPerPassCmd         g_per_pass_cmd = {};
 // LENS, read the same way.
 static VideoLensCmd            g_lens_cmd = {};
+static VideoBadgeCmd           g_badge_cmd = {};
 // Gray downsample (GRAY): write luminance (flow size) into a client mapping.
 static HANDLE                  g_gray_file = nullptr;   // client's mapping handle
 static BYTE                   *g_gray_map = nullptr;    // mapped view
@@ -7125,6 +7140,13 @@ static int ReadVideoMessage(VideoState &v, VideoFrameHeader &fh, std::vector<BYT
         memcpy(&g_lens_cmd, &fh, sizeof(g_lens_cmd));
         return 14;   // unique, like every number here (see 13 above)
     }
+    if (fh.magic == BADGE_MAGIC)
+    {
+        BYTE *p = reinterpret_cast<BYTE *>(&g_badge_cmd);
+        memcpy(p, &fh, sizeof(fh));
+        if (!ReadExact(stdin, p + sizeof(fh), sizeof(g_badge_cmd) - sizeof(fh))) return 0;
+        return 15;
+    }
     // A magic no handler owns: the stream is out of step with the client, not
     // closed. It used to return 0 like EOF, so a desync left the log saying
     // "input stream closed" and the worker exiting 0 - a clean shutdown.
@@ -7139,6 +7161,7 @@ static void ReleaseVideoTextures(VideoState &v)
     CloseStab();
     CloseLens();
     CloseCursor();
+    CloseBadge();
     NvofaResetLatch();
     if (PhaseEnabled()) { ++g_capture_generation; g_previous_source_qpc = 0; g_frame_stamp = {}; }
     CloseFgResources();
@@ -7468,14 +7491,16 @@ static int RunVideo()
         // parameters, so like 1/10/11/12 it does not invalidate the prepared
         // frame. Missing it here sent every PPRM through the "not prepared"
         // path and threw away the frame that was ready.
-        if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13 && msg != 14) prepared = false;
+        if (msg != 1 && msg != 10 && msg != 11 && msg != 12 && msg != 13 && msg != 14 &&
+            msg != 15) prepared = false;
         // A command may change what the network makes. CAP1 (10) does not: it
         // only latches the capture the next FRM1 consumes, and on the CPU
         // motion path it precedes every frame - counting it here kept the
         // still-screen hold and the stabilizer's history from ever forming.
         // LENS (14) neither: the lens is applied after the network, to its
         // output, and the held result is exactly what it bends.
-        if (msg != 1 && msg != 10 && msg != 14) { g_still_evals = 0; StabForget(); }
+        // BADG (15) neither: the badge goes on the presented picture only.
+        if (msg != 1 && msg != 10 && msg != 14 && msg != 15) { g_still_evals = 0; StabForget(); }
         if (msg < 0) return 11;   // protocol desync: not a clean end of input
         if (msg == 0)
         {
@@ -7791,6 +7816,14 @@ static int RunVideo()
                 Log("[video] PPRM: cleared - every pass uses the main set");
             const VideoPerPassAck ack = { PER_PASS_ACK_MAGIC, 1u, 0u, 0u, g_per_pass_cmd.pts };
             if (!WriteExact(g_wire, &ack, sizeof(ack))) return 10;
+            continue;
+        }
+        if (msg == 15)
+        {
+            // BADG: where the client keeps the rate badge (badge.inl). No
+            // reply - the client's reader has nothing to wait for.
+            g_badge_cmd.name[sizeof(g_badge_cmd.name) - 1] = 0;
+            OpenBadge(g_badge_cmd.name);
             continue;
         }
         if (msg == 14)

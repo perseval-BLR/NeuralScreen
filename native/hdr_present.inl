@@ -268,6 +268,8 @@ static bool PresentHdr(VideoState &v, bool bypass, bool allow_fg, UINT64 *submit
     ExportCopy(h.list, export_src, w, height);
     auto export_post = Transition(export_src, D3D12_RESOURCE_STATE_COPY_SOURCE, rest);
     h.list->ResourceBarrier(1, &export_post);
+    // The rate badge on what the screen gets (with FG: on the slot's frames).
+    if (!framegen) shown = BadgeApply(h.list, shown, D3D12_RESOURCE_STATE_COMMON);
     const auto fence = EndCommands();
     // The deferred tail, as on the SDR path (#149): with `submitted` the
     // upload and the evaluation were not waited for, so this fence covers

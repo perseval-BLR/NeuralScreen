@@ -866,6 +866,9 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
     // interpolated from: its motion field is the rectilinear picture's.
     LensInPlace(h.list, slot->real.get());
     for (unsigned i = 0; i < g_fg_count; ++i) LensInPlace(h.list, slot->interpolated[i].get());
+    // And the rate badge, on every frame shown - nothing exports these.
+    BadgeInPlace(h.list, slot->real.get());
+    for (unsigned i = 0; i < g_fg_count; ++i) BadgeInPlace(h.list, slot->interpolated[i].get());
     ExportFgSource(v, bypass);
     const UINT64 fg_fence = EndCommands();
     if (!ProfileWait(PS_FG, fg_fence, 30000, "fg-evaluate"))

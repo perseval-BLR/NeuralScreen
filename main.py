@@ -188,7 +188,7 @@ from protocol import (  # noqa: F401
     FRAME_FLAG_SPLIT, FRAME_FLAG_WANT_PIXELS,
     FRAME_FMT, FRAME_MAGIC,
     GRAY_ACK_FMT, GRAY_ACK_MAGIC, GRAY_FMT, GRAY_MAGIC, HEADER_FMT,
-    LENS_ACK_FMT, LENS_FMT,
+    BADGE_FMT, LENS_ACK_FMT, LENS_FMT,
     MOTION_ACK_FMT, MOTION_ACK_MAGIC, MOTION_FMT, MOTION_MAGIC,
     OUTS_ACK_FMT, OUTS_ACK_MAGIC, OUTS_FMT, OUTS_MAGIC, OUT_BYTES_IN_SHM,
     AUDIO_RING_FMT, REC_DONE_FMT, REC_START_ACK_FMT, REC_START_FMT,
@@ -486,6 +486,10 @@ class _Pipeline:
         #: The worker the lens settings were last sent to (LENS): a new one
         #: starts with no lens and is told once, like the pass count.
         "lens_pid",
+        #: The rate badge's bitmap (app/badge.py) and the worker it was named
+        #: to: the worker draws the badge into what it presents (v2.6.0).
+        "badge",
+        "badge_pid",
         #: What passes 2..N use, when the user gave them their own set. None
         #: by default, which means "the main set for every pass".
         "nr_pass_params",
@@ -1630,6 +1634,10 @@ def main() -> int:
             if (not startup_pending and st.cfg.get("lens") and st.worker is not None
                     and getattr(st, "lens_pid", None) != st.worker.pid):
                 commands.send_lens_state(st)
+            # The rate badge: drawn by the worker while it presents, so the
+            # HUD layer holds nothing that changes (#166). Re-attached every
+            # pass, because the display is rebuilt with the window.
+            commands.send_badge_state(st)
             if (not startup_pending and int(getattr(st, "nr_passes", 1)) > 1
                     and st.worker is not None
                     and getattr(st, "nr_passes_pid", None) != st.worker.pid):

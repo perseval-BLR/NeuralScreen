@@ -566,6 +566,9 @@ class Display:
         # whether the draw under way put anything on it (#166).
         self._clean_layer = None
         self._layer_drawn = False
+        #: Where the rate badge goes instead of this layer: a badge.BadgeChannel
+        #: the worker draws from, set by main while the worker presents.
+        self.badge_out = None
         #: The checksum of the menu as last flipped, when the menu was all the
         #: layer held: a menu left alone redraws at 10 Hz with the same pixels,
         #: and the collapsed bar (redesign C) is on screen through a whole game.
@@ -2515,15 +2518,17 @@ class Display:
         for which numbers appear is not a thing to have two copies of.
         """
         corner = str(self._hud.get("fps_overlay") or "off")
-        if corner not in self.BADGE_CORNERS:
-            return
-        if self.menu.visible:
-            return      # the panel is showing the same numbers, one line up
-        readings = status_readings(self.menu.state, self._hud,
-                                   STRINGS.get(self._lang, STRINGS["en"]))
+        sink = self.badge_out
+        readings = (status_readings(self.menu.state, self._hud,
+                                    STRINGS.get(self._lang, STRINGS["en"]))
+                    if corner in self.BADGE_CORNERS and not self.menu.visible
+                    else [])
+        # Off, the menu open (the panel shows the same numbers, one line up),
+        # or nothing running: no badge.
         if not readings:
+            if sink is not None:
+                sink.hide()
             return
-        self._layer_drawn = True
         text = "   ".join(readings)
         surf = self._font.render(text, True, self._rgb(self.theme["text"]))
         pad_x = int(round(10 * self.ui_scale))
@@ -2534,9 +2539,26 @@ class Display:
         # hides the counter would be the one moment the counter matters most.
         row = 1 if (corner == "tr" and self._hud.get("recording")
                     and self._hud.get("rec_indicator", True)) else 0
+        radius = int(round(8 * self.ui_scale))
+        if sink is not None:
+            # The worker draws it into the presented picture (app/badge.py):
+            # the HUD layer then holds nothing that changes, and a flip of it
+            # is not paid for every new reading (#166).
+            badge = pygame.Surface((w, h), pygame.SRCALPHA)
+            box = badge.get_rect()
+            pygame.draw.rect(badge, self._rgb(self.theme["bg"]), box,
+                             border_radius=radius)
+            pygame.draw.rect(badge, self._rgb(self.theme["border"]), box,
+                             max(1, int(round(self.ui_scale))), border_radius=radius)
+            badge.blit(surf, (pad_x, pad_y))
+            margin = int(round(14 * self.ui_scale))
+            step = (h + int(round(8 * self.ui_scale))) * row
+            sink.publish(pygame.image.tobytes(badge, "RGBA_PREMULT"), w, h,
+                         corner, margin, step)
+            return
+        self._layer_drawn = True
         x, y = self._badge_origin(corner, w, h, row)
         rect = pygame.Rect(x, y, w, h)
-        radius = int(round(8 * self.ui_scale))
         pygame.draw.rect(self.screen, self._rgb(self.theme["bg"]), rect,
                          border_radius=radius)
         pygame.draw.rect(self.screen, self._rgb(self.theme["border"]), rect,
