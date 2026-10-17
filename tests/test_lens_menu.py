@@ -286,6 +286,14 @@ def _check_colour(failures: list) -> None:
     last = struct.unpack(protocol.LENS_FMT, data[-size:]) if len(data) >= size else None
     if st.cfg.get("lens_saturation") != -0.4 or st.cfg.get("lens_exposure") != 1.0:
         failures.append(f"the colour commands stored {st.cfg}")
+    # A new worker is told LENS when the camera is on - and when only the
+    # colour is moved: the grading runs with the camera off, and a worker
+    # that never hears it shows the picture ungraded after every restart.
+    for cfg, told in (({}, False), ({"lens": True}, True),
+                      ({"lens": False, "lens_warmth": 0.3}, True),
+                      ({"lens_tint": "x"}, False), ({"lens_exposure": 0.001}, False)):
+        if commands.lens_wanted(cfg) is not told:
+            failures.append(f"a new worker with {cfg} is told LENS: {not told}")
     want = (-0.4, 1.0, 0.25, -0.5, 0.75, 0.0)
     if last is None or tuple(round(v, 2) for v in last[5:]) != want:
         failures.append(f"the LENS command carries {last and last[5:]}, not {want}")

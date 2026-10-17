@@ -1642,7 +1642,7 @@ def main() -> int:
             # on the second displayed frame, and an apply before that would
             # race the first RNSZ.
             # The fisheye lens the same way: a worker starts without it.
-            if (not startup_pending and st.cfg.get("lens") and st.worker is not None
+            if (not startup_pending and commands.lens_wanted(st.cfg) and st.worker is not None
                     and getattr(st, "lens_pid", None) != st.worker.pid):
                 commands.send_lens_state(st)
             # The rate badge: drawn by the worker while it presents, so the

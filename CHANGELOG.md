@@ -73,7 +73,8 @@ Scope and honesty notes:
   Contrast about the middle grey (half to twice), warmth (blue-red) and tint
   (green-magenta) at the luminance kept. The five colour sliders moved from the
   Camera block to a Colour block - with them the camera block was 1500 px tall
-  at 1080p - and they work with the camera off.
+  at 1080p - and they work with the camera off; a new worker is told the
+  colour even while the camera is off.
 * **Follow the focused window (#157).** Settings → Capture, off by default: in
   window mode a window that keeps the focus 2.5 s becomes the source, through
   the live switch (same monitor, no recording), at most once per 8 s. Lock

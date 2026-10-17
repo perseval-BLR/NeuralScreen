@@ -796,6 +796,21 @@ def send_badge_state(st) -> None:
         print(f"[main] the rate badge did not reach the worker ({exc})", file=sys.stderr)
 
 
+def lens_wanted(cfg: dict) -> bool:
+    """Whether a worker has to be told LENS: the camera on, or the colour
+    moved off zero - the grading runs with the camera off (#164), so a new
+    worker that only hears LENS for the camera loses it."""
+    if cfg.get("lens"):
+        return True
+    for key in settings_io.LENS_SIGNED_KEYS:
+        try:
+            if abs(float(cfg.get(key, 0.0))) >= 0.005:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 def send_lens_state(st) -> None:
     """Tell the running worker the lens settings in the config - if one runs.
 
