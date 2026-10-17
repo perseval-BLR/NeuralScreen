@@ -30,6 +30,21 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **Video and capture-card pictures no longer stutter under NR (#166).** With
+  NR on, a 59.94 fps source on a 119.88 Hz monitor (a PS5 through a capture
+  card, a video player) moved "like 30 fps" while the GPU sat at a third of its
+  load. The HUD layer - a full-screen layered window - was cleared and flipped
+  ten times a second even with nothing on it, and every flip of it costs the
+  Windows compositor a composition: it composed a vblank late or dropped a
+  frame of whatever played underneath. Measured on a 144 Hz bench with a source
+  that writes its frame number into the picture: 5-11% of the source's frames
+  never reached the capture and a fifth of the rest came a vblank early or
+  late; an independent Desktop Duplication reader saw the same. An empty layer
+  that is already empty on screen is no longer flipped again; the menu, alerts,
+  the REC badge and the FPS badge draw as before.
+
 ## v2.4.0 - 2026-10-11 - Shadows that no longer trail, a camera around the fisheye, the pointer in recordings, live window switching
 
 * **A moving face's shadows no longer trail behind it (#160).** From 2.2.0 on,

@@ -560,6 +560,11 @@ class Display:
         self._menu_opaque = False
         self._last_overlay = 0.0
         self._last_alert_count = 0
+        # The HUD layer as it is on screen: the surface last flipped with
+        # nothing on it (None = something is showing, or not known), and
+        # whether the draw under way put anything on it (#166).
+        self._clean_layer = None
+        self._layer_drawn = False
         # The z-order guard's decision log: signature of the last reported
         # state and when it was written. The guard runs every frame while the
         # menu is open, so an unthrottled line would drown the log; only a
@@ -987,6 +992,7 @@ class Display:
             self._switch_pending = (w, h)
             return
         self.screen = pygame.display.set_mode((w, h), self._flags)
+        self._clean_layer = None   # what the new window shows is not known
         self.width, self.height = w, h
         self._rescale_ui()
         # A set_mode can recreate the physical window; put it back on the
@@ -1022,6 +1028,7 @@ class Display:
             # surface and the layer never actually expands (user: the menu
             # was clipped and could not be dragged above the captured window).
             self.screen = pygame.display.set_mode((full_w, full_h), self._flags)
+            self._clean_layer = None   # what the new window shows is not known
             self.width, self.height = full_w, full_h
             self._rescale_ui()
             # set_mode alone does NOT resize the physical window in SDL2 -
@@ -1693,6 +1700,7 @@ class Display:
             try:
                 self._draw_veil(frac, time.monotonic())
                 pygame.display.flip()
+                self._clean_layer = None
             except Exception as exc:
                 print(f"Display: WARNING switch fade-in: {exc}")
                 break
@@ -2175,10 +2183,12 @@ class Display:
         if self._switch_active:
             # The veil animates - the mark must not run at the HUD's 10 Hz.
             min_interval = 0.0
+        forced = self._last_overlay == 0.0
         if now - self._last_overlay < min_interval and alerts == self._last_alert_count:
             return
         self._last_overlay = now
         self._last_alert_count = alerts
+        veil_drawn = self._switch_active
         if self._switch_active:
             # The veil replaces everything else: no menu, no HUD, no
             # cursor - just the frozen picture and the mark. It animates,
@@ -2188,8 +2198,10 @@ class Display:
             self._draw_switch()
             if self._switch_active:
                 pygame.display.flip()
+                self._clean_layer = None
                 return
         self.screen.fill(CHROMA_KEY)
+        self._layer_drawn = self.menu.visible
         self._draw_alerts()
         self._draw_rec_indicator()
         self._draw_fps_badge()
@@ -2197,7 +2209,19 @@ class Display:
         self.menu.draw(self.screen)
         self._draw_window_highlight()
         self._sync_cursor()
+        # An empty layer that is already empty on screen is not flipped again
+        # (#166). The layer is a full-screen layered window, and every flip of
+        # it - even one that changes nothing - costs DWM a composition: at the
+        # HUD's 10 Hz it composed a vblank late or dropped a frame of whatever
+        # played underneath, so a 60 fps video or a capture card's preview
+        # lost 5-11% of its frames to the capture and the rest arrived
+        # unevenly. The first draw, a forced one, the one after the veil and
+        # the first one on a window set_mode rebuilt still go out.
+        if (not self._layer_drawn and not forced and not veil_drawn
+                and self._clean_layer is self.screen):
+            return
         pygame.display.flip()
+        self._clean_layer = None if self._layer_drawn else self.screen
 
     def _draw_window_highlight(self) -> None:
         """The amber outline around the window hovered in the windows page.
@@ -2228,6 +2252,7 @@ class Display:
             r = pygame.Rect(rect.left - ox, rect.top - oy,
                             rect.right - rect.left, rect.bottom - rect.top)
             lw = 3
+            self._layer_drawn = True
             pygame.draw.rect(self.screen, (0x0D, 0x11, 0x17), r, lw + 2,
                              border_radius=4)
             pygame.draw.rect(self.screen, (0xFF, 0xBF, 0x00), r, lw,
@@ -2368,6 +2393,7 @@ class Display:
         if self._switch_active:
             self._draw_switch()
         pygame.display.flip()
+        self._clean_layer = None
 
     def poll_events(self) -> List[str]:
         """Return event names: 'quit' (Esc / window close), 'toggle' (Num1/F10).
@@ -2430,6 +2456,7 @@ class Display:
                                    STRINGS.get(self._lang, STRINGS["en"]))
         if not readings:
             return
+        self._layer_drawn = True
         text = "   ".join(readings)
         surf = self._font.render(text, True, self._rgb(self.theme["text"]))
         pad_x = int(round(10 * self.ui_scale))
@@ -2470,6 +2497,7 @@ class Display:
             return
         if not self._hud.get("rec_indicator", True):
             return
+        self._layer_drawn = True
         c = self.theme
         secs = float(self._hud.get("rec_seconds", 0.0))
         text = f"REC {int(secs) // 60:d}:{int(secs) % 60:02d}"
@@ -2578,6 +2606,7 @@ class Display:
         self._alerts = [(text, expires) for text, expires in self._alerts if expires > now]
         if not self._alerts:
             return
+        self._layer_drawn = True
         c = self.theme
         text, _ = self._alerts[-1]
         pad_x = int(round(26 * self.ui_scale))
