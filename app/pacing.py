@@ -42,16 +42,20 @@ class FramePacer:
 
         interval = 1.0 / fps
         frame_started = float(frame_started)
+        now = self._clock()
         if self._deadline is None or abs(self._fps - fps) > 1e-9:
             self._fps = fps
             self._deadline = frame_started + interval
-        else:
-            # A slow frame must not be followed by a catch-up burst.  Keep the
-            # stable timeline while it is ahead, otherwise restart it from the
-            # actual frame start.
-            self._deadline = max(self._deadline, frame_started + interval)
-
-        now = self._clock()
+        elif now - self._deadline > interval:
+            # A frame more than a whole interval late (a stall) restarts the
+            # timeline from now: no burst of catch-up frames after it.
+            self._deadline = now
+        # Otherwise the timeline stands. It used to restart from every frame's
+        # start whenever that was later than planned - and every start is,
+        # by the sleep's own overshoot - so the cap lost that overshoot each
+        # frame: "72" ran at ~70.7 and dropped ~2% of a 71.93 fps source
+        # (#166 bench). A start late by less than an interval is now made up
+        # on the next frame.
         delay = max(0.0, self._deadline - now)
         if delay > 0.0:
             self._sleep(delay)

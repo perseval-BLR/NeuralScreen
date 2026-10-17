@@ -1,4 +1,8 @@
-"""Frame caps are stable and the displayed NR rate counts real work only."""
+"""Frame caps are stable and the displayed NR rate counts real work only.
+
+The cap holds its rate when the sleep wakes late, and makes up a frame that
+ran a little over on the next one - never with a burst after a stall (#166
+bench: a 72 cap ran at ~70.7 and lost 2.2% of a 71.93 fps source)."""
 from __future__ import annotations
 
 import os
@@ -46,6 +50,38 @@ def check_pacer() -> None:
     measured = (len(starts) - 1) / (starts[-1] - starts[0])
     assert abs(measured - 60.0) < 1e-6, measured
 
+    # The sleep overshoots (Windows wakes late), and the cap still holds its
+    # rate: 72 must not run at ~70.7 and drop frames of a 71.93 fps source
+    # (#166 bench, 2.2% lost). Fails on the timeline that restarted from
+    # each late start.
+    late = FakeTime()
+    late.sleep = lambda d: setattr(late, "now", late.now + d + 0.00025)
+    pacer72 = FramePacer(clock=late.clock, sleeper=late.sleep)
+    first = late.now
+    for i in range(720):
+        start = late.now
+        late.now += 0.007 + (0.004 if i % 3 == 0 else 0.0)   # eval 7-11 ms
+        pacer72.wait(72, start)
+    measured = 720 / (late.now - first)
+    assert abs(measured - 72.0) < 0.1, f"a 72 fps cap ran at {measured:.2f}"
+
+    # A frame late by less than an interval is made up by the next one, and
+    # only by it: the one after is a full interval again.
+    late = FakeTime()
+    pacer = FramePacer(clock=late.clock, sleeper=late.sleep)
+    pacer.wait(60, late.now)                       # the timeline: 1/60 s ahead
+    start = late.now
+    late.now += 1 / 60 + 0.005                     # 5 ms over
+    pacer.wait(60, start)
+    made_up = late.now
+    pacer.wait(60, made_up)
+    assert abs((late.now - made_up) - (1 / 60 - 0.005)) < 1e-9, late.now - made_up
+    full = late.now
+    pacer.wait(60, full)
+    assert abs((late.now - full) - 1 / 60) < 1e-9
+
+    pacer = FramePacer(clock=fake.clock, sleeper=fake.sleep)
+    pacer.wait(60, fake.now)
     # A slow frame never earns a catch-up burst on the next iteration.
     start = fake.now
     fake.now += 0.050

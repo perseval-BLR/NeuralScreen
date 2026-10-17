@@ -79,6 +79,11 @@ Scope and honesty notes:
   the live switch (same monitor, no recording), at most once per 8 s. Lock
   screen, Explorer, dwm's ghost windows, tool and cloaked windows are never
   taken; every switch and skip is logged with the process and class.
+* **The frame cap holds its rate (#166).** The limiter restarted its timeline
+  from every frame that started late - and each one did, by the sleep's own
+  overshoot - so a cap of 72 ran at about 70.7 and dropped ~2% of a 71.93 fps
+  video. A frame a little late is now made up on the next one; only a stall
+  of more than one interval restarts the timeline, with no catch-up burst.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 
