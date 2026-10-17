@@ -2466,6 +2466,19 @@ STRINGS["ru"].update({
     "hk_framegen": "Генерация кадров вкл/выкл",
 })
 
+# The camera colour (#164, v2.6.0).
+STRINGS["en"].update({"lens_saturation": 'Saturation', "lens_exposure": 'Exposure'})
+STRINGS["ru"].update({"lens_saturation": 'Насыщенность', "lens_exposure": 'Экспозиция'})
+STRINGS["fr"].update({"lens_saturation": 'Saturation', "lens_exposure": 'Exposition'})
+STRINGS["de"].update({"lens_saturation": 'Sättigung', "lens_exposure": 'Belichtung'})
+STRINGS["es"].update({"lens_saturation": 'Saturación', "lens_exposure": 'Exposición'})
+STRINGS["it"].update({"lens_saturation": 'Saturazione', "lens_exposure": 'Esposizione'})
+STRINGS["pt"].update({"lens_saturation": 'Saturação', "lens_exposure": 'Exposição'})
+STRINGS["pl"].update({"lens_saturation": 'Nasycenie', "lens_exposure": 'Ekspozycja'})
+STRINGS["uk"].update({"lens_saturation": 'Насиченість', "lens_exposure": 'Експозиція'})
+STRINGS["zh"].update({"lens_saturation": '饱和度', "lens_exposure": '曝光'})
+STRINGS["ja"].update({"lens_saturation": '彩度', "lens_exposure": '露出'})
+STRINGS["ko"].update({"lens_saturation": '채도', "lens_exposure": '노출'})
 # #157: dim while rebuilding (v2.6.0).
 STRINGS["en"].update({"dim_on_rebuild": 'Dim while rebuilding'})
 STRINGS["ru"].update({"dim_on_rebuild": 'Затемнять при пересборке'})

@@ -115,8 +115,8 @@ bar at the top that stays over a game. The dot is green while NR really runs.
   are tuned for games and soften photographs and small text (measured in
   TECHNICAL.md). A saved preset keeps the model it was saved with.
 - **Camera** — **Fisheye** (on by default; **Field of view** = the game's FOV,
-  110-120 typical; off-centre clicks land elsewhere) and five amounts, 0 = off:
-  noise, vignette, aberration, **Small sensor** (tone), **Soft corners** (blur).
+  110-120 typical; off-centre clicks land elsewhere), noise, vignette, aberration,
+  **Small sensor** (tone), **Soft corners** (blur), **Saturation**, **Exposure**.
 - **Before / after wipe** — leaves the left part of the screen unprocessed so
   you can see what the effect is doing. Back to 0 when done.
 - **Boost** — on by default. The network runs at a reduced resolution and a

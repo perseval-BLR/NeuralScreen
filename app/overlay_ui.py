@@ -290,6 +290,14 @@ class Item:
 
 
 
+def _signed_text(key: str, value: float) -> str:
+    """The value cell of a centred colour slider (#164)."""
+    if key == "lens_exposure":
+        return f"{value:+.2f} EV" if abs(value) >= 0.005 else "0 EV"
+    pct = int(round(value * 100))
+    return f"{pct:+d}%" if pct else "0%"
+
+
 def status_readings(state: dict, stats: dict, s: dict) -> list[str]:
     """The rate readings, as the status line and the on-screen badge show them.
 
@@ -487,6 +495,8 @@ class OverlayMenu:
             "lens_aberration": 0.0,
             "lens_sensor": 0.0,
             "lens_soft": 0.0,
+            "lens_saturation": 0.0,
+            "lens_exposure": 0.0,
             # Which card this is and whether NR runs on it. gpu_ok:
             # True/False/None (None - the worker has not answered yet).
             "gpu_text": "",
@@ -2169,6 +2179,11 @@ class OverlayMenu:
                     amount = float(self.state.get(key, default))
                     slider(key, 0.0, 1.0, amount, s[key],
                            value_text=f"{int(round(amount * 100))}%")
+                # Colour (#164): centred, the tick at 0 is the picture as it is.
+                for key in ("lens_saturation", "lens_exposure"):
+                    amount = float(self.state.get(key, 0.0))
+                    slider(key, -1.0, 1.0, amount, s[key],
+                           value_text=_signed_text(key, amount), mark=0.0)
 
             in_window = bool(self.state.get("window_mode"))
             split_val = float(self.state.get("split", 0.0))
@@ -3068,6 +3083,12 @@ class OverlayMenu:
         if item.key == "split":
             self.state["split"] = value
             return [("split", value)]
+        if item.key in ("lens_saturation", "lens_exposure"):
+            value = round(value / 0.05) * 0.05
+            self.state[item.key] = value
+            item.value = value
+            item.extra["value_text"] = _signed_text(item.key, value)
+            return [(item.key, round(value, 2))]
         if item.key in ("lens_noise", "lens_vignette", "lens_aberration", "lens_sensor",
                         "lens_soft"):
             self.state[item.key] = value

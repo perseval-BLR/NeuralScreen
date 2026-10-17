@@ -157,7 +157,7 @@ def _check_commands(failures: list) -> None:
     got = [(flags & protocol.LENS_FLAG_ON, (flags & protocol.LENS_FLAG_BEND) >> 1,
             round(fov), round(noise, 2), (flags >> 8) & 255, (flags >> 16) & 255,
             (flags >> 24) & 255, (flags >> protocol.LENS_SHIFT_SOFT) & protocol.LENS_SOFT_MAX)
-           for _m, flags, fov, noise, _p in sent]
+           for _m, flags, fov, noise, _p, _sat, _ev in sent]
     print(f"    commands sent: {got}")
     top = int(settings_io.LENS_FOV_MAX)
     # The tone and the corner softness are two amounts (#168): the sensor
@@ -200,6 +200,14 @@ def _check_config(failures: list) -> None:
             got = settings_io.load_config(path).get("lens_sensor")
             if got != want:
                 failures.append(f"lens_sensor {raw} loaded as {got} (expected {want})")
+        # #164: the colour pair is signed, -1..1 in 0.05 steps, 0 = as it is.
+        for raw, want in (('"x"', 0.0), ("NaN", 0.0), ("-7", -1.0), ("7", 1.0), ("-0.42", -0.4)):
+            path.write_text('{"lens_saturation": %s, "lens_exposure": %s}' % (raw, raw),
+                            encoding="utf-8")
+            cfg = settings_io.load_config(path)
+            if cfg.get("lens_saturation") != want or cfg.get("lens_exposure") != want:
+                failures.append(f"colour {raw} loaded as {cfg.get('lens_saturation')}, "
+                                f"{cfg.get('lens_exposure')} (expected {want})")
         path.write_text("{}", encoding="utf-8")
         if settings_io.load_config(path).get("lens_bend") is not True:
             failures.append("a config without lens_bend does not keep the fisheye on")
@@ -221,12 +229,52 @@ def _check_config(failures: list) -> None:
                             f"vignette={saved.get('lens_vignette')}")
 
 
+def _check_colour(failures: list) -> None:
+    """#164: saturation and exposure - centred sliders in the camera block,
+    and the pair rides LENS to the worker."""
+    import commands
+    import protocol
+    menu = _menu("en", lens_saturation=-0.2, lens_exposure=0.5)
+    for key, text in (("lens_saturation", "-20%"), ("lens_exposure", "+0.50 EV")):
+        item = _item(menu, key)
+        if item is None or item.lo != -1.0 or item.hi != 1.0 \
+                or item.extra.get("value_text") != text:
+            failures.append(f"the {key} slider is missing or wrong: "
+                            f"{item and (item.lo, item.hi, item.extra.get('value_text'))}")
+    stepped = menu._step_slider(_item(menu, "lens_exposure"), +1)
+    if stepped != [("lens_exposure", 0.55)]:
+        failures.append(f"one keyboard step of the exposure gave {stepped}")
+
+    class Worker:
+        pid = 77
+
+        def __init__(self):
+            self.stdin = io.BytesIO()
+
+        def poll(self):
+            return None
+
+    st = types.SimpleNamespace(cfg={"lens": True}, worker=Worker(), worker_failed=False,
+                               display=types.SimpleNamespace(
+                                   menu=types.SimpleNamespace(set_state=lambda d: None)))
+    commands.apply_menu_action(st, ("lens_saturation", -0.4))
+    commands.apply_menu_action(st, ("lens_exposure", 3.0))
+    size = struct.calcsize(protocol.LENS_FMT)
+    data = st.worker.stdin.getvalue()
+    last = struct.unpack(protocol.LENS_FMT, data[-size:]) if len(data) >= size else None
+    if st.cfg.get("lens_saturation") != -0.4 or st.cfg.get("lens_exposure") != 1.0:
+        failures.append(f"the colour commands stored {st.cfg}")
+    if last is None or round(last[5], 2) != -0.4 or round(last[6], 2) != 1.0:
+        failures.append(f"the LENS command carries {last and last[5:]}, not (-0.4, 1.0)")
+
+
 def main() -> int:
     failures: list = []
     pygame.init()
     pygame.display.set_mode((64, 64))
     try:
         _check_menu(failures)
+        _check_colour(failures)
     finally:
         pygame.quit()
     _check_commands(failures)

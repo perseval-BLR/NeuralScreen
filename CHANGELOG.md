@@ -66,6 +66,9 @@ Scope and honesty notes:
 * **"Dim while rebuilding" (#157).** Settings -> Program: off, a pipeline
   rebuild leaves the desktop in view instead of the grey veil and the
   assembling mark. On by default, as before.
+* **Saturation and exposure in the camera (#164).** Two centred sliders in the
+  Camera block: saturation from grey to twice the colour, exposure one stop
+  either way, both applied with the camera's look after the network.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

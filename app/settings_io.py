@@ -867,6 +867,16 @@ def _validate_config(cfg: dict) -> dict:
         if not math.isfinite(amount):
             amount = 0.0
         cfg[key] = round(min(1.0, max(0.0, round(amount / 0.05) * 0.05)), 2)
+    for key in LENS_SIGNED_KEYS:
+        amount = cfg.get(key, 0.0)
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            _fallback(key, cfg.get(key), 0.0, "is not a number")
+            amount = 0.0
+        if not math.isfinite(amount):
+            amount = 0.0
+        cfg[key] = round(min(1.0, max(-1.0, round(amount / 0.05) * 0.05)), 2)
 
     menu_height = cfg.get("menu_height")
     if menu_height is not None:
@@ -992,6 +1002,9 @@ LENS_NOISE_DEFAULT = 0.3
 # tone and its softness towards the corners are two (#168): the softness blurs
 # a game's HUD and text, the tone does not.
 LENS_AMOUNT_KEYS = ("lens_vignette", "lens_aberration", "lens_sensor", "lens_soft")
+# Colour (#164): -1..1 with 0 as the picture is - saturation, and exposure in
+# stops.
+LENS_SIGNED_KEYS = ("lens_saturation", "lens_exposure")
 
 
 #: The main page's fold-outs (redesign B, overlay_ui.layout).
@@ -1187,7 +1200,7 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         "lens_fov": float(cfg.get("lens_fov", LENS_FOV_DEFAULT)),
         "lens_noise": float(cfg.get("lens_noise", LENS_NOISE_DEFAULT)),
         "lens_bend": cfg.get("lens_bend", True) is not False,
-        **{key: float(cfg.get(key, 0.0)) for key in LENS_AMOUNT_KEYS},
+        **{key: float(cfg.get(key, 0.0)) for key in LENS_AMOUNT_KEYS + LENS_SIGNED_KEYS},
         "nr_passes": int(cfg.get("nr_passes", 1)),
         # What passes 2..N use, only when the user actually set it. Absent from
         # the file means "every pass uses the main set" - writing a default set
@@ -1713,7 +1726,7 @@ def menu_payload(st) -> dict:
         "lens_fov_range": (LENS_FOV_MIN, LENS_FOV_MAX),
         "lens_noise": float(st.cfg.get("lens_noise", LENS_NOISE_DEFAULT)),
         "lens_bend": st.cfg.get("lens_bend", True) is not False,
-        **{key: float(st.cfg.get(key, 0.0)) for key in LENS_AMOUNT_KEYS},
+        **{key: float(st.cfg.get(key, 0.0)) for key in LENS_AMOUNT_KEYS + LENS_SIGNED_KEYS},
         "nr_passes": int(st.cfg.get("nr_passes", 1)),
         "convert_busy": bool(getattr(st, "convert_busy", False)),
         "convert_status": str(getattr(st, "convert_status", "")),

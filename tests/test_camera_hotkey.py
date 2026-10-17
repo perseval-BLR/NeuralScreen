@@ -86,7 +86,7 @@ def main() -> int:
         if len(sent) != size:
             failures.append(f"the hotkey wrote {len(sent)} bytes, not one LENS command")
             continue
-        _m, flags, _fov, _noise, _pts = struct.unpack(protocol.LENS_FMT, sent)
+        _m, flags, _fov, _noise, _pts, _sat, _ev = struct.unpack(protocol.LENS_FMT, sent)
         if bool(flags & protocol.LENS_FLAG_ON) is not want:
             failures.append(f"the LENS command says on={bool(flags & 1)}, not {want}")
         if not states or states[-1].get("lens") is not want:

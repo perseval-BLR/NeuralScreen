@@ -22,7 +22,8 @@ Checked on the real worker:
   the centre; chromatic aberration moves red outwards and blue inwards and
   leaves green; the small sensor crushes the darkest greys to black, clips the
   brightest to white and keeps the middle near the middle - and leaves the
-  corners as sharp as they were, which the softness alone does not (#168).
+  corners as sharp as they were, which the softness alone does not (#168);
+  saturation at -100% leaves grey, exposure at +1 EV brightens by a stop (#164).
 * Off means off: before the first LENS and after LENS off, the output is the
   input bit for bit.
 * On the presented paths - the worker's own window, with and without Frame
@@ -175,10 +176,10 @@ def _pipe_run(failures: list) -> None:
 
     def lens(on: bool, fov: float, noise: float = 0.0, bend: bool = True,
              vignette: float = 0.0, aberration: float = 0.0, sensor: float = 0.0,
-             soft: float = 0.0) -> None:
+             soft: float = 0.0, saturation: float = 0.0, exposure: float = 0.0) -> None:
         proc.stdin.write(struct.pack(LENS_FMT, LENS_MAGIC,
                                      lens_flags(on, bend, vignette, aberration, sensor, soft),
-                                     fov, noise, 0))
+                                     fov, noise, 0, saturation, exposure))
         proc.stdin.flush()
         magic, ok, _r0, _r1, _pts = struct.unpack(
             LENS_ACK_FMT, read_reply(proc.stdout, struct.calcsize(LENS_ACK_FMT)))
@@ -187,7 +188,7 @@ def _pipe_run(failures: list) -> None:
 
     bent = noisy = noisy_later = None
     flat_noisy = vignetted = fringed = sensed = None
-    toned = softened = None
+    toned = softened = greyed = brighter = None
     grey = np.full((H, W, 4), 160, np.uint8)
     grey[..., 3] = 255
     # Sixteen columns of grey, 0 to 255.
@@ -223,6 +224,11 @@ def _pipe_run(failures: list) -> None:
         toned = frame(stripes)
         lens(True, FOV, bend=False, soft=1.0)
         softened = frame(stripes)
+        # #164: colour - all of it taken away, and a stop more light.
+        lens(True, FOV, bend=False, saturation=-1.0)
+        greyed = frame(rgba)
+        lens(True, FOV, bend=False, exposure=1.0)
+        brighter = frame(grey)
         lens(False, FOV)
         after = frame()
         if not np.array_equal(after[..., :3], rgba[..., :3]):
@@ -246,6 +252,17 @@ def _pipe_run(failures: list) -> None:
     if bent is None:
         return
     _camera_checks(failures, rgba, grey, steps, flat_noisy, vignetted, fringed, sensed)
+    if greyed is not None:
+        g = greyed[..., :3].astype(np.float64)
+        spread = (g.max(axis=2) - g.min(axis=2)).mean()
+        print(f"    saturation -100%: channel spread {spread:.1f} codes")
+        if spread > 2.0:
+            failures.append(f"saturation -100% left colour (spread {spread:.1f})")
+    if brighter is not None:
+        b = brighter[H // 2 - 8:H // 2 + 8, W // 2 - 8:W // 2 + 8, :3].mean()
+        print(f"    exposure +1 EV: grey 160 -> {b:.0f}")
+        if not 205 <= b <= 225:      # 255 * (2 * (160/255)^2.2)^(1/2.2) = 219
+            failures.append(f"exposure +1 EV turned grey 160 into {b:.0f}, not ~219")
     if toned is not None and softened is not None:
         def corner_contrast(img):
             p = img[..., :3].astype(np.float64)

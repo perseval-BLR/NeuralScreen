@@ -566,7 +566,7 @@ PER_PASS_FLAG_ENABLED = 0x1     # passes 2+ use this set; clear = fall back to m
 # Read between frames; a worker that never hears LENS shows no camera.
 LENS_MAGIC = 0x534E454C          # 'LENS'
 LENS_ACK_MAGIC = 0x4B414E4C      # 'LNAK'
-LENS_FMT = "<IIffq"              # magic, flags, fov (degrees), noise (0..1), pts (24)
+LENS_FMT = "<IIffqff"            # magic, flags, fov, noise, pts, saturation, exposure (32)
 LENS_ACK_FMT = "<4Iq"            # magic, ok, reserved0, reserved1, pts
 # BADG: the name of the rate badge's bitmap (app/badge.py, native/badge.inl).
 # No reply: the worker opens the mapping and draws from it.
@@ -846,7 +846,8 @@ def send_badge(worker: subprocess.Popen, name: str, pts: int = 0) -> None:
 def send_lens(worker: subprocess.Popen, enabled: bool, fov: float,
               noise: float = 0.0, pts: int = 0, *, bend: bool = True,
               vignette: float = 0.0, aberration: float = 0.0,
-              sensor: float = 0.0, soft: float = 0.0) -> None:
+              sensor: float = 0.0, soft: float = 0.0, saturation: float = 0.0,
+              exposure: float = 0.0) -> None:
     """LENS: the camera on or off - the fisheye from a horizontal field of
     view (bend), webcam noise, a vignette, chromatic aberration, a small
     sensor's tone and softness towards the corners, each 0..1.
@@ -858,7 +859,11 @@ def send_lens(worker: subprocess.Popen, enabled: bool, fov: float,
     fov = min(LENS_FOV_MAX, max(LENS_FOV_MIN, float(fov)))
     noise = min(1.0, max(0.0, float(noise)))
     flags = lens_flags(enabled, bend, vignette, aberration, sensor, soft)
-    worker.stdin.write(struct.pack(LENS_FMT, LENS_MAGIC, flags, fov, noise, int(pts)))
+    def signed(v: float) -> float:
+        v = float(v)
+        return 0.0 if v != v else min(1.0, max(-1.0, v))
+    worker.stdin.write(struct.pack(LENS_FMT, LENS_MAGIC, flags, fov, noise, int(pts),
+                                   signed(saturation), signed(exposure)))
     worker.stdin.flush()
 
 
