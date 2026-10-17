@@ -674,6 +674,7 @@ def rebuild_pipeline(st, note: str) -> None:
     # way if the user never opened the menu. A failure is logged and ignored -
     # the option is a speed-up, not a precondition.
     power.apply_both(st)
+    power.apply_priority(st)
     if getattr(st, "worker_failed", False):
         # Rebuilt while the worker stood failed: a monitor, GPU, HDR, Spout or
         # motion change made from the menu of a dead worker. The fresh one IS

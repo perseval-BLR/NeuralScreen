@@ -441,6 +441,7 @@ class OverlayMenu:
             # Which corner the on-screen counter sits in, or "off" (#109).
             "fps_overlay": "off",
             "notifications": "all",
+            "process_priority": "normal",
             # What the taskbar's minimise and close buttons do (#93).
             "tray_on_minimise": False,
             "tray_on_close": False,
@@ -1891,6 +1892,12 @@ class OverlayMenu:
                       str(self.state.get("notifications", "all")),
                       ["all", "errors", "none"],
                       [s["notify_all"], s["notify_errors"], s["notify_none"]])
+            # Windows' priority class for both processes (#170) - what Task
+            # Manager's "Set priority" does, kept across restarts.
+            segmented("process_priority", s["process_priority"],
+                      str(self.state.get("process_priority", "normal")),
+                      ["normal", "above_normal", "high"],
+                      [s["prio_normal"], s["prio_above"], s["prio_high"]])
             # No extra gap here: segmented() already ends with one, and
             # section() opens with its own - three stacked was a hole
             # (user, 13.09: the padding below is excessive).
@@ -3089,6 +3096,11 @@ class OverlayMenu:
             per_pass["style"] = picked
             self.state["nr_pass_params"] = per_pass
             return [("pass_param", "style", picked)]
+        if key == "process_priority":
+            if value in ("normal", "above_normal", "high"):
+                self.state["process_priority"] = value
+                return [("process_priority", value)]
+            return []
         if key == "notifications":
             if value in ("all", "errors", "none"):
                 self.state["notifications"] = value

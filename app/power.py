@@ -255,6 +255,66 @@ def apply_both(st, enabled: bool | None = None, log=print) -> None:
             f"ours {ours}, worker {worker}")
 
 
+#: The CPU priority classes offered for the two processes (#170). Realtime is
+#: left out on purpose: above the input and the compositor threads it can
+#: freeze the desktop, which no smoothness gain is worth.
+PRIORITY_CLASSES = {"normal": 0x00000020, "above_normal": 0x00008000,
+                    "high": 0x00000080}
+
+_kernel32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+_kernel32.SetPriorityClass.restype = wintypes.BOOL
+_kernel32.GetPriorityClass.argtypes = [wintypes.HANDLE]
+_kernel32.GetPriorityClass.restype = wintypes.DWORD
+
+
+def _set_priority(handle, cls: int) -> str:
+    """Set one process's class and say what it reads back."""
+    if not _kernel32.SetPriorityClass(handle, cls):
+        return f"refused ({ctypes.get_last_error()})"
+    got = _kernel32.GetPriorityClass(handle)
+    for name, value in PRIORITY_CLASSES.items():
+        if got == value:
+            return name
+    return f"class 0x{got:X}"
+
+
+def apply_priority(st, level: str | None = None, log=print) -> None:
+    """The Windows priority class of this process and of the worker (#170).
+
+    What Task Manager's "Set priority" does, which a reporter on a stripped-down
+    home-cinema PC found smoother at High - and had to repeat by hand on every
+    start, for both processes. ``level`` defaults to the config key. Called
+    where apply_both is: at every pipeline start, from the frame loop (so a
+    restarted worker gets it again) and when the setting changes.
+    """
+    if level is None:
+        level = str(getattr(st, "cfg", {}).get("process_priority", "normal"))
+    if level not in PRIORITY_CLASSES:
+        level = "normal"
+    if not _is_windows():
+        return
+    cls = PRIORITY_CLASSES[level]
+    ours = _set_priority(_current(), cls)
+    worker = getattr(st, "worker", None)
+    theirs = "no worker"
+    pid = getattr(worker, "pid", None)
+    if worker is not None and pid and getattr(worker, "poll", lambda: None)() is None:
+        handle = _kernel32.OpenProcess(
+            _PROCESS_SET_INFORMATION | _PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if handle:
+            try:
+                theirs = _set_priority(handle, cls)
+            finally:
+                _kernel32.CloseHandle(handle)
+        else:
+            theirs = "cannot open"
+    _last["priority"] = f"{level}: ours {ours}, worker {theirs}"
+    state = (level, ours, theirs)
+    if getattr(st, "_priority_last", None) != state:
+        st._priority_last = state
+        log(f"[main] process priority: {level} - ours {ours}, worker {theirs}")
+
+
 def status() -> dict:
     """For the diagnostic bundle: what was asked and what the OS reports."""
     return dict(_last)

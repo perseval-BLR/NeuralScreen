@@ -44,6 +44,11 @@ Scope and honesty notes:
   late; an independent Desktop Duplication reader saw the same. An empty layer
   that is already empty on screen is no longer flipped again; the menu, alerts,
   the REC badge and the FPS badge draw as before.
+* **Process priority is a setting (#170).** Settings -> Program has a Normal /
+  Above normal / High row: the Windows priority class of the program and of its
+  worker, what Task Manager's "Set priority" does - kept across restarts and
+  put back on a restarted worker. Realtime is not offered: above the input and
+  the compositor it can freeze the desktop.
 
 ## v2.4.0 - 2026-10-11 - Shadows that no longer trail, a camera around the fisheye, the pointer in recordings, live window switching
 

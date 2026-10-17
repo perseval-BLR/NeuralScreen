@@ -823,6 +823,10 @@ def _validate_config(cfg: dict) -> dict:
     # "false" is truthy, so `is not False` would turn it into True before
     # _BOOL_KEYS could read it as the off it spells. Leave the raw value to
     # that loop and only decide the default where the value is consumed.
+    if cfg.get("process_priority", "normal") not in ("normal", "above_normal", "high"):
+        _fallback("process_priority", cfg.get("process_priority"), "normal",
+                  "is not one of normal/above_normal/high")
+        cfg["process_priority"] = "normal"
     if cfg.get("notifications", "all") not in ("all", "errors", "none"):
         _fallback("notifications", cfg.get("notifications"), "all",
                   "is not one of all/errors/none")
@@ -1144,6 +1148,7 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         "gpu_record": cfg.get("gpu_record", True) is not False,
         "fps_overlay": str(cfg.get("fps_overlay", "off")),
         "notifications": str(cfg.get("notifications", "all")),
+        "process_priority": str(cfg.get("process_priority", "normal")),
         "lens": bool(cfg.get("lens", False)),
         "lens_fov": float(cfg.get("lens_fov", LENS_FOV_DEFAULT)),
         "lens_noise": float(cfg.get("lens_noise", LENS_NOISE_DEFAULT)),
@@ -1666,6 +1671,7 @@ def menu_payload(st) -> dict:
         "gpu_record": st.cfg.get("gpu_record", True) is not False,
         "fps_overlay": str(st.cfg.get("fps_overlay", "off")),
         "notifications": str(st.cfg.get("notifications", "all")),
+        "process_priority": str(st.cfg.get("process_priority", "normal")),
         "lens": bool(st.cfg.get("lens", False)),
         "lens_fov": float(st.cfg.get("lens_fov", LENS_FOV_DEFAULT)),
         "lens_fov_range": (LENS_FOV_MIN, LENS_FOV_MAX),

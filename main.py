@@ -454,6 +454,8 @@ class _Pipeline:
         # re-assert. Declared here because __slots__ turns an undeclared field
         # into an AttributeError at run time, which is its purpose.
         "_power_throttle_last",
+        # #170: the same for the process priority class (power.apply_priority).
+        "_priority_last",
         # #143: foreign_hooks.check's schedule and the processes it has named.
         "_foreign_hooks_due",
         "_foreign_hooks_seen",
@@ -1022,6 +1024,7 @@ def main() -> int:
                 # same cadence as the checks above, and the call is two
                 # SetProcessInformation with no allocation when nothing moved.
                 power.apply_both(st)
+                power.apply_priority(st)
                 # #143: an RTSS frame limit inside the worker's Present caps
                 # NR and FG with nothing in our pacing to show it. Named once
                 # per process, in the log a support bundle carries.
