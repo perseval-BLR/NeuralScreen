@@ -1250,6 +1250,8 @@ def apply_menu_action(st, action: tuple) -> None:
             pipeline.request_apply(st, scale, profile, new_params)
     elif kind == "motion_backend":
         pipeline.apply_motion_backend(st, action[1])
+    elif kind == "nr_preset":
+        pipeline.apply_nr_preset(st, action[1])
     elif kind == "screenshot_mode":
         mode = str(action[1])
         if mode in ("ask", "auto"):

@@ -92,6 +92,11 @@ Scope and honesty notes:
   overshoot - so a cap of 72 ran at about 70.7 and dropped ~2% of a 71.93 fps
   video. A frame a little late is now made up on the next one; only a stall
   of more than one interval restarts the timeline, with no catch-up burst.
+* **NR preset A / B (runtime 310.9.16).** Fine tuning → **NR preset**: Auto,
+  A or B, a worker restart. With the 310.9.16 runtime in `native\libraries\`,
+  B is its new, smaller and faster model (and its default), A the previous
+  one; the bundled 310.8 has one model and ignores the choice. The worker logs
+  the runtime's version and the preset it asked for.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

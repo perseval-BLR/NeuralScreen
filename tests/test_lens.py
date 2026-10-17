@@ -258,6 +258,13 @@ def _pipe_run(failures: list) -> None:
     for line in text.splitlines():
         if "[lens] shader failed" in line or "[lens] pipeline failed" in line:
             failures.append("the lens pipeline did not build: " + line.strip())
+    # The runtime's version and the model preset it was asked for, once per
+    # load (v2.6.0): a log without them cannot be compared with another.
+    runtime = [ln for ln in text.splitlines() if "[pure] NR runtime" in ln]
+    if not runtime or "preset hint" not in runtime[0]:
+        failures.append(f"the worker did not log its NR runtime and preset: {runtime}")
+    else:
+        print("    " + runtime[0].strip())
     if bent is None:
         return
     _camera_checks(failures, rgba, grey, steps, flat_noisy, vignetted, fringed, sensed)

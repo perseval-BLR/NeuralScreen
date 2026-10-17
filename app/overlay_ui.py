@@ -462,6 +462,7 @@ class OverlayMenu:
             "fg_ui_protect": False,
             "dim_on_rebuild": True,
             "window_follow": False,
+            "nr_preset": "default",
             # The hotkeys master switch (#134). Listed HERE for the reason the
             # spout/hdr entries above spell out: a key missing from this dict
             # is dropped by set_state in silence, and the toggle would draw as
@@ -2157,6 +2158,12 @@ class OverlayMenu:
                 # not three strengths - so it opens the block.
                 segmented("style", s["style"], str(style_now), ["0", "1", "2"],
                           labels=[s["style_0"], s["style_1"], s["style_2"]])
+                # The runtime's model preset (310.9.16: B smaller and faster,
+                # A the previous model). A worker restart, like the backend.
+                segmented("nr_preset", s.get("nr_preset", "NR preset"),
+                          str(self.state.get("nr_preset", "default")),
+                          ["default", "a", "b"],
+                          labels=[s.get("nr_preset_default", "Auto"), "A", "B"])
                 for key in PARAM_KEYS:
                     if key != "intensity":
                         param_slider(key)
@@ -2958,6 +2965,11 @@ class OverlayMenu:
             # snap back to the old cell until the next payload arrives.
             self.state["style"] = int(value)
             return [("style", value)]
+        if key == "nr_preset":
+            if value in ("default", "a", "b"):
+                self.state["nr_preset"] = value
+                return [("nr_preset", value)]
+            return []
         if key == "monitor":
             return [("monitor", value)]
         if key == "gpu":

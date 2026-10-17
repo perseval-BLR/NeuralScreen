@@ -69,6 +69,7 @@
   "fg_ui_protect": false,
   "dim_on_rebuild": true,
   "window_follow": false,
+  "nr_preset": "default",
   "menu_height": null,
   "menu_offset": [
     0,

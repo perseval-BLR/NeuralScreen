@@ -667,6 +667,10 @@ def configure(st) -> None:
     _apply_hdr_env(st.cfg)
     from motion_backend import normalize_backend
     os.environ["NS_MOTION_BACKEND"] = normalize_backend(st.cfg.get("motion_backend"))
+    # The NR model preset, read once per worker process at the feature's
+    # creation (NrPresetHint).
+    from settings_io import NR_PRESET_HINTS, nr_preset
+    os.environ["NS_NR_PRESET"] = NR_PRESET_HINTS[nr_preset(st.cfg)]
     # The same for the card: NS_GPU is read once per worker process.
     _apply_gpu_env(st.cfg)
     st.lang = str(st.cfg["lang"])

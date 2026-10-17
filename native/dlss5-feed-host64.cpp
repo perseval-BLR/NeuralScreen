@@ -56,6 +56,8 @@
 #include <io.h>
 #include <string>
 #include <vector>
+#include <winver.h>
+#pragma comment(lib, "version.lib")
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -453,6 +455,36 @@ static bool LoadNrForwarder(const wchar_t *dll_name)
     return true;
 }
 
+static UINT NrPresetHint();   // below, with the feature's creation
+
+// Which NR runtime this worker runs and which model it asks for, once per
+// load: the runtimes differ in cost by up to 2x (310.9.16 added preset B, a
+// smaller and faster model, and made it the default; preset A is 310.8's
+// model, and 310.8 itself has one model and ignores the hint), so a log
+// without the version cannot be compared with another. The file is BYO and
+// its version resource is the only name it carries.
+static void LogNrRuntime(const wchar_t *path)
+{
+    WIN32_FILE_ATTRIBUTE_DATA fa = {};
+    const unsigned long long bytes = GetFileAttributesExW(path, GetFileExInfoStandard, &fa)
+        ? (static_cast<unsigned long long>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow : 0ull;
+    const UINT hint = NrPresetHint();
+    const char *preset = hint == 0 ? "the runtime's default" : hint == 1 ? "A" : hint == 2 ? "B" : "other";
+    DWORD unused = 0;
+    const DWORD n = GetFileVersionInfoSizeW(path, &unused);
+    std::vector<BYTE> info(n ? n : 1);
+    VS_FIXEDFILEINFO *fi = nullptr;
+    UINT len = 0;
+    if (n && GetFileVersionInfoW(path, 0, n, info.data()) &&
+        VerQueryValueW(info.data(), L"\\", reinterpret_cast<void **>(&fi), &len) && fi)
+        Log("[pure] NR runtime %u.%u.%u.%u (%llu bytes), preset hint %u (%s)",
+            HIWORD(fi->dwFileVersionMS), LOWORD(fi->dwFileVersionMS),
+            HIWORD(fi->dwFileVersionLS), LOWORD(fi->dwFileVersionLS), bytes, hint, preset);
+    else
+        Log("[pure] NR runtime: no version resource (%llu bytes), preset hint %u (%s)",
+            bytes, hint, preset);
+}
+
 static bool InitDirectNr(const wchar_t *data_path)
 {
     // Before the NVIDIA library is loaded: it asks for the architecture when
@@ -569,6 +601,7 @@ static bool InitDirectNr(const wchar_t *data_path)
             }
         }
     }
+    LogNrRuntime(dll_name);
     // The calls leave this executable by default (R8): the feature library
     // serves a caller whose module path contains "nvngx.dll" - and the
     // worker's own path native\nvngx.dll does. Measured on a 5070 Ti:
@@ -1495,10 +1528,11 @@ static bool InitNgx()
     return InitDirectNr(data_path);
 }
 
-// The NR model is chosen by a hint when the feature is created. It was 0
-// (default) and never questioned; in the related Ray Reconstruction the
-// numbers hold different transformer models with different costs. The value
-// comes from NS_NR_PRESET so it can be swept without a rebuild.
+// The NR model is chosen by a hint when the feature is created: 0 is the
+// runtime's default, 1 preset A, 2 preset B (310.9.16: B is the new, smaller
+// and faster model and the default; A is the previous one; 310.8 has one
+// model and ignores the hint). The value comes from NS_NR_PRESET, which the
+// client sets from the `nr_preset` setting before it starts the worker.
 static UINT NrPresetHint()
 {
     static int cached = -1;

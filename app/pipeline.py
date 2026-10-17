@@ -1238,6 +1238,22 @@ def apply_motion_backend(st, value: str) -> None:
         "motion_restarted", "Motion backend changed - worker restarted"))
 
 
+def apply_nr_preset(st, value: str) -> None:
+    """The NR model preset (default / A / B): the worker reads it once, when
+    it creates the feature, so a change is a worker restart - as the motion
+    backend is."""
+    value = str(value).lower()
+    if value not in settings_io.NR_PRESETS or settings_io.nr_preset(st.cfg) == value:
+        return
+    st.cfg["nr_preset"] = value
+    os.environ["NS_NR_PRESET"] = settings_io.NR_PRESET_HINTS[value]
+    settings_io.save_menu_layout(st)
+    print(f"[main] NR preset: {value} - restarting the worker")
+    teardown_pipeline(st)
+    rebuild_pipeline(st, UI_STRINGS[st.lang].get(
+        "nr_preset_restarted", "NR preset changed - worker restarted"))
+
+
 def follow_monitor(st) -> None:
     """Rebuild when the desktop resolution changes under a running pipeline.
 

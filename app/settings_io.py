@@ -652,6 +652,10 @@ def _validate_config(cfg: dict) -> dict:
     cfg["lang"] = lang
     from motion_backend import normalize_backend
     cfg["motion_backend"] = normalize_backend(cfg.get("motion_backend"))
+    if str(cfg.get("nr_preset", "default")).lower() not in NR_PRESETS:
+        print(f"[main] config.json: nr_preset {cfg.get('nr_preset')!r} is not default, "
+              f"a or b; using 'default'", file=sys.stderr)
+    cfg["nr_preset"] = nr_preset(cfg)
     cfg["frame_generation"] = bool(cfg.get("frame_generation", False))
     try:
         cfg["frame_multiplier"] = min(FG_MULTIPLIER_MAX, max(2, int(cfg.get("frame_multiplier", 2))))
@@ -1008,6 +1012,18 @@ LENS_AMOUNT_KEYS = ("lens_vignette", "lens_aberration", "lens_sensor", "lens_sof
 LENS_SIGNED_KEYS = ("lens_saturation", "lens_exposure", "lens_contrast", "lens_warmth", "lens_tint")
 
 
+#: The NR model preset (NS_NR_PRESET, the feature's Hint.Render.Preset): the
+#: runtime's default, A or B. 310.9.16 has both, with B - smaller and faster -
+#: as its default; 310.8 has one model and ignores the hint.
+NR_PRESETS = ("default", "a", "b")
+NR_PRESET_HINTS = {"default": "0", "a": "1", "b": "2"}
+
+
+def nr_preset(cfg: dict) -> str:
+    value = str(cfg.get("nr_preset", "default")).lower()
+    return value if value in NR_PRESETS else "default"
+
+
 #: The main page's fold-outs (redesign B, overlay_ui.layout).
 MENU_FOLDS = ("net", "tune", "camera", "colour", "source")
 
@@ -1218,6 +1234,7 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         "fg_ui_protect": bool(cfg.get("fg_ui_protect", False)),
         "dim_on_rebuild": cfg.get("dim_on_rebuild", True) is not False,
         "window_follow": bool(cfg.get("window_follow", False)),
+        "nr_preset": nr_preset(cfg),
         # The hotkeys master switch (#134). Read with `is not False` so a
         # missing key means on (the shipped default) and only an explicit
         # false switches them off.
@@ -1755,6 +1772,7 @@ def menu_payload(st) -> dict:
         "fg_ui_protect": bool(st.cfg.get("fg_ui_protect", False)),
         "dim_on_rebuild": st.cfg.get("dim_on_rebuild", True) is not False,
         "window_follow": bool(st.cfg.get("window_follow", False)),
+        "nr_preset": nr_preset(st.cfg),
         "hotkeys_enabled": st.cfg.get("hotkeys_enabled", True) is not False,
         "recording_dir": st.cfg.get("recording_dir") or "",
         "screenshot_dir": st.cfg.get("screenshot_dir") or "",
