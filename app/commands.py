@@ -1677,6 +1677,14 @@ def drain_commands(st) -> bool:
                 st.display.alert(UI_STRINGS[st.lang].get(
                     "fg_on" if state else "fg_off",
                     "DLSS FG ON" if state else "DLSS FG OFF"))
+            elif cmd == "lens":
+                # The camera on/off from the keyboard (#164): the menu
+                # switch's own path - the config, the menu state and the one
+                # LENS command to the worker.
+                apply_menu_action(st, ("toggle", "lens"))
+                st.display.alert(UI_STRINGS[st.lang].get(
+                    "lens_on" if st.cfg.get("lens") else "lens_off",
+                    "Camera ON" if st.cfg.get("lens") else "Camera OFF"))
             elif cmd in ("nr_passes_up", "nr_passes_down"):
                 # The NR cascade one pass up or down (#126), through the same
                 # action the panel's control takes.

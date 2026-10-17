@@ -112,6 +112,7 @@ NEUTRAL_CHOICE = {
 HOTKEY_ROWS = (
     ("toggle", "hk_nr"),
     ("framegen", "hk_framegen"),
+    ("lens", "hk_lens"),
     ("settings", "hk_menu"),
     ("screenshot_menu", "hk_shot"),
     ("record", "hk_record"),

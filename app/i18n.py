@@ -2466,6 +2466,20 @@ STRINGS["ru"].update({
     "hk_framegen": "Генерация кадров вкл/выкл",
 })
 
+# The camera hotkey (#164): its row in the hotkey list and the pop-up it shows.
+STRINGS["en"].update({"hk_lens": "Camera on/off", "lens_on": "Camera ON", "lens_off": "Camera OFF"})
+STRINGS["ru"].update({"hk_lens": "Камера вкл/выкл", "lens_on": "Камера ВКЛ", "lens_off": "Камера ВЫКЛ"})
+STRINGS["fr"].update({"hk_lens": "Caméra on/off", "lens_on": "Caméra ON", "lens_off": "Caméra OFF"})
+STRINGS["de"].update({"hk_lens": "Kamera ein/aus", "lens_on": "Kamera EIN", "lens_off": "Kamera AUS"})
+STRINGS["es"].update({"hk_lens": "Cámara on/off", "lens_on": "Cámara ON", "lens_off": "Cámara OFF"})
+STRINGS["it"].update({"hk_lens": "Fotocamera on/off", "lens_on": "Fotocamera ON", "lens_off": "Fotocamera OFF"})
+STRINGS["pt"].update({"hk_lens": "Câmera on/off", "lens_on": "Câmera ON", "lens_off": "Câmera OFF"})
+STRINGS["pl"].update({"hk_lens": "Kamera wł/wył", "lens_on": "Kamera WŁ", "lens_off": "Kamera WYŁ"})
+STRINGS["uk"].update({"hk_lens": "Камера увімк/вимк", "lens_on": "Камера УВІМК", "lens_off": "Камера ВИМК"})
+STRINGS["zh"].update({"hk_lens": "相机 开/关", "lens_on": "相机 开", "lens_off": "相机 关"})
+STRINGS["ja"].update({"hk_lens": "カメラ オン/オフ", "lens_on": "カメラ オン", "lens_off": "カメラ オフ"})
+STRINGS["ko"].update({"hk_lens": "카메라 켜기/끄기", "lens_on": "카메라 켜짐", "lens_off": "카메라 꺼짐"})
+
 STRINGS['ru'].update({'frame_generation': 'DLSS Frame Generation', 'frame_multiplier': 'Множитель кадров', 'fg_capped': 'карта ограничена до x{live}; x{want} - в следующий раз'})
 
 STRINGS['fr'].update({'frame_generation': 'DLSS Frame Generation', 'frame_multiplier': 'Multiplicateur de trames de sortie', 'fg_capped': 'cette carte plafonne a x{live}; x{want} sera retente'})

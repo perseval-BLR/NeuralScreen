@@ -117,6 +117,10 @@ DEFAULT_BINDINGS = {
     # a hyphen is typed far too often to belong to NeuralScreen.
     10: (MOD_NOREPEAT, VK_ADD, "nr_passes_up", "Numplus"),
     11: (MOD_NOREPEAT, VK_SUBTRACT, "nr_passes_down", "Numminus"),
+    # The camera on/off (#164): the effects are for a look, and a look is
+    # switched while the game runs, not two clicks deep in the menu. Num8,
+    # above the window key, was the block's last free digit near the others.
+    12: (MOD_NOREPEAT, VK_NUMPAD[8], "lens", "Num8"),
 }
 
 # Key name -> VK (for parsing the config)

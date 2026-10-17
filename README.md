@@ -76,6 +76,7 @@ the menu. The hotkeys are on the numpad, so **Num Lock has to be on**.
 | **Num2** | open / close the menu |
 | **Num1** | neural rendering on / off |
 | **Num7** | frame generation on / off |
+| **Num8** | camera on / off |
 | **Num3** | screenshot |
 | **Num0** | start / stop recording, with sound |
 | **Num4** / **Num6** | processing resolution down / up |

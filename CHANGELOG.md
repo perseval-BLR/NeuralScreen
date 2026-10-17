@@ -54,6 +54,9 @@ Scope and honesty notes:
   amount; the softness is now its own slider, "Soft corners", and starts at 0.
   The small sensor alone keeps every pixel sharp; a saved small-sensor setting
   keeps its tone and loses the blur until the new slider is raised.
+* **The camera has a hotkey (#164).** Num8 turns it on and off, the way the
+  switch on the main page does; it can be rebound or taken off the keyboard on
+  the KEYS page like every other one.
 
 ## v2.4.0 - 2026-10-11 - Shadows that no longer trail, a camera around the fisheye, the pointer in recordings, live window switching
 
