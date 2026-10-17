@@ -62,7 +62,9 @@ Scope and honesty notes:
   client finds still, textured areas over a moving picture (8 frames of
   evidence, at least 12% of the scene moving, at most 32 rectangles over 20%
   of the frame) and the worker shows the real frame's pixels there in every
-  generated frame. Off until it is measured on more games.
+  generated frame. Off until it is measured on more games. A repeated gray
+  frame (the game drawing slower than the loop) changes nothing: the
+  protection does not flicker off for it, and repeats are not evidence.
 * **"Dim while rebuilding" (#157).** Settings -> Program: off, a pipeline
   rebuild leaves the desktop in view instead of the grey veil and the
   assembling mark. On by default, as before.
@@ -81,7 +83,10 @@ Scope and honesty notes:
   window mode a window that keeps the focus 2.5 s becomes the source, through
   the live switch (same monitor, no recording), at most once per 8 s. Lock
   screen, Explorer, dwm's ghost windows, tool and cloaked windows are never
-  taken; every switch and skip is logged with the process and class.
+  taken; every switch and skip is logged with the process and class. A follow
+  raises no veil, a window only a rebuild could take is not followed, a window
+  the capture refuses is tried once until the focus leaves it, and a failure
+  in the follower turns it off for the session instead of closing the program.
 * **The frame cap holds its rate (#166).** The limiter restarted its timeline
   from every frame that started late - and each one did, by the sleep's own
   overshoot - so a cap of 72 ran at about 70.7 and dropped ~2% of a 71.93 fps
