@@ -759,6 +759,10 @@ def update_window_follow(st, now: float | None = None) -> None:
     if focused and focused != int(current):
         info = window_follow.window_info(focused, int(current))
         reason = window_follow.why_not(info)
+        if reason is None and not pipeline.live_switch_possible(st, focused):
+            # Only the live switch is followed: anything else is a rebuild
+            # (and a veil) for a focus change.
+            reason = "the live switch cannot take it (a rebuild would)"
         if reason is not None:
             if getattr(st, "focus_skipped", None) != focused:
                 st.focus_skipped = focused
@@ -769,7 +773,7 @@ def update_window_follow(st, now: float | None = None) -> None:
     if target and info is not None:
         print(f"[main] follow: 0x{target:X} ({info.process or '?'}, {info.cls or '?'}) "
               f"kept the focus {window_follow.DWELL_S:g} s - capturing it")
-        pipeline.switch_window(st, target)
+        pipeline.switch_window(st, target, veil=False)
 
 
 def send_badge_state(st) -> None:

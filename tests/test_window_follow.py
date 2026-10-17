@@ -98,12 +98,20 @@ def main() -> int:
     import pipeline
     import commands
     switched = []
-    real = (wf.focused_window, wf.window_info, pipeline.switch_window)
+    real = (wf.focused_window, wf.window_info, pipeline.switch_window,
+            pipeline.live_switch_possible)
+    live = {"ok": True}
+    veils = []
     focus = {"hwnd": 0x20}
     wf.focused_window = lambda: focus["hwnd"]
     wf.window_info = lambda h, cur: wf.WindowInfo(
         **dict(good, hwnd=h, process="explorer.exe" if h == 0x30 else "game.exe"))
-    pipeline.switch_window = lambda st, h: switched.append(h)
+    pipeline.live_switch_possible = lambda st, h: live["ok"]
+
+    def fake_switch(st, h, veil=True):
+        switched.append(h)
+        veils.append(veil)
+    pipeline.switch_window = fake_switch
 
     class Worker:
         def poll(self):
@@ -129,6 +137,18 @@ def main() -> int:
                 commands.update_window_follow(st, now=t * 0.25)
             if switched != [0x20]:
                 failures.append(f"with the setting on the switches were {switched}")
+            if veils != [False]:
+                failures.append(f"the follow switch asked for the veil: {veils}")
+            # A window only a rebuild could take (the old one closed, another
+            # monitor's worker state) is not followed at all.
+            switched.clear()
+            live["ok"] = False
+            st = state(window_follow=True)
+            for t in range(20):
+                commands.update_window_follow(st, now=t * 0.25)
+            live["ok"] = True
+            if switched:
+                failures.append("a window only a rebuild could take was followed")
             for name, change in (("recording", dict(recorder=object())),
                                  ("full screen", dict(window_hwnd=None))):
                 switched.clear()
@@ -151,7 +171,8 @@ def main() -> int:
             for t in range(20):
                 commands.update_window_follow(st, now=t * 0.25)
     finally:
-        wf.focused_window, wf.window_info, pipeline.switch_window = real
+        (wf.focused_window, wf.window_info, pipeline.switch_window,
+         pipeline.live_switch_possible) = real
     log = out.getvalue()
     if switched:
         failures.append(f"Explorer was switched to: {switched}")
@@ -159,6 +180,25 @@ def main() -> int:
         failures.append("the skipped Explorer window was not logged once with its reason")
     if "follow: 0x20 (game.exe" not in log:
         failures.append("the switch was not logged with the process")
+    if "the live switch cannot take it" not in log:
+        failures.append("a window the live switch cannot take was not logged")
+
+    # The live-switch test itself, on real windows: the shell window stands
+    # in for the processed one, the desktop window for the new one.
+    shell = int(ctypes.windll.user32.GetShellWindow() or 0)
+    other = int(ctypes.windll.user32.GetDesktopWindow() or 0)
+    if shell and other:
+        base = dict(window_hwnd=shell, dda_mode=True, recorder=None, off_suspended=False)
+        for change, want in ((dict(), True), (dict(recorder=object()), False),
+                             (dict(window_hwnd=None), False), (dict(dda_mode=False), False),
+                             (dict(off_suspended=True), False),
+                             (dict(window_hwnd=other), False),        # the same window
+                             (dict(window_hwnd=0x7FFFFFF0), False)):  # the old one is gone
+            got = pipeline.live_switch_possible(
+                types.SimpleNamespace(**dict(base, **change)), other)
+            if got is not want:
+                failures.append(f"live_switch_possible with {change or 'nothing changed'} "
+                                f"is {got}, not {want}")
 
     # 5. The menu, the command, the config.
     import pygame

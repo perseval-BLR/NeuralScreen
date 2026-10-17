@@ -936,7 +936,7 @@ def _restore_after_failed_probe(st, hwnd: int) -> None:
     switch_window(st, 0)
 
 
-def switch_window(st, hwnd: int) -> None:
+def switch_window(st, hwnd: int, veil: bool = True) -> None:
     """Point the capture at one window (hwnd) or back at the desktop (0).
 
     The window's capture size is not something to guess: GetWindowRect
@@ -944,6 +944,11 @@ def switch_window(st, hwnd: int) -> None:
     capture produces the compositor's own surface. So the running
     worker is asked first (WGCW answers with the real size), and the
     pipeline is rebuilt for exactly that.
+
+    veil=False (the focus follower, #157): when the live switch can take the
+    window, no veil goes up for the probe - a follow every few seconds is not
+    a rebuild and must not look like one. Should it fall back to a rebuild
+    after all, the veil goes up before the teardown.
     """
     if hwnd and not st.want_dda:
         st.display.alert(UI_STRINGS[st.lang]["win_fail"])
@@ -955,7 +960,9 @@ def switch_window(st, hwnd: int) -> None:
     # pipeline is already dead by then - without the overlay the
     # desktop sits bare (user: black gap on one-window mode switch).
     # enter_switch_mode is idempotent and covers the rebuild too.
-    st.display.enter_switch_mode(st.output_rgba, *st.capture.resolution)
+    veiled = bool(veil) or not (hwnd and live_switch_possible(st, int(hwnd)))
+    if veiled:
+        st.display.enter_switch_mode(st.output_rgba, *st.capture.resolution)
     if hwnd:
         # A minimised window has nothing to capture: WGC would answer with
         # the last size it had and then go silent. The list offers them
@@ -986,6 +993,8 @@ def switch_window(st, hwnd: int) -> None:
         # nothing else has to change (#148, #157: 17-38 s -> under a second).
         if _switch_window_live(st, int(hwnd), int(aw), int(ah)):
             return
+        if not veiled:
+            st.display.enter_switch_mode(st.output_rgba, *st.capture.resolution)
         teardown_pipeline(st)
         st.window_hwnd = int(hwnd)
         st.width, st.height = int(aw), int(ah)
@@ -1038,6 +1047,16 @@ def _same_monitor(a: int, b: int) -> bool:
     return bool(ma) and ma == mb
 
 
+def live_switch_possible(st, hwnd: int) -> bool:
+    """Whether a switch to `hwnd` can keep the running worker (see
+    _switch_window_live for why each condition is there)."""
+    old = st.window_hwnd
+    return not (old is None or not st.dda_mode or getattr(st, "off_suspended", False)
+                or st.recorder is not None or int(old) == int(hwnd)
+                or not ctypes.windll.user32.IsWindow(ctypes.c_void_p(int(old)))
+                or not _same_monitor(int(old), int(hwnd)))
+
+
 def _switch_window_live(st, hwnd: int, aw: int, ah: int) -> bool:
     """Another window picked while one is processed: keep the worker.
 
@@ -1055,11 +1074,7 @@ def _switch_window_live(st, hwnd: int, aw: int, ah: int) -> bool:
     another DPI, which the worker reads at its start), and no recording runs
     (a recording is sized and paced for the window it began on).
     """
-    old = st.window_hwnd
-    if (old is None or not st.dda_mode or getattr(st, "off_suspended", False)
-            or st.recorder is not None or int(old) == int(hwnd)
-            or not ctypes.windll.user32.IsWindow(ctypes.c_void_p(int(old)))
-            or not _same_monitor(int(old), int(hwnd))):
+    if not live_switch_possible(st, hwnd):
         return False
     t0 = time.perf_counter()
     if not _reconfigure_live(st, aw, ah):
