@@ -61,10 +61,13 @@ OLD_PAGE = (
        ("button", "delete_preset"), ("toggle", "lens_bend"), ("slider", "lens_fov"),
        ("slider", "lens_noise"), ("slider", "lens_vignette"),
        ("slider", "lens_aberration"), ("slider", "lens_sensor"), ("slider", "lens_soft"),
+       ("slider", "lens_saturation"), ("slider", "lens_exposure"),
+       ("slider", "lens_contrast"), ("slider", "lens_warmth"), ("slider", "lens_tint"),
        ("segmented", "source"), ("slider", "split"), ("button", "screenshot"),
        ("button", "record"), ("button", "convert"), ("action", "exit")])
 FOLDED_AWAY = {("choice", "frame_limit_mode"), ("slider", "nr_res"),
-               ("segmented", "style"), ("slider", "lens_noise"), ("segmented", "source"),
+               ("segmented", "style"), ("slider", "lens_noise"), ("slider", "lens_warmth"),
+               ("segmented", "source"),
                ("slider", "split"), ("button", "save_preset")}
 
 

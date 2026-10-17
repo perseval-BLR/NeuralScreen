@@ -290,6 +290,10 @@ class Item:
 
 
 
+#: The colour block's sliders (#164), -1..1 each with 0 as the picture is.
+COLOUR_KEYS = ("lens_saturation", "lens_exposure", "lens_contrast", "lens_warmth", "lens_tint")
+
+
 def _signed_text(key: str, value: float) -> str:
     """The value cell of a centred colour slider (#164)."""
     if key == "lens_exposure":
@@ -497,6 +501,9 @@ class OverlayMenu:
             "lens_soft": 0.0,
             "lens_saturation": 0.0,
             "lens_exposure": 0.0,
+            "lens_contrast": 0.0,
+            "lens_warmth": 0.0,
+            "lens_tint": 0.0,
             # Which card this is and whether NR runs on it. gpu_ok:
             # True/False/None (None - the worker has not answered yet).
             "gpu_text": "",
@@ -2179,8 +2186,17 @@ class OverlayMenu:
                     amount = float(self.state.get(key, default))
                     slider(key, 0.0, 1.0, amount, s[key],
                            value_text=f"{int(round(amount * 100))}%")
-                # Colour (#164): centred, the tick at 0 is the picture as it is.
-                for key in ("lens_saturation", "lens_exposure"):
+
+            # The colour (#164): a block of its own, not the camera's - with
+            # five more sliders the camera block took 1500 px at 1080p, and
+            # the grading works with the camera off. Centred sliders, the
+            # tick at 0 is the picture as it is.
+            changed = sum(1 for key in COLOUR_KEYS
+                          if abs(float(self.state.get(key, 0.0))) >= 0.005)
+            if fold("colour", s.get("fold_colour", "Colour"),
+                    s.get("colour_changed", "Changed: {n}").format(n=changed) if changed
+                    else s.get("colour_as_is", "As it is")):
+                for key in COLOUR_KEYS:
                     amount = float(self.state.get(key, 0.0))
                     slider(key, -1.0, 1.0, amount, s[key],
                            value_text=_signed_text(key, amount), mark=0.0)
@@ -3083,7 +3099,7 @@ class OverlayMenu:
         if item.key == "split":
             self.state["split"] = value
             return [("split", value)]
-        if item.key in ("lens_saturation", "lens_exposure"):
+        if item.key in COLOUR_KEYS:
             value = round(value / 0.05) * 0.05
             self.state[item.key] = value
             item.value = value

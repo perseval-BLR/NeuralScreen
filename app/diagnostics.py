@@ -639,6 +639,7 @@ _SETTINGS_KEYS = (
     # is warped / clicks miss / the corners are dark" is answered by these.
     "lens", "lens_fov", "lens_noise", "lens_bend", "lens_vignette",
     "lens_aberration", "lens_sensor", "lens_soft", "lens_saturation", "lens_exposure",
+    "lens_contrast", "lens_warmth", "lens_tint",
     # What passes 2..N use, when they have their own set. Without it a report
     # from a two-pass session cannot say whether the cascade was running one
     # set or two - and that is exactly the difference between "the second pass

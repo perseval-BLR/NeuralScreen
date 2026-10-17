@@ -69,6 +69,11 @@ Scope and honesty notes:
 * **Saturation and exposure in the camera (#164).** Two centred sliders in the
   Camera block: saturation from grey to twice the colour, exposure one stop
   either way, both applied with the camera's look after the network.
+* **Contrast and white balance; the colour gets a block of its own (#164).**
+  Contrast about the middle grey (half to twice), warmth (blue-red) and tint
+  (green-magenta) at the luminance kept. The five colour sliders moved from the
+  Camera block to a Colour block - with them the camera block was 1500 px tall
+  at 1080p - and they work with the camera off.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

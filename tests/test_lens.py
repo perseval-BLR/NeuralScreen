@@ -23,9 +23,11 @@ Checked on the real worker:
   leaves green; the small sensor crushes the darkest greys to black, clips the
   brightest to white and keeps the middle near the middle - and leaves the
   corners as sharp as they were, which the softness alone does not (#168);
-  saturation at -100% leaves grey, exposure at +1 EV brightens by a stop (#164).
-* Off means off: before the first LENS and after LENS off, the output is the
-  input bit for bit.
+  saturation at -100% leaves grey even with the camera off, exposure at
+  +1 EV brightens by a stop, warmth turns grey red against blue, contrast
+  -100% halves the range (#164).
+* Off means off: before the first LENS and after LENS off with the colour at
+  zero, the output is the input bit for bit.
 * On the presented paths - the worker's own window, with and without Frame
   Generation - frames keep being answered with the lens on, the worker says
   it is on, and nothing fails.
@@ -176,10 +178,12 @@ def _pipe_run(failures: list) -> None:
 
     def lens(on: bool, fov: float, noise: float = 0.0, bend: bool = True,
              vignette: float = 0.0, aberration: float = 0.0, sensor: float = 0.0,
-             soft: float = 0.0, saturation: float = 0.0, exposure: float = 0.0) -> None:
+             soft: float = 0.0, saturation: float = 0.0, exposure: float = 0.0,
+             contrast: float = 0.0, warmth: float = 0.0, tint: float = 0.0) -> None:
         proc.stdin.write(struct.pack(LENS_FMT, LENS_MAGIC,
                                      lens_flags(on, bend, vignette, aberration, sensor, soft),
-                                     fov, noise, 0, saturation, exposure))
+                                     fov, noise, 0, saturation, exposure, contrast, warmth,
+                                     tint, 0.0))
         proc.stdin.flush()
         magic, ok, _r0, _r1, _pts = struct.unpack(
             LENS_ACK_FMT, read_reply(proc.stdout, struct.calcsize(LENS_ACK_FMT)))
@@ -188,7 +192,7 @@ def _pipe_run(failures: list) -> None:
 
     bent = noisy = noisy_later = None
     flat_noisy = vignetted = fringed = sensed = None
-    toned = softened = greyed = brighter = None
+    toned = softened = greyed = brighter = warmed = flattened = None
     grey = np.full((H, W, 4), 160, np.uint8)
     grey[..., 3] = 255
     # Sixteen columns of grey, 0 to 255.
@@ -224,11 +228,16 @@ def _pipe_run(failures: list) -> None:
         toned = frame(stripes)
         lens(True, FOV, bend=False, soft=1.0)
         softened = frame(stripes)
-        # #164: colour - all of it taken away, and a stop more light.
-        lens(True, FOV, bend=False, saturation=-1.0)
+        # #164: colour - all of it taken away (with the camera off: the
+        # grading is not the camera's), and a stop more light.
+        lens(False, FOV, saturation=-1.0)
         greyed = frame(rgba)
         lens(True, FOV, bend=False, exposure=1.0)
         brighter = frame(grey)
+        lens(True, FOV, bend=False, warmth=1.0)
+        warmed = frame(grey)
+        lens(True, FOV, bend=False, contrast=-1.0)
+        flattened = frame(steps)
         lens(False, FOV)
         after = frame()
         if not np.array_equal(after[..., :3], rgba[..., :3]):
@@ -263,6 +272,19 @@ def _pipe_run(failures: list) -> None:
         print(f"    exposure +1 EV: grey 160 -> {b:.0f}")
         if not 205 <= b <= 225:      # 255 * (2 * (160/255)^2.2)^(1/2.2) = 219
             failures.append(f"exposure +1 EV turned grey 160 into {b:.0f}, not ~219")
+    if warmed is not None:
+        r, g, b = (warmed[H // 2 - 8:H // 2 + 8, W // 2 - 8:W // 2 + 8, c].mean()
+                   for c in range(3))
+        print(f"    warmth +100%: grey 160 -> R {r:.0f} G {g:.0f} B {b:.0f}")
+        # Gains 2^0.25 and 2^-0.25 at the luminance kept: R ~171, G ~158, B ~146.
+        if not (r - b >= 15 and abs(g - 160) <= 6):
+            failures.append(f"warmth +100% gave R {r:.0f} G {g:.0f} B {b:.0f} from grey 160")
+    if flattened is not None:
+        cols = flattened[H // 2, :, 0].astype(np.float64)
+        span = cols.max() - cols.min()
+        print(f"    contrast -100%: the 0..255 steps span {span:.0f} codes")
+        if not 117 <= span <= 137:   # half of 255 about the middle
+            failures.append(f"contrast -100% left a span of {span:.0f}, not ~127")
     if toned is not None and softened is not None:
         def corner_contrast(img):
             p = img[..., :3].astype(np.float64)

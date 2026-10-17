@@ -1002,13 +1002,14 @@ LENS_NOISE_DEFAULT = 0.3
 # tone and its softness towards the corners are two (#168): the softness blurs
 # a game's HUD and text, the tone does not.
 LENS_AMOUNT_KEYS = ("lens_vignette", "lens_aberration", "lens_sensor", "lens_soft")
-# Colour (#164): -1..1 with 0 as the picture is - saturation, and exposure in
-# stops.
-LENS_SIGNED_KEYS = ("lens_saturation", "lens_exposure")
+# Colour (#164): -1..1 with 0 as the picture is - saturation, exposure in
+# stops, contrast (the levels about the middle grey), and the white balance as
+# warmth (blue-red) and tint (green-magenta).
+LENS_SIGNED_KEYS = ("lens_saturation", "lens_exposure", "lens_contrast", "lens_warmth", "lens_tint")
 
 
 #: The main page's fold-outs (redesign B, overlay_ui.layout).
-MENU_FOLDS = ("net", "tune", "camera", "source")
+MENU_FOLDS = ("net", "tune", "camera", "colour", "source")
 
 
 def restore_menu_extras(menu, cfg: dict) -> None:

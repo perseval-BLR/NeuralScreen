@@ -59,7 +59,7 @@ def build():
     menu.visible = True
     # Every fold-out open (redesign B, v2.6.0): the page with all of its
     # controls, which is what the tests built on this one click through.
-    menu.folds = {"net", "tune", "camera", "source"}
+    menu.folds = {"net", "tune", "camera", "colour", "source"}
     return menu
 
 
@@ -77,6 +77,18 @@ def click(menu, item):
     field, the hotkey field. item.extra["hit"] is that zone; the tests
     click it so they exercise the same target a user does.
     """
+    view = getattr(menu, "_viewport", None)
+    if menu._max_scroll > 0 and view is not None and not view.contains(item.rect):
+        # Scrolled to it first, as a user would: with every block open the
+        # page is taller than the screen. The same item after the relayout.
+        top, bottom = view.top + 6, view.bottom - 6
+        shift = (item.rect.top - top if item.rect.top < top
+                 else item.rect.bottom - bottom)
+        menu.scroll = min(max(0, menu.scroll + shift), menu._max_scroll)
+        menu.layout(*menu._layout_size)
+        paint(menu)
+        item = next(i for i in menu.items if i.kind == item.kind and i.key == item.key
+                    and i.extra.get("label") == item.extra.get("label"))
     zone = item.extra.get("hit") or item.rect
     if item.extra.get("hit", True) is None:
         raise AssertionError(

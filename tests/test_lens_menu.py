@@ -157,7 +157,7 @@ def _check_commands(failures: list) -> None:
     got = [(flags & protocol.LENS_FLAG_ON, (flags & protocol.LENS_FLAG_BEND) >> 1,
             round(fov), round(noise, 2), (flags >> 8) & 255, (flags >> 16) & 255,
             (flags >> 24) & 255, (flags >> protocol.LENS_SHIFT_SOFT) & protocol.LENS_SOFT_MAX)
-           for _m, flags, fov, noise, _p, _sat, _ev in sent]
+           for _m, flags, fov, noise, _p, *_colour in sent]
     print(f"    commands sent: {got}")
     top = int(settings_io.LENS_FOV_MAX)
     # The tone and the corner softness are two amounts (#168): the sensor
@@ -202,12 +202,12 @@ def _check_config(failures: list) -> None:
                 failures.append(f"lens_sensor {raw} loaded as {got} (expected {want})")
         # #164: the colour pair is signed, -1..1 in 0.05 steps, 0 = as it is.
         for raw, want in (('"x"', 0.0), ("NaN", 0.0), ("-7", -1.0), ("7", 1.0), ("-0.42", -0.4)):
-            path.write_text('{"lens_saturation": %s, "lens_exposure": %s}' % (raw, raw),
+            path.write_text("{%s}" % ", ".join(f'"{k}": {raw}' for k in COLOUR),
                             encoding="utf-8")
             cfg = settings_io.load_config(path)
-            if cfg.get("lens_saturation") != want or cfg.get("lens_exposure") != want:
-                failures.append(f"colour {raw} loaded as {cfg.get('lens_saturation')}, "
-                                f"{cfg.get('lens_exposure')} (expected {want})")
+            got = [cfg.get(k) for k in COLOUR]
+            if got != [want] * len(COLOUR):
+                failures.append(f"colour {raw} loaded as {got} (expected {want})")
         path.write_text("{}", encoding="utf-8")
         if settings_io.load_config(path).get("lens_bend") is not True:
             failures.append("a config without lens_bend does not keep the fisheye on")
@@ -229,13 +229,31 @@ def _check_config(failures: list) -> None:
                             f"vignette={saved.get('lens_vignette')}")
 
 
+COLOUR = ("lens_saturation", "lens_exposure", "lens_contrast", "lens_warmth",
+          "lens_tint")
+
+
 def _check_colour(failures: list) -> None:
-    """#164: saturation and exposure - centred sliders in the camera block,
-    and the pair rides LENS to the worker."""
+    """#164: saturation, exposure, contrast, warmth and tint - centred sliders
+    in a colour block of their own, and all five ride LENS to the worker."""
     import commands
     import protocol
-    menu = _menu("en", lens_saturation=-0.2, lens_exposure=0.5)
-    for key, text in (("lens_saturation", "-20%"), ("lens_exposure", "+0.50 EV")):
+    colour = dict(lens_saturation=-0.2, lens_exposure=0.5, lens_contrast=0.3,
+                  lens_warmth=-0.45, lens_tint=0.0)
+    # Their own block, not the camera's: the camera block open shows none of
+    # them, and the closed colour block says how many are moved off zero.
+    menu = _menu("en", folds=("camera",), **colour)
+    if any(_item(menu, key) is not None for key in COLOUR):
+        failures.append("a colour slider is in the camera block")
+    head = _item(menu, "colour")
+    if head is None or head.kind != "fold" or head.extra.get("summary") != "Changed: 4":
+        failures.append(f"the colour block header is {head and head.extra}")
+    if _item(_menu("en", folds=()), "colour").extra.get("summary") != "As it is":
+        failures.append("an untouched colour block does not say it is as it is")
+    menu = _menu("en", folds=("colour",), **colour)
+    for key, text in (("lens_saturation", "-20%"), ("lens_exposure", "+0.50 EV"),
+                      ("lens_contrast", "+30%"), ("lens_warmth", "-45%"),
+                      ("lens_tint", "0%")):
         item = _item(menu, key)
         if item is None or item.lo != -1.0 or item.hi != 1.0 \
                 or item.extra.get("value_text") != text:
@@ -259,13 +277,18 @@ def _check_colour(failures: list) -> None:
                                    menu=types.SimpleNamespace(set_state=lambda d: None)))
     commands.apply_menu_action(st, ("lens_saturation", -0.4))
     commands.apply_menu_action(st, ("lens_exposure", 3.0))
+    commands.apply_menu_action(st, ("lens_contrast", 0.25))
+    commands.apply_menu_action(st, ("lens_warmth", -0.5))
+    commands.apply_menu_action(st, ("lens_tint", "nan"))
+    commands.apply_menu_action(st, ("lens_tint", 0.75))
     size = struct.calcsize(protocol.LENS_FMT)
     data = st.worker.stdin.getvalue()
     last = struct.unpack(protocol.LENS_FMT, data[-size:]) if len(data) >= size else None
     if st.cfg.get("lens_saturation") != -0.4 or st.cfg.get("lens_exposure") != 1.0:
         failures.append(f"the colour commands stored {st.cfg}")
-    if last is None or round(last[5], 2) != -0.4 or round(last[6], 2) != 1.0:
-        failures.append(f"the LENS command carries {last and last[5:]}, not (-0.4, 1.0)")
+    want = (-0.4, 1.0, 0.25, -0.5, 0.75, 0.0)
+    if last is None or tuple(round(v, 2) for v in last[5:]) != want:
+        failures.append(f"the LENS command carries {last and last[5:]}, not {want}")
 
 
 def main() -> int:

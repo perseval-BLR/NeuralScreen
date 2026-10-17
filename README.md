@@ -99,8 +99,8 @@ place, with no black moment. Minimising the window pauses processing.
 ## The menu
 
 Four tiles on top (NR, FG, Boost, Camera), the profile, then fold-outs: Network,
-Fine tuning, Camera, Source and comparison. The bar icon folds the panel into a
-bar at the top that stays over a game. The dot is green while NR really runs.
+Fine tuning, Camera, Colour, Source and comparison. The bar icon folds the panel
+into a bar at the top that stays over a game. The dot is green while NR runs.
 
 - **Source** — the whole screen or one window, and which window.
 - **Profile** — how strong the effect is, from *Faithful* to *Extreme*;
@@ -116,9 +116,9 @@ bar at the top that stays over a game. The dot is green while NR really runs.
   TECHNICAL.md). A saved preset keeps the model it was saved with.
 - **Camera** — **Fisheye** (on by default; **Field of view** = the game's FOV,
   110-120 typical; off-centre clicks land elsewhere), noise, vignette, aberration,
-  **Small sensor** (tone), **Soft corners** (blur), **Saturation**, **Exposure**.
-- **Before / after wipe** — leaves the left part of the screen unprocessed so
-  you can see what the effect is doing. Back to 0 when done.
+  **Small sensor** (tone), **Soft corners** (blur).
+- **Colour** — saturation, exposure, contrast, warmth, tint; also without the Camera.
+- **Before / after wipe** — leaves the left of the screen unprocessed; 0 = off.
 - **Boost** — on by default. The network runs at a reduced resolution and a
   slider under the switch chooses which: measured on a 5070 Ti at 4K,
   **45.7 → 72.6 frames** at the default step and **83.4** at the lowest. The

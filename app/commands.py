@@ -771,7 +771,10 @@ def send_lens_state(st) -> None:
                            sensor=float(st.cfg.get("lens_sensor", 0.0)),
                            soft=float(st.cfg.get("lens_soft", 0.0)),
                            saturation=float(st.cfg.get("lens_saturation", 0.0)),
-                           exposure=float(st.cfg.get("lens_exposure", 0.0)))
+                           exposure=float(st.cfg.get("lens_exposure", 0.0)),
+                           contrast=float(st.cfg.get("lens_contrast", 0.0)),
+                           warmth=float(st.cfg.get("lens_warmth", 0.0)),
+                           tint=float(st.cfg.get("lens_tint", 0.0)))
         st.lens_pid = worker.pid
     except Exception as exc:
         print(f"[main] the lens settings did not go through ({exc})", file=sys.stderr)
@@ -905,7 +908,7 @@ def apply_menu_action(st, action: tuple) -> None:
         st.cfg["lens_noise"] = round(min(1.0, max(0.0, noise)), 2)
         send_lens_state(st)
     elif kind in settings_io.LENS_SIGNED_KEYS:
-        # #164: saturation and exposure, -1..1 with 0 as it is.
+        # #164: the colour, -1..1 with 0 as it is.
         try:
             amount = float(action[1])
         except (TypeError, ValueError):

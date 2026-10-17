@@ -2120,6 +2120,8 @@ struct VideoLensCmd
     float fov, noise;
     int64_t pts;
     float saturation, exposure;   // #164: -1..1 each, 0 = as it is
+    float contrast, warmth, tint; // #164: levels and white balance, -1..1 each
+    float reserved;
 };
 using VideoLensAck = VideoPerPassAck;   // magic LNAK, ok, two reserved, pts
 // UIRC: where the picture holds a still interface (app/ui_protect.py), in
@@ -2269,7 +2271,7 @@ static VideoRecCmd g_rec_cmd = {};
 static_assert(offsetof(VideoFrameHeader, pts) == 16, "VideoFrameHeader is not packed");
 static_assert(offsetof(VideoResultHeader, pts) == 20, "VideoResultHeader is not packed");
 static_assert(offsetof(VideoWgcCmd, hwnd) == 24, "VideoWgcCmd is not packed");
-static_assert(sizeof(VideoLensCmd) == 32, "VideoLensCmd != LENS_FMT");
+static_assert(sizeof(VideoLensCmd) == 48, "VideoLensCmd != LENS_FMT");
 static_assert(sizeof(VideoBadgeCmd) == 88, "VideoBadgeCmd != BADGE_FMT");
 static_assert(sizeof(VideoUiRectsCmd) == 280, "VideoUiRectsCmd != UI_RECTS_FMT");
 static_assert(sizeof(VideoLensAck) == 24, "VideoLensAck != LENS_ACK_FMT");
@@ -7883,13 +7885,21 @@ static int RunVideo()
             if (std::isfinite(fov)) g_lens_fov = std::clamp(fov, kLensFovMin, kLensFovMax);
             if (std::isfinite(g_lens_cmd.noise))
                 g_lens_noise = std::clamp(g_lens_cmd.noise, 0.0f, 1.0f);
-            const float sat = std::isfinite(g_lens_cmd.saturation)
-                ? std::clamp(g_lens_cmd.saturation, -1.0f, 1.0f) : 0.0f;
-            const float ev = std::isfinite(g_lens_cmd.exposure)
-                ? std::clamp(g_lens_cmd.exposure, -1.0f, 1.0f) : 0.0f;
-            if (sat != g_lens_saturation || ev != g_lens_exposure) g_lens.said = false;
+            // The colour (#164): -1..1 each, anything else is "as it is".
+            const auto colour = [](float v) {
+                return std::isfinite(v) ? std::clamp(v, -1.0f, 1.0f) : 0.0f;
+            };
+            const float sat = colour(g_lens_cmd.saturation), ev = colour(g_lens_cmd.exposure);
+            const float con = colour(g_lens_cmd.contrast), warm = colour(g_lens_cmd.warmth);
+            const float tint = colour(g_lens_cmd.tint);
+            if (sat != g_lens_saturation || ev != g_lens_exposure || con != g_lens_contrast ||
+                warm != g_lens_warmth || tint != g_lens_tint)
+                g_lens.said = false;
             g_lens_saturation = sat;
             g_lens_exposure = ev;
+            g_lens_contrast = con;
+            g_lens_warmth = warm;
+            g_lens_tint = tint;
             // Logged when it switches, not on every angle: a dragged slider
             // sends one command per degree.
             if (on != g_lens_on)
