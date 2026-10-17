@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 
 * **Video and capture-card pictures no longer stutter under NR (#166).** With
   NR on, a 59.94 fps source on a 119.88 Hz monitor (a PS5 through a capture
