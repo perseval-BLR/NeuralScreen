@@ -88,13 +88,13 @@ closed, clicks go straight through it.
 
 ### Whole screen or one window
 
-The whole screen is the default. **Source**, second in the menu, switches
-between **Fullscreen** and **Window mode**; choosing the second opens the list
-of windows, and hovering a row highlights that window. **Num5** is the
-shortcut when the window is already in front of you: point at it and press.
-The overlay follows the window as it moves; resizing it, or picking another
-window on the same monitor while nothing records, reconfigures the worker in
-place, with no black moment. Minimising the window pauses processing.
+The whole screen is the default. **Source** switches between **Fullscreen**
+and **Window mode**, which opens the list of windows (hovering a row highlights
+the window); **Num5** takes the window under the pointer. The overlay follows
+the window; resizing it, or picking another window on the same monitor while
+nothing records, reconfigures the worker in place, with no black moment, and
+**Follow the focused window** (Settings → Capture) does that for the window
+that keeps the focus 2.5 s. Minimising the window pauses processing.
 
 ## The menu
 

@@ -68,6 +68,7 @@
   "keep_speed_when_hidden": true,
   "fg_ui_protect": false,
   "dim_on_rebuild": true,
+  "window_follow": false,
   "menu_height": null,
   "menu_offset": [
     0,

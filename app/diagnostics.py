@@ -650,6 +650,7 @@ _SETTINGS_KEYS = (
     # hidden. A report that says "it is slow when minimised" is unanswerable
     # without knowing this switch and what the read-back said.
     "keep_speed_when_hidden", "fg_ui_protect", "dim_on_rebuild",
+    "window_follow",
     "hotkeys_enabled",
     "menu_scale", "menu_scale_auto",
     # Mini mode and the rows it keeps: a report from a shortened

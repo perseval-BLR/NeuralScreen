@@ -318,6 +318,7 @@ a maintainer's GPU, paths or experimental switches cannot leak into a release.
 | `flow_preset` | which DIS configuration estimates the motion field: `fast` (default, as shipped), `ultrafast`, `medium`. See "What the guides cost" |
 | `frame_limit_mode`, `frame_limit_custom` | active-pipeline cap: 30, 60, custom 15–240, or unlimited |
 | `frame_generation`, `frame_multiplier` | opt-in FG and the requested multiplier, ×2 to ×6; a refused step is walked down, a refused ×2 turns it back off |
+| `window_follow` | window mode follows the focus (#157, off): a window that keeps the focus 2.5 s becomes the source, at most once per 8 s, only by the live switch (same monitor, NR capturing, no recording); never ours, LockApp, Explorer, dwm ghosts, tool/cloaked windows or ones wider than their monitor (`app/window_follow.py`); each switch and skip is logged as `[main] follow:` |
 | `recording_dir`, `screenshot_dir`, `screenshot_mode`, `screenshot_format` | persistent media destinations; screenshots use Save As or a quiet unique name, PNG or JPEG |
 | `spout`, `hdr` | explicit opt-in output/capture optimisations; both default off |
 | `split` | 0–1, share of the frame left unprocessed for the before/after wipe; 0 — off |

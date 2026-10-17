@@ -461,6 +461,7 @@ class OverlayMenu:
             "keep_speed_when_hidden": True,
             "fg_ui_protect": False,
             "dim_on_rebuild": True,
+            "window_follow": False,
             # The hotkeys master switch (#134). Listed HERE for the reason the
             # spout/hdr entries above spell out: a key missing from this dict
             # is dropped by set_state in silence, and the toggle would draw as
@@ -1692,6 +1693,11 @@ class OverlayMenu:
             toggle("hdr", s.get("hdr_mode", "HDR compatibility"),
                    bool(self.state.get("hdr")),
                    hint=s.get("hdr_mode_hint", ""))
+            # #157: in window mode the capture goes to the window that keeps
+            # the focus - on the same monitor, by the live switch.
+            toggle("window_follow", s.get("window_follow", "Follow the focused window"),
+                   bool(self.state.get("window_follow", False)),
+                   hint=s.get("window_follow_hint", ""))
             choice("motion_backend", s.get("motion_backend", "Motion estimation"),
                    self.state.get("motion_backend", "nvofa"), ["nvofa", "cpu"],
                    labels=[s.get("motion_nvofa", "NVOFA (experimental)"),

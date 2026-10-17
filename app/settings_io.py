@@ -982,7 +982,7 @@ _BOOL_KEYS = (
     "pixels_in_shm", "nr_small", "nr_direct", "frame_generation",
     "record_audio", "rec_indicator", "gpu_record", "convert_audio", "spout",
     "hdr", "open_menu_on_start", "hotkeys_enabled", "keep_speed_when_hidden",
-    "lens", "lens_bend", "fg_ui_protect", "dim_on_rebuild",
+    "lens", "lens_bend", "fg_ui_protect", "dim_on_rebuild", "window_follow",
 )
 
 # The fisheye lens (native/lens.inl): the game's horizontal field of view, in
@@ -1217,6 +1217,7 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         "keep_speed_when_hidden": cfg.get("keep_speed_when_hidden", True) is not False,
         "fg_ui_protect": bool(cfg.get("fg_ui_protect", False)),
         "dim_on_rebuild": cfg.get("dim_on_rebuild", True) is not False,
+        "window_follow": bool(cfg.get("window_follow", False)),
         # The hotkeys master switch (#134). Read with `is not False` so a
         # missing key means on (the shipped default) and only an explicit
         # false switches them off.
@@ -1753,6 +1754,7 @@ def menu_payload(st) -> dict:
         "keep_speed_when_hidden": st.cfg.get("keep_speed_when_hidden", True) is not False,
         "fg_ui_protect": bool(st.cfg.get("fg_ui_protect", False)),
         "dim_on_rebuild": st.cfg.get("dim_on_rebuild", True) is not False,
+        "window_follow": bool(st.cfg.get("window_follow", False)),
         "hotkeys_enabled": st.cfg.get("hotkeys_enabled", True) is not False,
         "recording_dir": st.cfg.get("recording_dir") or "",
         "screenshot_dir": st.cfg.get("screenshot_dir") or "",

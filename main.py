@@ -494,6 +494,12 @@ class _Pipeline:
         #: detector, and what was last sent to which worker.
         "ui_detector",
         "ui_rects_sent",
+        #: Window mode following the focus (app/window_follow.py, #157): the
+        #: follower, when it last looked, and the last window it logged as
+        #: not followable.
+        "focus_follower",
+        "focus_checked_at",
+        "focus_skipped",
         #: What passes 2..N use, when the user gave them their own set. None
         #: by default, which means "the main set for every pass".
         "nr_pass_params",
@@ -1644,6 +1650,7 @@ def main() -> int:
             # pass, because the display is rebuilt with the window.
             commands.send_badge_state(st)
             commands.update_ui_protection(st)
+            commands.update_window_follow(st)
             if (not startup_pending and int(getattr(st, "nr_passes", 1)) > 1
                     and st.worker is not None
                     and getattr(st, "nr_passes_pid", None) != st.worker.pid):

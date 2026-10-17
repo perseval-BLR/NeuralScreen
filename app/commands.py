@@ -31,6 +31,7 @@ from pathlib import Path
 import channels
 from badge import BadgeChannel
 from ui_protect import UiDetector
+import window_follow
 import convert_jobs
 import dialogs
 import pipeline
@@ -726,6 +727,51 @@ def update_ui_protection(st) -> None:
               file=sys.stderr)
 
 
+def update_window_follow(st, now: float | None = None) -> None:
+    """Window mode follows the focused window (#157, app/window_follow.py).
+
+    Looked at four times a second while the setting is on and a live switch
+    is possible: window mode, NR capturing, no recording, no menu, no switch
+    under way. A followable window that keeps the focus long enough is
+    switched to; a window that is not followable is logged once, with why."""
+    follower = getattr(st, "focus_follower", None)
+    if not st.cfg.get("window_follow", False):
+        if follower is not None:
+            follower.reset()
+        return
+    current = getattr(st, "window_hwnd", None)
+    worker = getattr(st, "worker", None)
+    if (not current or worker is None or worker.poll() is not None
+            or not getattr(st, "dda_mode", False) or getattr(st, "off_suspended", False)
+            or getattr(st, "recorder", None) is not None or st.display.menu.visible
+            or st.display.is_switch_active()):
+        if follower is not None:
+            follower.reset()
+        return
+    now = time.monotonic() if now is None else now
+    if now - (getattr(st, "focus_checked_at", None) or float("-inf")) < window_follow.CHECK_S:
+        return
+    st.focus_checked_at = now
+    if follower is None:
+        follower = st.focus_follower = window_follow.FocusFollower()
+    focused = window_follow.focused_window()
+    info = None
+    if focused and focused != int(current):
+        info = window_follow.window_info(focused, int(current))
+        reason = window_follow.why_not(info)
+        if reason is not None:
+            if getattr(st, "focus_skipped", None) != focused:
+                st.focus_skipped = focused
+                print(f"[main] follow: not taking 0x{focused:X} "
+                      f"({info.process or '?'}, {info.cls or '?'}): {reason}")
+            focused = 0
+    target = follower.update(now, focused, int(current))
+    if target and info is not None:
+        print(f"[main] follow: 0x{target:X} ({info.process or '?'}, {info.cls or '?'}) "
+              f"kept the focus {window_follow.DWELL_S:g} s - capturing it")
+        pipeline.switch_window(st, target)
+
+
 def send_badge_state(st) -> None:
     """Name the rate badge to a worker that has not heard of it, and hand the
     badge to the display while the worker presents (app/badge.py)."""
@@ -970,6 +1016,12 @@ def apply_menu_action(st, action: tuple) -> None:
             tb.to_tray_on_close = bool(st.cfg.get("tray_on_close", False))
         settings_io.save_menu_layout(st)
         print(f"[main] {name}: {'on' if st.cfg[name] else 'off'}")
+    elif kind == "toggle" and action[1] == "window_follow":
+        st.cfg["window_follow"] = not bool(st.cfg.get("window_follow", False))
+        st.display.menu.set_state({"window_follow": st.cfg["window_follow"]})
+        settings_io.save_menu_layout(st)
+        print(f"[main] follow the focused window: "
+              f"{'on' if st.cfg['window_follow'] else 'off'}")
     elif kind == "toggle" and action[1] == "dim_on_rebuild":
         st.cfg["dim_on_rebuild"] = not (st.cfg.get("dim_on_rebuild", True) is not False)
         st.display.dim_on_rebuild = st.cfg["dim_on_rebuild"]

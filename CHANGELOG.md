@@ -74,6 +74,11 @@ Scope and honesty notes:
   (green-magenta) at the luminance kept. The five colour sliders moved from the
   Camera block to a Colour block - with them the camera block was 1500 px tall
   at 1080p - and they work with the camera off.
+* **Follow the focused window (#157).** Settings → Capture, off by default: in
+  window mode a window that keeps the focus 2.5 s becomes the source, through
+  the live switch (same monitor, no recording), at most once per 8 s. Lock
+  screen, Explorer, dwm's ghost windows, tool and cloaked windows are never
+  taken; every switch and skip is logged with the process and class.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 
