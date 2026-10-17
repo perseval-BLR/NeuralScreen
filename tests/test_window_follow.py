@@ -18,7 +18,8 @@ Checked without a GPU:
 4. the command layer: off - nothing; on - one switch after the dwell, none
    while recording, with the menu open or outside window mode; a window the
    capture refuses is tried once until the focus leaves it; a skipped window
-   is logged once with its reason;
+   is logged once with its reason; a failure inside is shown once and stops
+   the following instead of ending the program;
 5. the switch is on the Capture tab, its command flips the config, and the
    key is validated as a boolean.
 
@@ -189,6 +190,26 @@ def main() -> int:
             st = state(window_follow=True)
             for t in range(20):
                 commands.update_window_follow(st, now=t * 0.25)
+            # A failure inside does not reach the main loop: shown once, and
+            # the following stops for the session.
+            calls = []
+
+            def broken():
+                calls.append(1)
+                raise OSError("a Win32 query failed")
+            wf.focused_window = broken
+            alerts = []
+            st = state(window_follow=True)
+            st.lang = "en"
+            st.display.alert = alerts.append
+            with contextlib.redirect_stderr(io.StringIO()):
+                for t in range(40, 60):
+                    commands.update_window_follow(st, now=t * 0.25)
+            if len(calls) != 1 or len(alerts) != 1:
+                failures.append(f"a failing follower ran {len(calls)} times and "
+                                f"alerted {len(alerts)} times")
+    except Exception as exc:  # noqa: BLE001 - reported
+        failures.append(f"the follower raised into the loop: {exc!r}")
     finally:
         (wf.focused_window, wf.window_info, pipeline.switch_window,
          pipeline.live_switch_possible) = real

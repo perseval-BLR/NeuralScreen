@@ -733,7 +733,22 @@ def update_window_follow(st, now: float | None = None) -> None:
     Looked at four times a second while the setting is on and a live switch
     is possible: window mode, NR capturing, no recording, no menu, no switch
     under way. A followable window that keeps the focus long enough is
-    switched to; a window that is not followable is logged once, with why."""
+    switched to; a window that is not followable is logged once, with why.
+
+    Called on every pass of the main loop, outside the menu's containment: a
+    failure here (a switch that raises, a Win32 query) is logged and shown
+    once and turns the following off for the session, instead of reaching
+    main's top-level handler and closing the program."""
+    if getattr(st, "focus_broken", False):
+        return
+    if run_contained(st, "following the focused window",
+                     lambda: _update_window_follow(st, now) or True) is not True:
+        st.focus_broken = True
+        print("[main] follow: off for this session after the failure above",
+              file=sys.stderr)
+
+
+def _update_window_follow(st, now: float | None) -> None:
     follower = getattr(st, "focus_follower", None)
     if not st.cfg.get("window_follow", False):
         if follower is not None:

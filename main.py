@@ -501,6 +501,7 @@ class _Pipeline:
         "focus_checked_at",
         "focus_skipped",
         "focus_failed",
+        "focus_broken",
         #: What passes 2..N use, when the user gave them their own set. None
         #: by default, which means "the main set for every pass".
         "nr_pass_params",
