@@ -115,8 +115,9 @@ on it, red when it is not.
   are tuned for games and soften photographs and small text (measured in
   TECHNICAL.md). A saved preset keeps the model it was saved with.
 - **Camera** — **Fisheye** (on by default; **Field of view** = the game's FOV,
-  110-120 typical; off-centre clicks land elsewhere) and four amounts, 0 = off:
-  **Webcam noise**, **Vignette**, **Chromatic aberration**, **Small sensor**.
+  110-120 typical; off-centre clicks land elsewhere) and five amounts, 0 = off:
+  **Webcam noise**, **Vignette**, **Chromatic aberration**, **Small sensor**
+  (the tone) and **Soft corners** (the blur, which also softens a HUD).
 - **Before / after wipe** — leaves the left part of the screen unprocessed so
   you can see what the effect is doing. Back to 0 when done.
 - **Boost** — on by default. The network runs at a reduced resolution and a
@@ -140,6 +141,7 @@ Everything else is behind the sliders icon: monitor/GPU, a 30/60/custom/off
 frame limiter, HDR, media folders, file conversion, Spout2, the recording
 indicator, an on-screen frame counter, minimise/close to tray, key
 assignments, keyboard navigation, **Notifications** (All / Errors / None),
+**Process priority** (Normal / Above normal / High, for both processes),
 theme and **12** languages, and **Scale** above Quit, which sizes the panel.
 
 ## Swapping a runtime
