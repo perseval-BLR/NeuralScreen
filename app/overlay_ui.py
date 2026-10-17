@@ -487,6 +487,7 @@ class OverlayMenu:
             "lens_vignette": 0.0,
             "lens_aberration": 0.0,
             "lens_sensor": 0.0,
+            "lens_soft": 0.0,
             # Which card this is and whether NR runs on it. gpu_ok:
             # True/False/None (None - the worker has not answered yet).
             "gpu_text": "",
@@ -2266,9 +2267,11 @@ class OverlayMenu:
                            value_text=f"{int(fov)}°", hint=s["lens_fov_hint"])
                 # Webcam noise: soft specks, stronger in the shadows, renewed
                 # 30 times a second. Then the vignette, the colour fringes of
-                # a cheap wide lens, and a small sensor's narrow range.
+                # a cheap wide lens, a small sensor's narrow range and, apart
+                # from it (#168), its softness towards the corners.
                 for key, default in (("lens_noise", 0.3), ("lens_vignette", 0.0),
-                                     ("lens_aberration", 0.0), ("lens_sensor", 0.0)):
+                                     ("lens_aberration", 0.0), ("lens_sensor", 0.0),
+                                     ("lens_soft", 0.0)):
                     amount = float(self.state.get(key, default))
                     slider(key, 0.0, 1.0, amount, s[key],
                            value_text=f"{int(round(amount * 100))}%")
@@ -3202,7 +3205,8 @@ class OverlayMenu:
         if item.key == "split":
             self.state["split"] = value
             return [("split", value)]
-        if item.key in ("lens_noise", "lens_vignette", "lens_aberration", "lens_sensor"):
+        if item.key in ("lens_noise", "lens_vignette", "lens_aberration", "lens_sensor",
+                        "lens_soft"):
             self.state[item.key] = value
             item.extra["value_text"] = f"{int(round(value * 100))}%"
             return [(item.key, value)]

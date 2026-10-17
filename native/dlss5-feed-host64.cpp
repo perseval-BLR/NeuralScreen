@@ -7803,13 +7803,17 @@ static int RunVideo()
             const float vignette = static_cast<float>((g_lens_cmd.flags >> 8) & 0xFFu) / 255.0f;
             const float aberration = static_cast<float>((g_lens_cmd.flags >> 16) & 0xFFu) / 255.0f;
             const float sensor = static_cast<float>((g_lens_cmd.flags >> 24) & 0xFFu) / 255.0f;
+            // The corner softness, in 63rds in bits 2-7 (#168).
+            const float soft = static_cast<float>((g_lens_cmd.flags >> 2) & 0x3Fu) / 63.0f;
             if (bend != g_lens_bend || vignette != g_lens_vignette ||
-                aberration != g_lens_aberration || sensor != g_lens_sensor)
+                aberration != g_lens_aberration || sensor != g_lens_sensor ||
+                soft != g_lens_soft)
                 g_lens.said = false;   // the next frame says what it now draws
             g_lens_bend = bend;
             g_lens_vignette = vignette;
             g_lens_aberration = aberration;
             g_lens_sensor = sensor;
+            g_lens_soft = soft;
             const float fov = g_lens_cmd.fov;
             if (std::isfinite(fov)) g_lens_fov = std::clamp(fov, kLensFovMin, kLensFovMax);
             if (std::isfinite(g_lens_cmd.noise))

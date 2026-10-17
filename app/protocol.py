@@ -565,6 +565,9 @@ LENS_ACK_FMT = "<4Iq"            # magic, ok, reserved0, reserved1, pts
 LENS_FLAG_ON = 0x1
 LENS_FLAG_BEND = 0x2
 LENS_SHIFT_VIGNETTE, LENS_SHIFT_ABERRATION, LENS_SHIFT_SENSOR = 8, 16, 24
+# The softness towards the corners, in 63rds, in the six bits left under the
+# vignette's byte (#168: it used to come with the small sensor's tone).
+LENS_SHIFT_SOFT, LENS_SOFT_MAX = 2, 63
 LENS_FOV_MIN, LENS_FOV_MAX = 30.0, 170.0
 
 # RNSZ: change the work resolution on the fly (without restarting the worker
@@ -793,24 +796,26 @@ def send_per_pass(worker: subprocess.Popen, params: dict | None,
 
 
 def lens_flags(enabled: bool, bend: bool = True, vignette: float = 0.0,
-               aberration: float = 0.0, sensor: float = 0.0) -> int:
-    """The LENS flags word: on, the fisheye, and three strengths in 255ths."""
-    def byte(v: float) -> int:
+               aberration: float = 0.0, sensor: float = 0.0, soft: float = 0.0) -> int:
+    """The LENS flags word: on, the fisheye, three strengths in 255ths and the
+    corner softness in 63rds."""
+    def step(v: float, top: int = 255) -> int:
         v = float(v)
-        return 0 if v != v else int(round(min(1.0, max(0.0, v)) * 255.0))
+        return 0 if v != v else int(round(min(1.0, max(0.0, v)) * top))
     return ((LENS_FLAG_ON if enabled else 0) | (LENS_FLAG_BEND if bend else 0)
-            | byte(vignette) << LENS_SHIFT_VIGNETTE
-            | byte(aberration) << LENS_SHIFT_ABERRATION
-            | byte(sensor) << LENS_SHIFT_SENSOR)
+            | step(soft, LENS_SOFT_MAX) << LENS_SHIFT_SOFT
+            | step(vignette) << LENS_SHIFT_VIGNETTE
+            | step(aberration) << LENS_SHIFT_ABERRATION
+            | step(sensor) << LENS_SHIFT_SENSOR)
 
 
 def send_lens(worker: subprocess.Popen, enabled: bool, fov: float,
               noise: float = 0.0, pts: int = 0, *, bend: bool = True,
               vignette: float = 0.0, aberration: float = 0.0,
-              sensor: float = 0.0) -> None:
+              sensor: float = 0.0, soft: float = 0.0) -> None:
     """LENS: the camera on or off - the fisheye from a horizontal field of
-    view (bend), webcam noise, a vignette, chromatic aberration and a small
-    sensor's look, each 0..1.
+    view (bend), webcam noise, a vignette, chromatic aberration, a small
+    sensor's tone and softness towards the corners, each 0..1.
 
     Nothing is recreated and nothing is waited for: the worker applies it to
     the next frame and answers LNAK, which the reader drops like any answer
@@ -818,7 +823,7 @@ def send_lens(worker: subprocess.Popen, enabled: bool, fov: float,
     """
     fov = min(LENS_FOV_MAX, max(LENS_FOV_MIN, float(fov)))
     noise = min(1.0, max(0.0, float(noise)))
-    flags = lens_flags(enabled, bend, vignette, aberration, sensor)
+    flags = lens_flags(enabled, bend, vignette, aberration, sensor, soft)
     worker.stdin.write(struct.pack(LENS_FMT, LENS_MAGIC, flags, fov, noise, int(pts)))
     worker.stdin.flush()
 

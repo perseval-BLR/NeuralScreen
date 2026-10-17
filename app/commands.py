@@ -706,7 +706,8 @@ def send_lens_state(st) -> None:
                            bend=st.cfg.get("lens_bend", True) is not False,
                            vignette=float(st.cfg.get("lens_vignette", 0.0)),
                            aberration=float(st.cfg.get("lens_aberration", 0.0)),
-                           sensor=float(st.cfg.get("lens_sensor", 0.0)))
+                           sensor=float(st.cfg.get("lens_sensor", 0.0)),
+                           soft=float(st.cfg.get("lens_soft", 0.0)))
         st.lens_pid = worker.pid
     except Exception as exc:
         print(f"[main] the lens settings did not go through ({exc})", file=sys.stderr)

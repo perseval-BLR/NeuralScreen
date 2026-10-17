@@ -54,6 +54,7 @@
   "lens_vignette": 0.0,
   "lens_aberration": 0.0,
   "lens_sensor": 0.0,
+  "lens_soft": 0.0,
   "nr_passes": 1,
   "nr_pass_params": null,
   "residual_strength": null,

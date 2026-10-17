@@ -20,9 +20,11 @@
 //
 // The camera around it (each part on its own, 0 = off): webcam noise,
 // a vignette, lateral chromatic aberration (red and blue land at slightly
-// different radii, as through a cheap wide lens) and a small sensor's look -
-// a narrow dynamic range (crushed shadows, clipped highlights), less colour
-// and softness towards the corners. Any of them works without the fisheye
+// different radii, as through a cheap wide lens), a small sensor's look -
+// a narrow dynamic range (crushed shadows, clipped highlights), less colour -
+// and softness towards the corners. The last two were one amount until #168:
+// the softness blurs a game's HUD and text, the tone does not, and a player
+// wants the one without the other. Any of them works without the fisheye
 // (#159: noise over an unbent picture), and with none of them on and the
 // fisheye off the pass does not run at all.
 //
@@ -43,7 +45,8 @@ cbuffer LensCB : register(b0)
     float gFish;      // fisheye focal length, pixels
     float gNoise;     // webcam noise, 0..1
     uint  gSeed;      // the noise's frame: 30 a second, from the clock
-    uint  gFlags;     // bit0 bend (the fisheye), bit1 a linear (scRGB) target
+    uint  gFlags;     // bit0 bend (the fisheye), bit1 a linear (scRGB) target,
+                      // bits 8-15 the softness towards the corners, 255ths
     float gVignette;  // 0..1
     float gAberration;// 0..1
     float gSensor;    // a small sensor's look, 0..1
@@ -172,9 +175,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     }
     // Softness towards the corners: four taps a few pixels apart, blended in
     // from the middle of the radius outwards.
-    if (gSensor > 0.0)
+    const float softness = float((gFlags >> 8) & 255u) / 255.0;
+    if (softness > 0.0)
     {
-        float soft = gSensor * smoothstep(0.45, 1.0, rn);
+        float soft = softness * smoothstep(0.45, 1.0, rn);
         if (soft > 0.0)
         {
             float2 o = 1.8 * max(1.0, size.y / 1080.0) / size;
@@ -212,6 +216,7 @@ static float g_lens_noise = 0.0f;   // webcam noise, 0..1
 static float g_lens_vignette = 0.0f;
 static float g_lens_aberration = 0.0f;
 static float g_lens_sensor = 0.0f;
+static float g_lens_soft = 0.0f;     // softness towards the corners, 0..1
 
 static constexpr float kLensFovMin = 30.0f;
 static constexpr float kLensFovMax = 170.0f;
@@ -243,7 +248,7 @@ static constexpr UINT kLensPairs = 256;
 static bool LensActive()
 {
     const bool any = g_lens_bend || g_lens_noise > 0.0f || g_lens_vignette > 0.0f ||
-                     g_lens_aberration > 0.0f || g_lens_sensor > 0.0f;
+                     g_lens_aberration > 0.0f || g_lens_sensor > 0.0f || g_lens_soft > 0.0f;
     return g_lens_on && any && !g_lens.failed && !g_submission_failed;
 }
 
@@ -350,9 +355,10 @@ static ID3D12Resource *LensApply(ID3D12GraphicsCommandList *list, ID3D12Resource
     {
         char bend[48] = "no fisheye";
         if (g_lens_bend) snprintf(bend, sizeof(bend), "fisheye from a %.0f-degree field of view", g_lens_fov);
-        Log("[lens] on: %s, webcam noise %.0f%%, vignette %.0f%%, aberration %.0f%%, small sensor %.0f%%",
+        Log("[lens] on: %s, webcam noise %.0f%%, vignette %.0f%%, aberration %.0f%%, small sensor %.0f%%, "
+            "soft corners %.0f%%",
             bend, g_lens_noise * 100.0f, g_lens_vignette * 100.0f, g_lens_aberration * 100.0f,
-            g_lens_sensor * 100.0f);
+            g_lens_sensor * 100.0f, g_lens_soft * 100.0f);
         s.said = true;
     }
     const UINT w = static_cast<UINT>(desc.Width), hgt = desc.Height;
@@ -369,7 +375,8 @@ static ID3D12Resource *LensApply(ID3D12GraphicsCommandList *list, ID3D12Resource
     const bool linear = desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT;
     struct { UINT size[2]; float rect, fish, noise; UINT seed, flags; float vignette, aberration, sensor; } cb = {
         {w, hgt}, f_rect, half_diag / corner, std::clamp(g_lens_noise, 0.0f, 1.0f),
-        static_cast<UINT>(GetTickCount64() / 33u), (g_lens_bend ? 1u : 0u) | (linear ? 2u : 0u),
+        static_cast<UINT>(GetTickCount64() / 33u), (g_lens_bend ? 1u : 0u) | (linear ? 2u : 0u) |
+            (static_cast<UINT>(std::clamp(g_lens_soft, 0.0f, 1.0f) * 255.0f + 0.5f) << 8),
         std::clamp(g_lens_vignette, 0.0f, 1.0f), std::clamp(g_lens_aberration, 0.0f, 1.0f),
         std::clamp(g_lens_sensor, 0.0f, 1.0f)};
     static_assert(sizeof(cb) == 40, "LensCB is 10 constants");

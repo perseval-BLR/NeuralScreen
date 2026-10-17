@@ -2,15 +2,16 @@ r"""The camera from the menu: switches, an angle, amounts, a command, saved sett
 
 The main page gets one row for the camera (closing the "effect" block) and,
 only while it is on, the fisheye switch, a field-of-view slider in whole
-degrees while the fisheye is on, and four amounts in percent: webcam noise,
-vignette, chromatic aberration and the small sensor. The noise works without
+degrees while the fisheye is on, and five amounts in percent: webcam noise,
+vignette, chromatic aberration, the small sensor's tone and the softness towards
+the corners (#168: they were one amount). The noise works without
 the fisheye (#159). The client sends the worker a LENS command at once -
 nothing is rebuilt - and the settings are saved like every other menu choice.
 
 Checked without launching anything:
 
 * the menu: with the camera off there is a switch and nothing under it; on,
-  the fisheye switch, an angle slider in degrees and the four amounts in
+  the fisheye switch, an angle slider in degrees and the five amounts in
   percent, and the angle's hint fits the panel in all 12 languages; with the
   fisheye off the angle slider goes and the amounts stay; a click on a switch
   asks for ("toggle", key), the keyboard moves the angle 5 degrees at a time;
@@ -62,7 +63,7 @@ def _check_menu(failures: list) -> None:
     if _item(menu, "lens") is None:
         failures.append("the main page has no lens switch")
     under = ("lens_bend", "lens_fov", "lens_noise", "lens_vignette", "lens_aberration",
-             "lens_sensor")
+             "lens_sensor", "lens_soft")
     if any(_item(menu, key) is not None for key in under):
         failures.append("a camera control is on screen while the camera is off")
     for lang in sorted(STRINGS):
@@ -79,7 +80,7 @@ def _check_menu(failures: list) -> None:
                             f"{noise and noise.extra.get('value_text')!r}")
         if _item(menu, "lens_bend") is None:
             failures.append(f"{lang}: the camera is on and there is no fisheye switch")
-        for key in ("lens_vignette", "lens_aberration", "lens_sensor"):
+        for key in ("lens_vignette", "lens_aberration", "lens_sensor", "lens_soft"):
             amount = _item(menu, key)
             if amount is None or amount.extra.get("value_text") != "0%":
                 failures.append(f"{lang}: the {key} slider is missing or wrong: "
@@ -139,6 +140,7 @@ def _check_commands(failures: list) -> None:
     commands.apply_menu_action(st, ("lens_vignette", 0.4))
     commands.apply_menu_action(st, ("lens_aberration", 7))
     commands.apply_menu_action(st, ("lens_sensor", 0.25))
+    commands.apply_menu_action(st, ("lens_soft", 0.5))
     commands.apply_menu_action(st, ("toggle", "lens"))
     size = struct.calcsize(protocol.LENS_FMT)
     data = worker.stdin.getvalue()
@@ -146,19 +148,22 @@ def _check_commands(failures: list) -> None:
             for i in range(0, len(data), size)]
     got = [(flags & protocol.LENS_FLAG_ON, (flags & protocol.LENS_FLAG_BEND) >> 1,
             round(fov), round(noise, 2), (flags >> 8) & 255, (flags >> 16) & 255,
-            (flags >> 24) & 255)
+            (flags >> 24) & 255, (flags >> protocol.LENS_SHIFT_SOFT) & protocol.LENS_SOFT_MAX)
            for _m, flags, fov, noise, _p in sent]
     print(f"    commands sent: {got}")
     top = int(settings_io.LENS_FOV_MAX)
-    want = [(1, 1, 110, 0.3, 0, 0, 0), (1, 1, 134, 0.3, 0, 0, 0), (1, 1, top, 0.3, 0, 0, 0),
-            (1, 1, top, 0.55, 0, 0, 0), (1, 0, top, 0.55, 0, 0, 0),
-            (1, 0, top, 0.55, 102, 0, 0), (1, 0, top, 0.55, 102, 255, 0),
-            (1, 0, top, 0.55, 102, 255, 64), (0, 0, top, 0.55, 102, 255, 64)]
+    # The tone and the corner softness are two amounts (#168): the sensor
+    # moves only the top byte, the softness only its own six bits.
+    want = [(1, 1, 110, 0.3, 0, 0, 0, 0), (1, 1, 134, 0.3, 0, 0, 0, 0),
+            (1, 1, top, 0.3, 0, 0, 0, 0), (1, 1, top, 0.55, 0, 0, 0, 0),
+            (1, 0, top, 0.55, 0, 0, 0, 0), (1, 0, top, 0.55, 102, 0, 0, 0),
+            (1, 0, top, 0.55, 102, 255, 0, 0), (1, 0, top, 0.55, 102, 255, 64, 0),
+            (1, 0, top, 0.55, 102, 255, 64, 32), (0, 0, top, 0.55, 102, 255, 64, 32)]
     if len(data) % size or got != want or any(m != protocol.LENS_MAGIC for m, *_ in sent):
         failures.append(f"the LENS commands on the pipe were {got}, expected {want}")
     if st.cfg != {"lens": False, "lens_fov": settings_io.LENS_FOV_MAX, "lens_noise": 0.55,
                   "lens_bend": False, "lens_vignette": 0.4, "lens_aberration": 1.0,
-                  "lens_sensor": 0.25}:
+                  "lens_sensor": 0.25, "lens_soft": 0.5}:
         failures.append(f"the config after the clicks is {st.cfg}")
     st.worker = None
     commands.apply_menu_action(st, ("toggle", "lens"))   # no worker: no write, no raise

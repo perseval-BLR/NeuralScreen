@@ -21,7 +21,8 @@ Checked on the real worker:
   leaves the geometry as it was; the vignette darkens the corners and leaves
   the centre; chromatic aberration moves red outwards and blue inwards and
   leaves green; the small sensor crushes the darkest greys to black, clips the
-  brightest to white and keeps the middle near the middle.
+  brightest to white and keeps the middle near the middle - and leaves the
+  corners as sharp as they were, which the softness alone does not (#168).
 * Off means off: before the first LENS and after LENS off, the output is the
   input bit for bit.
 * On the presented paths - the worker's own window, with and without Frame
@@ -173,9 +174,10 @@ def _pipe_run(failures: list) -> None:
         return np.frombuffer(read_exact(proc.stdout, nbytes), np.uint8).reshape(H, W, 4).copy()
 
     def lens(on: bool, fov: float, noise: float = 0.0, bend: bool = True,
-             vignette: float = 0.0, aberration: float = 0.0, sensor: float = 0.0) -> None:
+             vignette: float = 0.0, aberration: float = 0.0, sensor: float = 0.0,
+             soft: float = 0.0) -> None:
         proc.stdin.write(struct.pack(LENS_FMT, LENS_MAGIC,
-                                     lens_flags(on, bend, vignette, aberration, sensor),
+                                     lens_flags(on, bend, vignette, aberration, sensor, soft),
                                      fov, noise, 0))
         proc.stdin.flush()
         magic, ok, _r0, _r1, _pts = struct.unpack(
@@ -185,12 +187,17 @@ def _pipe_run(failures: list) -> None:
 
     bent = noisy = noisy_later = None
     flat_noisy = vignetted = fringed = sensed = None
+    toned = softened = None
     grey = np.full((H, W, 4), 160, np.uint8)
     grey[..., 3] = 255
     # Sixteen columns of grey, 0 to 255.
     steps = np.empty((H, W, 4), np.uint8)
     steps[..., :3] = (np.arange(W) * 16 // W * 17).astype(np.uint8)[None, :, None]
     steps[..., 3] = 255
+    # Stripes 4 px wide: sharp detail in the corners, where the softness lands.
+    stripes = np.empty((H, W, 4), np.uint8)
+    stripes[..., :3] = ((np.arange(W) // 4 % 2) * 255).astype(np.uint8)[None, :, None]
+    stripes[..., 3] = 255
     try:
         proc.stdin.write(header)
         proc.stdin.flush()
@@ -212,6 +219,10 @@ def _pipe_run(failures: list) -> None:
         fringed = frame()
         lens(True, FOV, bend=False, sensor=1.0)
         sensed = frame(steps)
+        # #168: the tone without the softness, then the softness alone.
+        toned = frame(stripes)
+        lens(True, FOV, bend=False, soft=1.0)
+        softened = frame(stripes)
         lens(False, FOV)
         after = frame()
         if not np.array_equal(after[..., :3], rgba[..., :3]):
@@ -235,6 +246,20 @@ def _pipe_run(failures: list) -> None:
     if bent is None:
         return
     _camera_checks(failures, rgba, grey, steps, flat_noisy, vignetted, fringed, sensed)
+    if toned is not None and softened is not None:
+        def corner_contrast(img):
+            p = img[..., :3].astype(np.float64)
+            return np.mean([p[:24, :48].std(), p[:24, -48:].std(),
+                            p[-24:, :48].std(), p[-24:, -48:].std()])
+        sharp = corner_contrast(stripes)
+        tone_only, soft_only = corner_contrast(toned), corner_contrast(softened)
+        print(f"    corner detail (std): input {sharp:.0f}, small sensor alone "
+              f"{tone_only:.0f}, soft corners alone {soft_only:.0f}")
+        if tone_only < 0.95 * sharp:
+            failures.append(f"the small sensor alone still softened the corners "
+                            f"({tone_only:.0f} against {sharp:.0f}) - #168")
+        if soft_only > 0.85 * sharp:
+            failures.append(f"soft corners at 100% did not soften them ({soft_only:.0f})")
     if noisy is not None and noisy_later is not None:
         diff = noisy[..., :3].astype(np.float64) - bent[..., :3].astype(np.float64)
         dark = diff[: H // 3, : W // 3].std()      # the ramp is darkest top-left

@@ -975,8 +975,10 @@ LENS_FOV_MAX = 170.0
 LENS_NOISE_DEFAULT = 0.3
 # The rest of the camera (#159 and the bodycam's first stage): the fisheye
 # is a part of it that can be off (lens_bend - on by default, so a 2.3.0
-# config keeps its look), and three amounts that start at 0, off.
-LENS_AMOUNT_KEYS = ("lens_vignette", "lens_aberration", "lens_sensor")
+# config keeps its look), and amounts that start at 0, off. The small sensor's
+# tone and its softness towards the corners are two (#168): the softness blurs
+# a game's HUD and text, the tone does not.
+LENS_AMOUNT_KEYS = ("lens_vignette", "lens_aberration", "lens_sensor", "lens_soft")
 
 
 def _shipped_default(key: str, fallback):
