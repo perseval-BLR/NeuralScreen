@@ -412,13 +412,13 @@
       {
         "origin": "generated",
         "path": "native/nvngx.dll",
-        "sha256": "a1a48a72fd1dafe38257746adadac93fff6d4347f0f56976f2a093ef8f265208",
+        "sha256": "bf36878b4af558d3df6f2118171c9262ad959452737950f6f7c4f0cf571effe4",
         "size": 339968
       },
       {
         "origin": "generated",
         "path": "native/nvngx.dll_ns-forwarder.dll",
-        "sha256": "cecf6f1a38be47695767fe879956ff210c85f40e245af12751ed9eaedf659acf",
+        "sha256": "f5426894fea5d45c8ee6ce00314af8807987270877d54f6103142f5b2e6a0544",
         "size": 10240
       },
       {
@@ -8060,7 +8060,7 @@
         "size": 31968
       }
     ],
-    "tree_sha256": "c711253310b2773860b620dc927b33d303918581a5c48ed135b652e2f897b608"
+    "tree_sha256": "17309591511ccb6ad410c76af1a11416979dff035ecc83a8997929976990365d"
   },
   "product": "NeuralScreen",
   "runtime": {
@@ -8072,12 +8072,12 @@
       },
       {
         "path": "native/nvngx.dll",
-        "sha256": "a1a48a72fd1dafe38257746adadac93fff6d4347f0f56976f2a093ef8f265208",
+        "sha256": "bf36878b4af558d3df6f2118171c9262ad959452737950f6f7c4f0cf571effe4",
         "size": 339968
       },
       {
         "path": "native/nvngx.dll_ns-forwarder.dll",
-        "sha256": "cecf6f1a38be47695767fe879956ff210c85f40e245af12751ed9eaedf659acf",
+        "sha256": "f5426894fea5d45c8ee6ce00314af8807987270877d54f6103142f5b2e6a0544",
         "size": 10240
       },
       {
