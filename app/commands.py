@@ -756,9 +756,13 @@ def update_window_follow(st, now: float | None = None) -> None:
         follower = st.focus_follower = window_follow.FocusFollower()
     focused = window_follow.focused_window()
     info = None
+    if getattr(st, "focus_failed", None) not in (None, focused):
+        st.focus_failed = None          # the focus left it: it may be tried again
     if focused and focused != int(current):
         info = window_follow.window_info(focused, int(current))
         reason = window_follow.why_not(info)
+        if reason is None and focused == getattr(st, "focus_failed", None):
+            reason = "it could not be captured - not again until the focus leaves it"
         if reason is None and not pipeline.live_switch_possible(st, focused):
             # Only the live switch is followed: anything else is a rebuild
             # (and a veil) for a focus change.
@@ -774,6 +778,12 @@ def update_window_follow(st, now: float | None = None) -> None:
         print(f"[main] follow: 0x{target:X} ({info.process or '?'}, {info.cls or '?'}) "
               f"kept the focus {window_follow.DWELL_S:g} s - capturing it")
         pipeline.switch_window(st, target, veil=False)
+        if getattr(st, "window_hwnd", None) != target:
+            # Refused (a protected or elevated window, a failed probe): the
+            # switch said so once; retrying every 8 s would say it forever.
+            st.focus_failed = target
+            print(f"[main] follow: 0x{target:X} was not taken - "
+                  f"not again until the focus leaves it")
 
 
 def send_badge_state(st) -> None:

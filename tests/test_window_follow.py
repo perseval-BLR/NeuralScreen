@@ -16,8 +16,9 @@ Checked without a GPU:
 3. on this desktop, Windows' own shell window is not followable (the real
    window_info, not a fake);
 4. the command layer: off - nothing; on - one switch after the dwell, none
-   while recording, with the menu open or outside window mode; a skipped
-   window is logged once with its reason;
+   while recording, with the menu open or outside window mode; a window the
+   capture refuses is tried once until the focus leaves it; a skipped window
+   is logged once with its reason;
 5. the switch is on the Capture tab, its command flips the config, and the
    key is validated as a boolean.
 
@@ -111,6 +112,8 @@ def main() -> int:
     def fake_switch(st, h, veil=True):
         switched.append(h)
         veils.append(veil)
+        if h != 0x40:                 # 0x40: a window the capture refuses
+            st.window_hwnd = h
     pipeline.switch_window = fake_switch
 
     class Worker:
@@ -166,6 +169,22 @@ def main() -> int:
                 commands.update_window_follow(st, now=t * 0.25)
             if switched:
                 failures.append("switched with the menu open")
+            # A window the capture refuses is tried once, not every 8 s -
+            # until the focus leaves it and comes back.
+            switched.clear()
+            focus["hwnd"] = 0x40
+            st = state(window_follow=True)
+            for t in range(120):                     # 30 s on it
+                commands.update_window_follow(st, now=t * 0.25)
+            once = list(switched)
+            focus["hwnd"] = 0x20
+            commands.update_window_follow(st, now=30.25)
+            focus["hwnd"] = 0x40
+            for t in range(122, 160):
+                commands.update_window_follow(st, now=t * 0.25)
+            if once != [0x40] or switched != [0x40, 0x40]:
+                failures.append(f"a refused window was tried {once}, then {switched}")
+            switched.clear()
             focus["hwnd"] = 0x30
             st = state(window_follow=True)
             for t in range(20):
