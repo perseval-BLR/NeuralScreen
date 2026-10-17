@@ -75,8 +75,7 @@ the menu. The hotkeys are on the numpad, so **Num Lock has to be on**.
 |---|---|
 | **Num2** | open / close the menu |
 | **Num1** | neural rendering on / off |
-| **Num7** | frame generation on / off |
-| **Num8** | camera on / off |
+| **Num7** / **Num8** | frame generation / the camera on / off |
 | **Num3** | screenshot |
 | **Num0** | start / stop recording, with sound |
 | **Num4** / **Num6** | processing resolution down / up |
@@ -116,8 +115,7 @@ on it, red when it is not.
   TECHNICAL.md). A saved preset keeps the model it was saved with.
 - **Camera** — **Fisheye** (on by default; **Field of view** = the game's FOV,
   110-120 typical; off-centre clicks land elsewhere) and five amounts, 0 = off:
-  **Webcam noise**, **Vignette**, **Chromatic aberration**, **Small sensor**
-  (the tone) and **Soft corners** (the blur, which also softens a HUD).
+  noise, vignette, aberration, **Small sensor** (tone), **Soft corners** (blur).
 - **Before / after wipe** — leaves the left part of the screen unprocessed so
   you can see what the effect is doing. Back to 0 when done.
 - **Boost** — on by default. The network runs at a reduced resolution and a
@@ -126,9 +124,8 @@ on it, red when it is not.
   picture stays sharp — the result is composed onto your original frame, so
   text and edges keep full resolution. Turn it off to compare. **NR passes**
   under the slider repeats the pass: an experiment, priced in TECHNICAL.md.
-- **DLSS 4.5 FG** — Frame Generation, off by default, with a ×2 to ×6
-  multiplier beside the switch (and on **Num7**; ×5 and ×6 need an RTX 50,
-  a card that stops lower runs its highest step). DLSS-G's own desktop
+- **DLSS 4.5 FG** — Frame Generation, off by default, with a ×2-×6 multiplier
+  beside the switch (and on **Num7**; ×5/×6 on RTX 50). DLSS-G's own desktop
   build: the depth is flat and the motion is estimated, there is no engine
   cooperation, so UI and text can distort — the known cost of the approach.
   The header pairs the two honest rates when they differ: "47 / 111 fps" is
@@ -140,8 +137,7 @@ on it, red when it is not.
 Everything else is behind the sliders icon: monitor/GPU, a 30/60/custom/off
 frame limiter, HDR, media folders, file conversion, Spout2, the recording
 indicator, an on-screen frame counter, minimise/close to tray, key
-assignments, keyboard navigation, **Notifications** (All / Errors / None),
-**Process priority** (Normal / Above normal / High, for both processes),
+assignments, keyboard navigation, **Notifications**, **Process priority**,
 theme and **12** languages, and **Scale** above Quit, which sizes the panel.
 
 ## Swapping a runtime
