@@ -38,7 +38,8 @@ import pipeline
 import power
 import protocol
 import settings_io
-from hotkeys import UNBIND_WORDS, build_bindings, parse_binding
+from hotkeys import (HOTKEY_STALE_S, UNBIND_WORDS, HotkeyPress, build_bindings,
+                     parse_binding)
 from i18n import STRINGS as UI_STRINGS
 from paths import BASE_DIR
 from pipeline import restart_worker
@@ -1660,9 +1661,19 @@ def drain_commands(st) -> bool:
     stay responsive while main waits for the worker (user: "NR toggle
     does not always fire in Cyberpunk").
     """
+    stale = []
     try:
         while True:
             cmd = st.tray_commands.get_nowait()
+            # #171: a key press that waited out a stall (a rebuild holds the
+            # loop for seconds) is dropped, not replayed with the others in a
+            # burst. Only presses: the tray's and the program's own commands
+            # stay. Quit stays too - a quit asked for during a freeze is
+            # still meant.
+            if (isinstance(cmd, HotkeyPress) and cmd != "quit"
+                    and time.monotonic() - cmd.at > HOTKEY_STALE_S):
+                stale.append(cmd)
+                continue
             if cmd == "quit":
                 print(f"[main] exit: tray or the quit hotkey "
                       f"(frames processed {st.frame_index})")
@@ -1987,4 +1998,8 @@ def drain_commands(st) -> bool:
                                            new_small=want_small)
     except queue.Empty:
         pass
+    if stale:
+        print(f"[main] {len(stale)} hotkey press(es) dropped - made while the loop "
+              f"was busy, up to {time.monotonic() - min(p.at for p in stale):.1f} s "
+              f"ago: {', '.join(sorted(set(stale)))}")
     return st.running

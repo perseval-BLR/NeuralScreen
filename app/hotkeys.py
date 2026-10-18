@@ -303,6 +303,28 @@ def _mods_clear(mods: int) -> bool:
     return not (_pressed(VK_CONTROL) or _pressed(VK_MENU) or _pressed(VK_SHIFT))
 
 
+#: A key press older than this when the main loop reads it is dropped (#171).
+HOTKEY_STALE_S = 1.5
+
+
+class HotkeyPress(str):
+    """A command from a key press, with when it was pressed (#171).
+
+    A rebuild holds the main loop for seconds - 30-70 s with a cold NGX - and
+    nothing reads the queue meanwhile; every press made in that time used to
+    run at once afterwards: twenty Num2 presses opened and closed the menu
+    twenty times in 1.5 s. The press carries its time so the reader can drop
+    the ones that waited out the stall. A str, so everything that compares
+    commands keeps working."""
+
+    at: float
+
+    def __new__(cls, cmd: str, at: float):
+        press = super().__new__(cls, cmd)
+        press.at = float(at)
+        return press
+
+
 class HotkeyController:
     """Registers the global hotkeys; commands go into a queue."""
 
@@ -386,7 +408,7 @@ class HotkeyController:
                             self._poll_last[key] = now
                     if not fresh:
                         continue  # the poller already delivered this press
-                    self._commands.put(binding[2])
+                    self._commands.put(HotkeyPress(binding[2], now))
             elif msg.message == MSG_SUSPEND:
                 self._unregister()
             elif msg.message == MSG_RESUME:
@@ -503,7 +525,7 @@ class HotkeyController:
                 if now - self._poll_last.get((mods, vk), 0.0) < POLL_COOLDOWN:
                     continue                  # WM_HOTKEY already did it
                 self._poll_last[(mods, vk)] = now
-            self._commands.put(cmd)
+            self._commands.put(HotkeyPress(cmd, now))
 
     def _unregister(self) -> None:
         if not self._active:

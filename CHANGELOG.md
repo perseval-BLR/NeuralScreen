@@ -97,6 +97,11 @@ Scope and honesty notes:
   B is its new, smaller and faster model (and its default), A the previous
   one; the bundled 310.8 has one model and ignores the choice. The worker logs
   the runtime's version and the preset it asked for.
+* **Key presses made during a rebuild no longer replay in a burst (#171).**
+  Nothing reads the hotkeys while a rebuild holds the loop, and every press
+  made meanwhile ran at once afterwards - the menu opened and closed twenty
+  times. A press older than 1.5 s when it is read is dropped and logged; the
+  tray's commands and a quit still run.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 
