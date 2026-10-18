@@ -116,6 +116,9 @@ Scope and honesty notes:
 * **The before/after wipe is captioned again.** In the "Source and comparison"
   block its bare track sat under the window's row and read as that window's
   size; it now says what it is and shows its percentage.
+* **Settings captions, whole.** The keys tab's caption wraps instead of losing
+  "Backspace clears a key" to the ellipsis (Russian, 1080p), and the Media
+  tab's idle conversion line is a caption, no longer a value in the mono face.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

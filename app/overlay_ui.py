@@ -1826,14 +1826,23 @@ class OverlayMenu:
                 # One row that says either what is happening or what the
                 # button is for, so the section is never silent.
                 status = str(self.state.get("convert_status") or "")
-                items.append(Item("info", "convert_status",
-                                  pygame.Rect(pad, cy, inner_w,
-                                              self._u(LABEL_H)),
-                                  extra={"label": s.get(
-                                      "record_state", "State") if busy else "",
-                                         "value": status or s.get(
-                                             "convert_hint", "")}))
-                cy += self._u(LABEL_H) + self._u(4)
+                if busy or status:
+                    items.append(Item("info", "convert_status",
+                                      pygame.Rect(pad, cy, inner_w,
+                                                  self._u(LABEL_H)),
+                                      extra={"label": s.get(
+                                          "record_state", "State") if busy else "",
+                                             "value": status}))
+                    cy += self._u(LABEL_H) + self._u(4)
+                else:
+                    # Idle, the row is what the button is for: a caption in
+                    # the hints' face, not a value in the numbers' mono one.
+                    text = s.get("convert_hint", "")
+                    note_h = self._note_height(text, inner_w)
+                    items.append(Item("note", "convert_status",
+                                      pygame.Rect(pad, cy, inner_w, note_h),
+                                      extra={"text": text}))
+                    cy += note_h + self._u(4)
 
             section(s["sec_behaviour"], "app")
             toggle("open_on_start", s["open_on_start"],
@@ -1902,8 +1911,12 @@ class OverlayMenu:
             # before APPEARANCE.
             cy += self._u(8)
             if show:
+                # As many lines as it takes: on one line the Russian lost
+                # "Backspace clears a key" to the ellipsis.
+                lines = self._keys_hint_lines(s, inner_w)
+                line_h = self._small_font.get_height() + self._u(4)
                 self._hint_rel = pygame.Rect(pad, cy, inner_w,
-                                             self._u(SMALL_SIZE) + self._u(6))
+                                             len(lines) * line_h + self._u(2))
                 cy += self._hint_rel.h + gap
             else:
                 # Not on this tab - and the rect has to be emptied, not just
@@ -4019,13 +4032,21 @@ class OverlayMenu:
             # off the keyboard (#134). The second half is discoverable only if
             # it is written down - a field is filled by pressing a key, and
             # nothing about it suggests Backspace clears it.
-            line = s["hotkey_hint"]
-            clear = s.get("hotkey_clear")
-            if clear:
-                line = f"{line} - {clear}"
-            img = self._clip(self._small_font, line, _rgb(self.c["muted"]),
-                             hint.w)
-            surface.blit(img, (hint.x, hint.y))
+            y = hint.y
+            for line in self._keys_hint_lines(s, hint.w):
+                img = self._clip(self._small_font, line, _rgb(self.c["muted"]),
+                                 hint.w)
+                surface.blit(img, (hint.x, y))
+                y += self._small_font.get_height() + self._u(4)
+
+    def _keys_hint_lines(self, s: dict, width: int) -> list[str]:
+        """The keys tab's caption, wrapped to `width`: where the keys live,
+        and that Backspace takes one off the keyboard (#134)."""
+        line = s["hotkey_hint"]
+        clear = s.get("hotkey_clear")
+        if clear:
+            line = f"{line} - {clear}"
+        return self._wrap_note(line, width) or [line]
 
 
     #: The numeric cell's own padding, in base units. The mockup: 4px 9px.
