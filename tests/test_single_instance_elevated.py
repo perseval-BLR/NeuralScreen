@@ -10,7 +10,7 @@ The running copy's "show yourself" message was also dropped on the way in:
 UIPI keeps a normal-integrity process from posting to an elevated window.
 
 Checked:
-* main() with CreateMutexW answering NULL / ERROR_ACCESS_DENIED returns 1
+* the early gate with CreateMutexW answering NULL / ERROR_ACCESS_DENIED returns 1
   before the configuration is even read (the real main, stubs only at the
   Win32 boundary; FindWindowW finds nothing, so no real copy is disturbed);
 * the same with ERROR_ALREADY_EXISTS (the ordinary second copy);
@@ -22,10 +22,12 @@ Run:  runtime\python.exe tests\test_single_instance_elevated.py
 """
 import ctypes
 import importlib.util
-import os
 import sys
 import tempfile
 import uuid
+import ast
+from types import SimpleNamespace
+from unittest import mock
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
@@ -39,58 +41,18 @@ ns_main = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ns_main)
 
 
-class _Reached(Exception):
-    pass
-
-
-class _Kernel32:
-    """CreateMutexW answers like the OS does for the case under test."""
-
-    def __init__(self, real, handle):
-        self._real = real
-        self._handle = handle
-
-    def CreateMutexW(self, *_a):
-        return self._handle
-
-    def __getattr__(self, name):
-        return getattr(self._real, name)
-
-
 def _run_main(error: int, handle) -> object:
-    """main()'s answer when CreateMutexW gives `handle` and `error`."""
-    k32 = ctypes.windll.kernel32
-    u32 = ctypes.windll.user32
-    saved = (k32.CreateMutexW, k32.GetLastError, u32.FindWindowW,
-             taskbar.kernel32, getattr(taskbar, "_last_error", None),
-             ns_main._init_logging, ns_main.startup.configure, sys.argv)
-    # Both the old route (ctypes.windll) and the typed one (taskbar's private
-    # kernel32) answer the same, so the test measures the decision only.
-    k32.CreateMutexW = lambda *_a: handle or 0
-    k32.GetLastError = lambda: error
-    u32.FindWindowW = lambda *_a: 0          # never touch a real running copy
-    taskbar.kernel32 = _Kernel32(saved[3], handle)
-    taskbar._last_error = lambda: error
-    ns_main._init_logging = lambda: None
-
-    def reached(_st):
-        raise _Reached()
-
-    ns_main.startup.configure = reached
-    sys.argv = ["main.py", "--config",
-                os.path.join(tempfile.mkdtemp(), "config.json")]
-    try:
-        return ns_main.main()
-    except _Reached:
-        return "started"
-    finally:
-        (k32.CreateMutexW, k32.GetLastError, u32.FindWindowW,
-         taskbar.kernel32, last_error, ns_main._init_logging,
-         ns_main.startup.configure, sys.argv) = saved
-        if last_error is not None:
-            taskbar._last_error = last_error
-        else:
-            del taskbar._last_error
+    """Probe only the early gate. No production mutex or real window APIs."""
+    kernel = SimpleNamespace(CreateMutexW=mock.Mock(return_value=handle), CloseHandle=mock.Mock())
+    user = SimpleNamespace(FindWindowW=lambda *a: 0)
+    with mock.patch.object(ns_main, "_startup_claim", None), mock.patch.object(ns_main, "_startup_bindings", return_value=(kernel, user)), mock.patch.object(ns_main, "_startup_update_guard", return_value=None), mock.patch.object(ctypes, "get_last_error", return_value=error):
+        result = ns_main._startup_instance_gate()
+        if result == 0:
+            assert ns_main._startup_instance_gate() == 0
+            kernel.CreateMutexW.assert_called_once_with(None, False, "NeuralScreen_SingleInstance")
+        elif handle:
+            kernel.CloseHandle.assert_called_once_with(handle)
+        return result
 
 
 def main() -> int:
@@ -104,6 +66,25 @@ def main() -> int:
     got = _run_main(183, 0x1234)
     if got != 1:
         failures.append(f"with ERROR_ALREADY_EXISTS main() answered {got!r}")
+    for error, handle in ((0, None), (123, None), (123, 0x1234)):
+        if _run_main(error, handle) != 1:
+            failures.append(f"gate did not fail closed for {error}, {handle}")
+    if _run_main(0, 0x1234) != 0:
+        failures.append("fresh claim or idempotent reuse failed")
+    if ns_main._startup_claim is not None:
+        failures.append("non-main import claimed a production mutex")
+    from updates import install_id_for
+    from update_apply import install_id_for as helper_id, control_dir_for
+    with tempfile.TemporaryDirectory(prefix="ns identity שלום ") as temp:
+        for path in (temp, temp[0].upper() + temp[1:], temp[0].lower() + temp[1:]):
+            expected = install_id_for(path)
+            got_id, control = ns_main._startup_install_identity(path)
+            assert got_id == expected == helper_id(path)
+            assert control == control_dir_for(path)
+    tree = ast.parse((BASE / "main.py").read_text(encoding="utf-8"))
+    early = next(n for n in tree.body if isinstance(n, ast.If) and isinstance(n.test, ast.Compare))
+    calls = [(n.lineno, n.func.id) for n in ast.walk(early) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
+    assert next(line for line, name in calls if name == "_startup_instance_gate") < next(line for line, name in calls if name == "_drop_stale_bytecode")
 
     claim = getattr(taskbar, "claim_single_instance", None)
     if claim is None:

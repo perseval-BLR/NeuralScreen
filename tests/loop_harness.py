@@ -354,11 +354,9 @@ def run(on_pass, *, state=None, patch=None, max_passes: int = 2000,
     patches.set(sys, "argv", ["main.py", "--config", str(BASE / "config.json")])
     patches.set(main_mod, "_init_logging", lambda: None)
     patches.set(main_mod, "ctypes", fake_ctypes)
-    # The single-instance claim lives in taskbar (its own typed kernel32), so
-    # faking main's ctypes no longer covers it: a second main() in the same
-    # process met the first one's mutex and returned 1 at once.
-    import taskbar
-    patches.set(taskbar, "claim_single_instance", lambda *a, **k: (1, False))
+    gate_calls = []
+    patches.set(main_mod, "_startup_claim", None)
+    patches.set(main_mod, "_startup_instance_gate", lambda: gate_calls.append(True) or 0)
     patches.set(main_mod, "pygame", fake_pygame)
     patches.set(main_mod, "foreign_foreground", lambda: 0)
     patches.set(main_mod, "send_frame", send_frame)
@@ -401,6 +399,7 @@ def run(on_pass, *, state=None, patch=None, max_passes: int = 2000,
         setter = getattr(protocol, "set_idle_hook", None)
         if setter is not None:
             setter(None)
+    assert gate_calls, "loop harness must bypass the whole startup gate"
     st = captured.get("st")
     return rc, st, out.getvalue(), {"events": events, "passes": passes["n"],
                                     "pumps": pumps["n"]}

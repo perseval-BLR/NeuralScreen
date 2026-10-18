@@ -33,6 +33,255 @@ import time
 from pathlib import Path
 
 
+_startup_claim = None
+_UPDATE_RECOVERY_FALLBACK = (
+    "NeuralScreen cannot safely start after an interrupted update.\n"
+    "Keep the recovery files.\nRecovery folder: {control_dir}\n{restore_hint}"
+    "Official releases: https://github.com/perseval-BLR/NeuralScreen/releases"
+)
+
+
+def _startup_install_identity(install_dir):
+    import hashlib
+    install_id = hashlib.sha256(
+        os.path.normcase(str(Path(install_dir).resolve())).encode("utf-8")
+    ).hexdigest()
+    return install_id, Path(install_dir).resolve().parent / (".neuralscreen-update-" + install_id)
+
+
+def _startup_bindings():
+    from ctypes import wintypes as wt
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    user = ctypes.WinDLL("user32", use_last_error=True)
+    for api, name, args, result in (
+        (kernel, "CreateMutexW", [wt.LPVOID, wt.BOOL, wt.LPCWSTR], wt.HANDLE),
+        (kernel, "CloseHandle", [wt.HANDLE], wt.BOOL),
+        (user, "FindWindowW", [wt.LPCWSTR, wt.LPCWSTR], wt.HWND),
+        (user, "RegisterWindowMessageW", [wt.LPCWSTR], wt.UINT),
+        (user, "PostMessageW", [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM], wt.BOOL),
+        (user, "MessageBoxW", [wt.HWND, wt.LPCWSTR, wt.LPCWSTR, wt.UINT], ctypes.c_int)):
+        function = getattr(api, name)
+        function.argtypes, function.restype = args, result
+    return kernel, user
+
+
+def _startup_update_guard(install_dir):
+    """Inspect recovery data under a fresh claim, without importing the replaced app."""
+    import hashlib
+    import json
+    import re
+    import stat
+    root = Path(install_dir).resolve()
+    install_id, control = _startup_install_identity(root)
+    marker_path = root / ".neuralscreen-update.json"
+    if not marker_path.exists() and not marker_path.is_symlink():
+        return None
+    plan_path = None
+    messages = None
+
+    def safe(path):
+        path = Path(os.path.abspath(path))
+        current = Path(path.anchor)
+        for part in path.parts[1:]:
+            current /= part
+            if current.is_symlink() or (current.exists() and getattr(current.lstat(), "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+                raise ValueError("reparse")
+        return path
+
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate")
+            result[key] = value
+        return result
+
+    def read(path):
+        safe(path)
+        if path.stat().st_size > 8 * 1024 * 1024:
+            raise ValueError("size")
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs)
+        if not isinstance(value, dict):
+            raise ValueError("object")
+        return value
+
+    try:
+        safe(root)
+        marker = read(marker_path)
+        tid = marker.get("transaction_id")
+        if (set(marker) != {"schema_version", "install_id", "transaction_id", "plan_path"}
+                or marker.get("schema_version") != 1 or marker.get("install_id") != install_id
+                or not isinstance(tid, str) or re.fullmatch(r"[0-9a-f]{32}", tid) is None):
+            raise ValueError("marker")
+        transaction = control / ("txn-" + tid)
+        expected = safe(transaction / "plan.json")
+        if marker["plan_path"] != str(expected):
+            raise ValueError("path")
+        # A valid in-root marker can supply display-only recovery even if its plan is corrupt.
+        plan_path = expected
+        if read(control / "owner.json") != {"schema_version": 1, "install_id": install_id, "install_dir": str(root)}:
+            raise ValueError("owner")
+        plan = read(plan_path)
+        if (plan.get("schema_version") != 1 or plan.get("install_id") != install_id
+                or plan.get("transaction_id") != tid or plan.get("install_dir") != str(root)):
+            raise ValueError("identity")
+        for key, name in (("candidate_dir", "candidate"), ("rollback_dir", "rollback"), ("bootstrap_dir", "bootstrap")):
+            if plan.get(key) != str(safe(transaction / name)):
+                raise ValueError("root")
+        for key in ("effective_config_path", "original_parent_cwd"):
+            value = plan.get(key)
+            if not isinstance(value, str) or not Path(value).is_absolute() or str(Path(value).resolve()) != value:
+                raise ValueError("path")
+            safe(Path(value))
+        messages = plan.get("messages")
+        if (not isinstance(messages, dict) or set(messages) != {"shutdown_timeout", "apply_failed", "relaunch_failed", "recovery_required"}
+                or any(not isinstance(v, str) or not v.strip() or len(v) > 16000 or "\0" in v for v in messages.values())):
+            messages = None
+            raise ValueError("messages")
+        operations = plan.get("operations")
+        if not isinstance(operations, list) or not operations or any(not isinstance(n, str) for n in operations):
+            raise ValueError("operations")
+        names = set()
+        for key in ("old_inventory", "new_inventory", "bootstrap_inventory"):
+            records = plan.get(key)
+            if not isinstance(records, list) or not records:
+                raise ValueError("inventory")
+            seen = set()
+            for record in records:
+                if not isinstance(record, dict) or set(record) != {"path", "size", "sha256"}:
+                    raise ValueError("record")
+                name, size, digest = record["path"], record["size"], record["sha256"]
+                if (not isinstance(name, str) or not name or "\\" in name or any(c in name for c in ':<>"|?*')
+                        or any(p in ("", ".", "..") or p.endswith((".", " ")) for p in name.split("/"))
+                        or name.casefold() in seen or isinstance(size, bool) or not isinstance(size, int) or size < 0
+                        or not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
+                    raise ValueError("record")
+                seen.add(name.casefold())
+                if key != "bootstrap_inventory":
+                    names.add(name)
+            if key == "bootstrap_inventory":
+                for record in records:
+                    file = safe(transaction / "bootstrap" / record["path"])
+                    if not file.is_file() or file.stat().st_size != record["size"] or hashlib.sha256(file.read_bytes()).hexdigest() != record["sha256"]:
+                        raise ValueError("bootstrap")
+        if operations != sorted(names, key=lambda n: (n == "main.py", n)):
+            raise ValueError("operations")
+        journal_path = safe(transaction / "journal.jsonl")
+        if journal_path.stat().st_size > 64 * 1024 * 1024:
+            raise ValueError("journal size")
+        data = journal_path.read_bytes()
+        if data and not data.endswith(b"\n"):
+            raise ValueError("partial journal")
+        has_intent = False
+        intents = []
+        for line in data.splitlines():
+            record = json.loads(line.decode("utf-8"), object_pairs_hook=pairs)
+            if (not isinstance(record, dict) or record.get("install_id") != install_id or record.get("transaction_id") != tid
+                    or record.get("event") not in {"intent", "committed", "restored", "abandoned", "config_snapshot", "config_preserved", "config_restored"}):
+                raise ValueError("journal")
+            if record["event"] == "intent":
+                if record.get("path") not in operations:
+                    raise ValueError("intent")
+                has_intent = True
+                intents.append(record["path"])
+                if intents != operations[:len(intents)]:
+                    raise ValueError("intent order")
+            event = record["event"]
+            fields = {"install_id", "transaction_id", "event"}
+            if event == "intent":
+                fields.add("path")
+            elif event in {"committed", "restored", "config_preserved", "config_restored"} and not has_intent:
+                raise ValueError("journal state")
+            if event == "committed" and intents != operations:
+                raise ValueError("commit state")
+            if event == "config_snapshot":
+                fields.add("present")
+                if not isinstance(record.get("present"), bool):
+                    raise ValueError("config state")
+            if event == "config_preserved" or event == "config_snapshot" and record["present"]:
+                fields.update({"size", "sha256"})
+                if (isinstance(record.get("size"), bool) or not isinstance(record.get("size"), int) or record["size"] < 0
+                        or not isinstance(record.get("sha256"), str) or re.fullmatch(r"[0-9a-f]{64}", record["sha256"]) is None):
+                    raise ValueError("config record")
+            if set(record) != fields:
+                raise ValueError("journal fields")
+        if has_intent:
+            raise ValueError("recovery")
+        protocol_paths = []
+        for name in ("armed", "proceed", "cancel"):
+            path = transaction / (name + ".json")
+            safe(path)
+            if path.exists():
+                if read(path) != marker:
+                    raise ValueError("protocol")
+                protocol_paths.append(path)
+        abandoned = {"install_id": install_id, "transaction_id": tid, "event": "abandoned"}
+        with journal_path.open("r+b") as output:
+            output.seek(0, 2)
+            output.write((json.dumps(abandoned, sort_keys=True) + "\n").encode())
+            output.flush()
+            os.fsync(output.fileno())
+        for path in protocol_paths:
+            path.unlink()
+        if read(marker_path) != marker:
+            raise ValueError("changed marker")
+        marker_path.unlink()
+        return None
+    except Exception:
+        if plan_path is None:
+            hint = "The recovery command could not be determined. Keep this folder and use the official release page for manual recovery.\n"
+        else:
+            def quote(value):
+                return "'" + str(value).replace("'", "''") + "'"
+            hint = ("Close all NeuralScreen and updater windows before manual recovery.\n& "
+                    + quote(plan_path.parent / "bootstrap/runtime/python.exe") + " -I -S "
+                    + quote(plan_path.parent / "bootstrap/update_apply.py") + " --restore " + quote(plan_path) + "\n")
+        if messages is not None:
+            return messages["recovery_required"] + "\nRecovery folder: " + str(control) + "\n" + hint
+        return _UPDATE_RECOVERY_FALLBACK.format(control_dir=control, restore_hint=hint)
+
+
+def _startup_instance_gate():
+    global _startup_claim
+    if _startup_claim is not None:
+        return 0
+    handle = None
+    kernel = user = None
+    notice = None
+    try:
+        kernel, user = _startup_bindings()
+        ctypes.set_last_error(0)
+        handle = kernel.CreateMutexW(None, False, "NeuralScreen_SingleInstance")
+        error = ctypes.get_last_error()
+        # ERROR_ALREADY_EXISTS and ERROR_ACCESS_DENIED both exclude a duplicate.
+        if not handle or error != 0:
+            if handle:
+                kernel.CloseHandle(handle)
+                handle = None
+            if error in (5, 183):
+                running = user.FindWindowW("NeuralScreenTaskbar", "NeuralScreen")
+                if running:
+                    WM_NS_SHOW = user.RegisterWindowMessageW("NeuralScreen.ShowSettings") or 0xBE53
+                    WM_NS_SHOW_LEGACY = 0xCE53
+                    for message in (WM_NS_SHOW, WM_NS_SHOW_LEGACY):
+                        user.PostMessageW(running, message, 0, 0)
+            return 1
+        notice = _startup_update_guard(Path(__file__).resolve().parent)
+        if notice is None:
+            _startup_claim = handle
+            return 0
+    except Exception:
+        pass
+    if handle and kernel is not None:
+        kernel.CloseHandle(handle)
+    if notice and user is not None:
+        try:
+            user.MessageBoxW(None, notice, "NeuralScreen", 0x00010000)
+        except Exception:
+            pass
+    return 1
+
+
 def _startup_failure(kind, value, tb) -> None:
     """An import of ours failed before logging exists: say so, somewhere.
 
@@ -101,6 +350,8 @@ def _drop_stale_bytecode(base: Path) -> None:
 
 if __name__ == "__main__":
     sys.excepthook = _startup_failure
+    if _startup_instance_gate():
+        sys.exit(1)
     _drop_stale_bytecode(Path(__file__).resolve().parent)
 
 
@@ -563,6 +814,11 @@ class _Pipeline:
         "want_out_shm",
         "want_present",
         "cfg_path",
+        "original_cwd",
+        "update_controller",
+        "update_state",
+        "update_confirming",
+        "update_frozen",
         "gpu_text",
         "warmup",
         "effective_warmup",
@@ -573,6 +829,8 @@ class _Pipeline:
 
 
 def main() -> int:
+    if _startup_instance_gate():
+        return 1
     # The pipeline's mutable state (see _Pipeline): one object
     # instead of 56 closure variables.
     st = _Pipeline()
@@ -582,37 +840,6 @@ def main() -> int:
     args = parser.parse_args()
     _init_logging()  # pythonw: stdout/stderr -> NeuralScreen.log
 
-    # One instance only: two copies fight over the screen capture (the
-    # second one gets a dead DDA and the first one loses frames). The
-    # mutex is the standard Windows single-instance mechanism - it lives
-    # in the kernel and dies with the process, so a crashed copy does not
-    # block the next launch.
-    # ERROR_ALREADY_EXISTS, or ERROR_ACCESS_DENIED when the running copy is
-    # elevated and this one is not (see taskbar.claim_single_instance).
-    from taskbar import claim_single_instance
-    _mutex, _already_running = claim_single_instance()
-    if _already_running:
-        # The running copy is asked to show itself: this one used to exit
-        # with only a log line, so a double-click on the program while it sat
-        # in the tray - or on a new version while the old one ran - did
-        # nothing anyone could see. Posted, not a message box: a launch from
-        # a script must not block on a dialog.
-        print("[main] another NeuralScreen is already running - this copy "
-              "asks it to show its menu and exits", file=sys.stderr)
-        try:
-            from taskbar import WM_NS_SHOW, WM_NS_SHOW_LEGACY
-            user32 = ctypes.windll.user32
-            user32.FindWindowW.restype = ctypes.c_void_p
-            running = user32.FindWindowW("NeuralScreenTaskbar", "NeuralScreen")
-            if running:
-                # Both numbers: the running copy may be an older one, which
-                # listens only for the legacy one (a new copy ignores it).
-                for message in (WM_NS_SHOW, WM_NS_SHOW_LEGACY):
-                    user32.PostMessageW(ctypes.c_void_p(running), message, 0, 0)
-        except Exception:
-            pass
-        return 1
-
     # A start at logon (the Run key) can come before the user's desktop: the
     # monitors, the capture and the adapter order are not real yet (#158).
     # Before anything reads them; an ordinary launch does not wait.
@@ -620,6 +847,7 @@ def main() -> int:
     # The config file's path, kept in the state: the settings module writes
     # back into it and has no business knowing what argparse is.
     st.cfg_path = args.config
+    st.original_cwd = Path.cwd()
     startup.configure(st)
     # The compatibility worker receives synthetic RGBA frames only.  Desktop
     # capture and the presentation window are deliberately created after an
@@ -627,6 +855,11 @@ def main() -> int:
     if not compatibility_runtime.startup_gate(st):
         print("[main] compatibility preflight cancelled - capture was not opened")
         return 2
+    from updates import UpdateController, UpdateState
+    st.update_controller = UpdateController(APP_VERSION, BASE_DIR)
+    st.update_state = UpdateState()
+    st.update_confirming = False
+    st.update_frozen = False
     try:
         def _pump_while_waiting() -> None:
             """What a wait on the worker does with its time: keep the window alive.
@@ -640,6 +873,10 @@ def main() -> int:
             window's messages are pumped. pump(), not get(): the menu reads
             its events after the wait.
             """
+            commands.run_contained(st, "update service",
+                                   commands.service_updates, st)
+            if not st.running:
+                return
             if st.display.is_switch_active():
                 st.display.draw_overlay(0.0)
             else:
@@ -761,6 +998,10 @@ def main() -> int:
             down lives in the frame path, which this branch never reaches.
             Both calls below are no-ops when no veil is up.
             """
+            commands.run_contained(st, "update service",
+                                   commands.service_updates, st)
+            if not st.running:
+                return
             if st.display.menu.visible:
                 for ev in pygame.event.get():
                     for action in st.display.menu.handle_event(ev):
@@ -810,6 +1051,11 @@ def main() -> int:
         while st.running:
             loop_start = time.perf_counter()
             now = time.monotonic()
+
+            commands.run_contained(st, "update service",
+                                   commands.service_updates, st)
+            if not st.running:
+                break
 
             # False only when the user asked to quit; a command that raised
             # returns None and the loop goes on (run_contained).
@@ -1327,6 +1573,10 @@ def main() -> int:
                         # queued, the loop raised "silent for 5s" without
                         # another look and restarted a healthy worker.
                         commands_from = time.monotonic()
+                        commands.run_contained(st, "update service",
+                                               commands.service_updates, st)
+                        if not st.running:
+                            break
                         if commands.run_contained(st, "a command",
                                                   commands.drain_commands,
                                                   st) is False:
@@ -1714,6 +1964,12 @@ def main() -> int:
             set_idle_hook(None)
         except Exception:
             pass
+        if st.update_controller is not None:
+            try:
+                st.update_controller.close()
+            except Exception as exc:
+                print(f"[main] failed to close the updater: {exc}",
+                      file=sys.stderr)
         # A conversion may be running on its own worker. Stop it first and
         # wait a bounded moment: the runner reaps its worker on the way out,
         # and the job object in pipeline covers the case where it cannot.

@@ -504,6 +504,8 @@ def convert_settings(st) -> "convert_jobs.ConvertSettings":
 
 def add_conversions(st, paths) -> None:
     """Queue files - from the picker or dropped on the panel - and say so."""
+    if getattr(st, "update_frozen", False):
+        return
     queue = getattr(st, "convert_queue", None)
     if queue is None:
         return
@@ -537,6 +539,8 @@ def add_conversions(st, paths) -> None:
 
 def pick_convert_files(st) -> None:
     """The "Add files" picker, off the UI thread (it is modal)."""
+    if getattr(st, "update_frozen", False):
+        return
     if st.shot_dialog_open:
         return
     # A CONSTANT start folder, on purpose: Windows reopens the dialog where
@@ -580,6 +584,8 @@ def convert_row_action(st, name: str) -> None:
         _prefix, job_id, what = name.split(":", 2)
         job_id = int(job_id)
     except ValueError:
+        return
+    if what == "retry" and getattr(st, "update_frozen", False):
         return
     settings = None
     if what == "retry":
@@ -962,6 +968,56 @@ def _give_back_focus(st) -> None:
     except Exception as exc:
         print(f"[main] could not give the foreground back: {exc}",
               file=sys.stderr)
+
+
+def _update_busy(st) -> bool:
+    """Read the live main-thread work owners before an update install step."""
+    conversions = getattr(st, "convert_queue", None)
+    return bool(
+        getattr(st, "recorder", None) is not None
+        or getattr(st, "recording_finalizer", None) is not None
+        or (conversions is not None and conversions.busy))
+
+
+def _poll_update(st, controller):
+    state = controller.poll()
+    st.update_state = state
+    return state
+
+
+def _update_alert(st, key: str) -> None:
+    display = getattr(st, "display", None)
+    if display is not None:
+        strings = UI_STRINGS.get(getattr(st, "lang", "en"), UI_STRINGS["en"])
+        display.alert(strings.get(key, strings.get("update_busy", "Update unavailable")))
+
+
+def service_updates(st) -> None:
+    """Poll update work and authorize only after a main-thread idle recheck."""
+    controller = getattr(st, "update_controller", None)
+    if controller is None:
+        return
+    _poll_update(st, controller)
+    if not controller.poll_armed():
+        return
+    if _update_busy(st):
+        controller.cancel_install()
+        st.update_confirming = False
+        st.update_frozen = False
+        _poll_update(st, controller)
+        return
+
+    st.update_frozen = True
+    try:
+        authorized = controller.proceed_install()
+    except Exception:
+        st.update_frozen = False
+        raise
+    if authorized:
+        st.running = False
+    else:
+        st.update_frozen = False
+        _poll_update(st, controller)
 
 
 def apply_menu_action(st, action: tuple) -> None:
@@ -1591,7 +1647,68 @@ def apply_menu_action(st, action: tuple) -> None:
                 st.fg_alerted = False
             settings_io.save_menu_layout(st)
         elif name == "record":
-            st.tray_commands.put("record")
+            if not getattr(st, "update_frozen", False):
+                st.tray_commands.put("record")
+        elif name == "update_check":
+            controller = getattr(st, "update_controller", None)
+            if controller is not None:
+                controller.check()
+        elif name == "update_download":
+            controller = getattr(st, "update_controller", None)
+            if controller is not None:
+                state = _poll_update(st, controller)
+                if state.phase == "available":
+                    controller.download()
+        elif name == "update_install":
+            controller = getattr(st, "update_controller", None)
+            if controller is not None and not getattr(st, "update_frozen", False):
+                state = _poll_update(st, controller)
+                if state.phase == "ready" and state.can_install:
+                    if _update_busy(st):
+                        _update_alert(st, "update_busy")
+                    else:
+                        st.update_confirming = True
+        elif name == "update_confirm":
+            controller = getattr(st, "update_controller", None)
+            if (controller is None or not getattr(st, "update_confirming", False)
+                    or getattr(st, "update_frozen", False)):
+                return
+            st.update_confirming = False
+            state = _poll_update(st, controller)
+            if state.phase != "ready" or not state.can_install:
+                return
+            if _update_busy(st):
+                _update_alert(st, "update_busy")
+                return
+            strings = UI_STRINGS.get(getattr(st, "lang", "en"), UI_STRINGS["en"])
+            messages = {
+                code: strings[f"update_error_{code}"]
+                for code in ("shutdown_timeout", "apply_failed",
+                             "relaunch_failed", "recovery_required")
+            }
+            controller.arm_install(
+                config_path=st.cfg_path,
+                original_cwd=st.original_cwd,
+                messages=messages)
+            _poll_update(st, controller)
+        elif name == "update_cancel":
+            st.update_confirming = False
+            controller = getattr(st, "update_controller", None)
+            if controller is not None:
+                state = _poll_update(st, controller)
+                if state.phase == "installing":
+                    controller.cancel_install()
+                    _poll_update(st, controller)
+        elif name == "update_retry":
+            controller = getattr(st, "update_controller", None)
+            if controller is not None:
+                state = _poll_update(st, controller)
+                if state.phase == "error":
+                    controller.check()
+        elif name == "update_official_release":
+            controller = getattr(st, "update_controller", None)
+            if controller is not None:
+                webbrowser.open(controller.official_release_url)
         elif name == "screenshot":
             st.tray_commands.put("screenshot_menu")
         elif name == "window_mode":
@@ -1938,6 +2055,8 @@ def drain_commands(st) -> bool:
                 # are requested from the worker through
                 # FRAME_FLAG_WANT_PIXELS (the screenshot mechanism,
                 # but for every recorded frame).
+                if getattr(st, "update_frozen", False):
+                    continue
                 if st.recorder is None:
                     if getattr(st, "recording_finalizer", None) is not None:
                         st.display.alert(UI_STRINGS[st.lang].get(
