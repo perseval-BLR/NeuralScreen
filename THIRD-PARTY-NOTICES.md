@@ -8,7 +8,7 @@ the components remain controlling.
 
 The package currently contains two different classes of NVIDIA software:
 
-- `nvngx_dlssg.dll` 310.9.1.0 is an NVIDIA-signed public DLSS-G
+- `nvngx_dlssg.dll` 310.9.16.0 is an NVIDIA-signed public DLSS-G
   redistributable and remains subject to NVIDIA's applicable terms.
 - `nvngx_dlssnr.dll` 310.8.0 is a leaked, non-public DLSS-NR build. The project
   has not documented a grant that permits redistributing this file. Its

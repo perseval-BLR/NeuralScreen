@@ -119,6 +119,9 @@ Scope and honesty notes:
 * **Settings captions, whole.** The keys tab's caption wraps instead of losing
   "Backspace clears a key" to the ellipsis (Russian, 1080p), and the Media
   tab's idle conversion line is a caption, no longer a value in the mono face.
+* **DLSS Frame Generation runtime 310.9.16.** The bundled `nvngx_dlssg.dll` is
+  now NVIDIA's 310.9.16.0 redistributable from the DLSS SDK (was 310.9.1.0),
+  NVIDIA-signed and unmodified.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

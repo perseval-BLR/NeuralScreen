@@ -1071,7 +1071,7 @@ vblank waits and how many generated frames were shown, late or superseded
 (`[phase] fg presenter`).
 
 The FG runtime (`nvngx_dlssg.dll`) ships in the archive - the public
-310.9.1.0 redistributable, NVIDIA-signed, included unmodified. The licensing
+310.9.16.0 redistributable, NVIDIA-signed, included unmodified. The licensing
 position is stated in the README notice: research use, takedown on request.
 Absent the DLL, the switch refuses politely and nothing breaks; a different
 build drops into `native/libraries/`.
