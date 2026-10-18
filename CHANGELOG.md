@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.6.0 - 2026-10-18 - A lighter panel, colour controls, window follow, an even frame cap, the FG runtime 310.9.16
 
 * **A lighter panel (redesign B).** The main page ran to 1356 px at 100% -
   past a 1080p screen - with twenty-odd rows in one column. It is now four
