@@ -195,6 +195,9 @@ def check_menu(failures: list) -> None:
                         "params": {"intensity": 1.0, "local_tone": 1.0,
                                    "local_structure": 1.0, "skin_structure": 1.0}})
         menu.visible = True
+        # Redesign B (v2.6.0): the resolution lives in the Network block,
+        # Boost is a tile on the main page.
+        menu.folds = {"net"}
         surf = pygame.Surface((1920, 1080))
         menu.draw(surf)
 
