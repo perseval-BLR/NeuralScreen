@@ -211,6 +211,11 @@ class TaskbarWindow:
     #: pushed to it instead of pulled.
     to_tray_on_minimise = False
     to_tray_on_close = False
+    #: Create the window with its button hidden - the program starts in the
+    #: tray (#171). Set before start(): hiding the button right after start()
+    #: does nothing, the window does not exist yet and the thread shows it a
+    #: moment later.
+    start_hidden = False
 
     def __init__(self, commands: queue.Queue, title: str = "NeuralScreen"):
         self._commands = commands
@@ -509,9 +514,11 @@ class TaskbarWindow:
         # SC_MINIMIZE), which made the second click dead (user: "залипает").
         # With the styles the system sends SC_MINIMIZE on the active button,
         # which the window procedure converts into the menu toggle.
+        hidden = bool(self.start_hidden)
         self._hwnd = user32.CreateWindowExW(
             WS_EX_APPWINDOW, cls, self._title,
-            WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+            WS_POPUP | (0 if hidden else WS_VISIBLE) | WS_CAPTION | WS_SYSMENU
+            | WS_MINIMIZEBOX,
             0, 0, 1, 1, None, None, hinst, None)
         if not self._hwnd:
             return
@@ -528,7 +535,8 @@ class TaskbarWindow:
         # on the bench: 4/4 launches with the cursor over the taskbar, 0/4
         # with it anywhere else). The same reasoning already applies to
         # set_visible() below; it was simply missed here.
-        user32.ShowWindow(self._hwnd, 8)  # SW_SHOWNA - show, do not activate
+        if not hidden:
+            user32.ShowWindow(self._hwnd, 8)  # SW_SHOWNA - show, do not activate
         self._set_icon(hinst)
         allow_show_message(self._hwnd)
         msg = wt.MSG()

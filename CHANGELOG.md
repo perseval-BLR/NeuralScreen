@@ -110,6 +110,9 @@ Scope and honesty notes:
   and the settings page, is the program's close: to the tray with "Close to
   tray", otherwise NeuralScreen quits. The settings page's "×" no longer
   duplicates Back.
+* **Start in the tray (#171).** With "Minimise to tray" on, NeuralScreen starts
+  with its taskbar button hidden - only while the tray icon is up, the one way
+  back.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

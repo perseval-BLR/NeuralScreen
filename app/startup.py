@@ -144,6 +144,23 @@ def _init_logging() -> None:
         pass  # it did not work - the prints just vanish, we do not crash
 
 
+def _starts_in_tray(st, wait: float = 2.0) -> bool:
+    """Whether the program starts in the tray (#171): "Minimise to tray" on,
+    and a tray icon that is up within `wait` seconds - without one a hidden
+    button would leave no way back."""
+    if not st.cfg.get("tray_on_minimise", False):
+        return False
+    tray = getattr(st, "tray", None)
+    deadline = time.monotonic() + wait
+    while tray is not None and not tray.alive() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if tray is None or not tray.alive():
+        print("[main] Minimise to tray is on, but the tray icon is not up - "
+              "starting with the taskbar button", file=sys.stderr)
+        return False
+    return True
+
+
 def _apply_nr_dll(cfg: dict) -> None:
     """The swappable runtime: a configured nr_dll reaches the worker.
 
@@ -882,9 +899,14 @@ def bring_up(st) -> None:
     # two answers are pushed into it here and again whenever they change.
     st.taskbar.to_tray_on_minimise = bool(st.cfg.get("tray_on_minimise", False))
     st.taskbar.to_tray_on_close = bool(st.cfg.get("tray_on_close", False))
-    st.in_tray = False
+    # #171: with "Minimise to tray" on the program starts in the tray - the
+    # button is created hidden, and only while the tray icon really runs (it
+    # is the one way back).
+    st.taskbar.start_hidden = _starts_in_tray(st)
+    st.in_tray = st.taskbar.start_hidden
     st.taskbar.start()
-    print("[main] taskbar window started")
+    print("[main] taskbar window started"
+          + (" - in the tray (Minimise to tray is on)" if st.in_tray else ""))
 
     # Global hotkeys: RegisterHotKey rather than polling the key state.
     # The system gives the keypress to us alone and does not pass it to the
