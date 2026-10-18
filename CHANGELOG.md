@@ -113,6 +113,9 @@ Scope and honesty notes:
 * **Start in the tray (#171).** With "Minimise to tray" on, NeuralScreen starts
   with its taskbar button hidden - only while the tray icon is up, the one way
   back.
+* **The before/after wipe is captioned again.** In the "Source and comparison"
+  block its bare track sat under the window's row and read as that window's
+  size; it now says what it is and shows its percentage.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

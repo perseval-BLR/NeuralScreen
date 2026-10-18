@@ -135,6 +135,18 @@ def main() -> int:
             if out != [("folds", [])] or ("choice", "frame_limit_mode") in keys(menu):
                 failures.append(f"closing Network gave {out}")
 
+        # The wipe in "Source and comparison" carries its own caption and value:
+        # under the window's row a bare track read as that window's size.
+        from i18n import STRINGS
+        for lang in ("en", "ru"):
+            m = menu_with({"source"}, lang=lang, split=0.3, window_mode=True,
+                          window_current=(0x4D5E, "Chrome - YouTube"))
+            m.layout(1920, 1080)
+            wipe = next((i for i in m.items if i.kind == "slider" and i.key == "split"), None)
+            if wipe is None or wipe.extra.get("bare")                     or wipe.extra.get("label") != STRINGS[lang]["split"]                     or wipe.extra.get("value_text") != "30%":
+                failures.append(f"{lang}: the wipe slider is "
+                                f"{wipe and (wipe.extra.get('label'), wipe.extra.get('value_text'), wipe.extra.get('bare'))}")
+
         # 4. Persistence.
         st = types.SimpleNamespace(cfg={})
         with contextlib.redirect_stdout(io.StringIO()):

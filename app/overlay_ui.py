@@ -2240,8 +2240,13 @@ class OverlayMenu:
                                              "value": str(self.state.get("work_size")
                                                           or "")}))
                     cy += self._u(LABEL_H) + gap
+                # Captioned, not bare: it was bare when a section of its own
+                # named it (user, 20.09); in the "Source and comparison" block
+                # the window's row sits right above it, and a bare track read
+                # as that window's size.
                 slider("split", 0.0, 1.0, split_val, s["split"],
-                       hint=s["split_hint"], bare=True, ticks=11)
+                       hint=s["split_hint"], ticks=11,
+                       value_text=f"{int(round(split_val * 100))}%")
             cy += self._u(10)
             progress = self.state.get("convert_progress")
             convert_label = s.get("convert", "Convert")
@@ -3125,6 +3130,7 @@ class OverlayMenu:
         item.value = value
         if item.key == "split":
             self.state["split"] = value
+            item.extra["value_text"] = f"{int(round(value * 100))}%"
             return [("split", value)]
         if item.key in COLOUR_KEYS:
             value = round(value / 0.05) * 0.05
