@@ -1144,12 +1144,16 @@ class OverlayMenu:
         # looked equally harmless, even though one hides the menu and the
         # other unloads the program. A real window has its collapse in the
         # title bar, so it moved here: [help] [gear] [min].
+        # #171: and a window's close next to it, on both pages - "x" is the
+        # program's close (to the tray with "Close to tray", otherwise quit),
+        # so the settings page's "x" no longer duplicates Back: the footer's
+        # Back is the way back, and "x" means one thing everywhere.
         iw = self._u(ICON_W)
         igap = self._u(8)
         iy = self._u(TITLE_H) // 2 - iw // 2
-        order = (["help", "gear", "mini", "min"]
+        order = (["help", "gear", "mini", "min", "x"]
                  if self.page == "main"
-                 else ["close"] if self.page == "settings"
+                 else ["min", "x"] if self.page == "settings"
                  else [])  # the windows page: no header icons at all - the
         # Back button in the footer is the only way out (user rule 10.09).
         # Laid out right to left: the right edge is the last icon.
@@ -2871,11 +2875,16 @@ class OverlayMenu:
                 out.append(("capture", None))
             out.append(("button", "close"))
             return out
-        if key == "close":
-            self.page = "main"
-            self.scroll = 0
-            self.capturing = None
-            return [("capture", None)]
+        if key == "x":
+            # The program's close (#171): main decides tray or quit by the
+            # "Close to tray" setting. A hotkey field waiting for a key lets
+            # go first, as the collapse does.
+            out = []
+            if self.capturing is not None:
+                self.capturing = None
+                out.append(("capture", None))
+            out.append(("button", "window_close"))
+            return out
         return []
 
     def _action_click(self, key: str) -> list[tuple]:
@@ -4441,7 +4450,7 @@ class OverlayMenu:
                              border_radius=self._u(1))
             pygame.draw.rect(surface, _rgb(col), low, fill,
                              border_radius=self._u(1))
-        elif item.key == "close":
+        elif item.key == "x":
             d = max(3, self._u(5))
             pygame.draw.line(surface, _rgb(col), (cx - d, cy - d),
                              (cx + d, cy + d), lw)

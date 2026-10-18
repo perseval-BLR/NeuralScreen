@@ -106,6 +106,10 @@ Scope and honesty notes:
   menu's header now goes to the tray as the taskbar minimise does, and a menu
   opened from the tray no longer brings the taskbar button back: Num2, Esc or
   "—" close it into the tray again.
+* **A close button in the menu's header (#171).** "×" next to "—", on the main
+  and the settings page, is the program's close: to the tray with "Close to
+  tray", otherwise NeuralScreen quits. The settings page's "×" no longer
+  duplicates Back.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

@@ -880,6 +880,12 @@ the user sees without saying so. The 1x1 window that carries the button is
 hidden, never minimised and never destroyed - either would lose the button
 for the rest of the session (#93). Going to the tray is refused, with a
 notice, when the tray icon is not actually running: it is the only way back.
+The menu's header follows the same two settings (#171): its "—" is the
+minimise - with `tray_on_minimise` on, the tray is home, so a menu opened from
+it keeps the button hidden and any close of the menu (Num2, Esc, "—") goes
+back there - and its "×" is the close: to the tray with `tray_on_close`,
+otherwise the program quits. Key presses made while a rebuild held the loop
+are dropped (older than 1.5 s when read) rather than replayed in a burst.
 
 `menu_scale` is one of five steps - 80, 90, 100, 115, 130% - and
 `menu_scale_auto` says whether the user has picked one yet. While it is set,

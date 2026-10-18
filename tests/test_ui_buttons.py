@@ -118,7 +118,8 @@ def main() -> int:
 
     # 1. Header icons on the main page.
     for key, want in (("help", [("button", "github")]),
-                      ("min", [("button", "close")])):
+                      ("min", [("button", "close")]),
+                      ("x", [("button", "window_close")])):
         icon = find(menu, "icon", key)
         if icon is None:
             failures.append(f"no {key} icon on the main page")
@@ -246,13 +247,15 @@ def main() -> int:
             pygame.MOUSEBUTTONDOWN, {"pos": hint_pos, "button": 1}))
         if out:
             failures.append(f"a click on the hint must not emit, got {out}")
-    close_icon = find(menu, "icon", "close")
+    close_icon = find(menu, "icon", "x")
     if close_icon is None:
-        failures.append("no close icon on the settings page")
+        failures.append("no x icon on the settings page")
     else:
         out = click(menu, close_icon)
-        if menu.page != "main" or out != [("capture", None)]:
-            failures.append(f"close icon: expected back to main, got {out}")
+        # A hotkey field still waiting lets go first, as with the collapse.
+        if menu.page != "settings" or out[-1:] != [("button", "window_close")]:
+            failures.append(f"x icon: expected the window's close, got {out}")
+        menu.page = "main"
 
     # 3. The main page: toggle, profile, sliders, Actions buttons.
     menu.layout(3840, 2160)

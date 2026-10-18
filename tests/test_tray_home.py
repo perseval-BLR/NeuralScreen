@@ -15,7 +15,8 @@ Checked on the real command layer with a stand-in display, taskbar and tray:
 3. setting off: opening from the tray brings the button back and closing
    leaves it, as before;
 4. setting on but no tray icon alive: nothing goes to the tray (it would be
-   a program with no way back).
+   a program with no way back);
+5. the header's "x": to the tray with "Close to tray" on, otherwise quit.
 
 Fails before the change: the button came back and stayed, and "—" ignored
 the setting.
@@ -109,6 +110,19 @@ def main() -> int:
         run(st, "settings", "settings")
         if shown or st.in_tray:
             failures.append(f"with no tray icon the program went to the tray: {shown}")
+        # 5. The header's "x" (#171): to the tray with "Close to tray" and a
+        #    live tray icon; otherwise the program quits.
+        for on, alive, to_tray, running in ((True, True, True, True),
+                                            (True, False, False, False),
+                                            (False, True, False, False)):
+            st, shown = state(on=False, in_tray=False, tray_alive=alive)
+            st.cfg["tray_on_close"] = on
+            with contextlib.redirect_stdout(io.StringIO()):
+                commands.apply_menu_action(st, ("button", "window_close"))
+            queued = [] if st.tray_commands.empty() else [st.tray_commands.get_nowait()]
+            if (queued == ["to_tray"]) is not to_tray or st.running is not running:
+                failures.append(f"x with Close to tray {on}, tray alive {alive}: "
+                                f"queued {queued}, running {st.running}")
     finally:
         settings_io.save_menu_layout = real_save
         settings_io.menu_payload = real_payload

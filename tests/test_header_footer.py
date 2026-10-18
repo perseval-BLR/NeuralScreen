@@ -69,15 +69,16 @@ def main() -> int:
     menu = build()
     menu.layout(3840, 2160)
 
-    # 1. The header on the main page: exactly help, gear and min.
+    # 1. The header on the main page: help, gear, the bar, min and the
+    #    window's close (#171).
     # The layout walks right to left, so the items list holds them reversed:
     # the visual order (left to right) is the reverse of the list.
     icons = [i for i in menu.items if i.kind == "icon"]
     keys = [i.key for i in icons]
     visual = list(reversed(keys))
     print(f"header icons (list {keys}, visual {visual})")
-    if visual != ["help", "gear", "mini", "min"]:
-        failures.append(f"the header should be [help, gear, mini, min], "
+    if visual != ["help", "gear", "mini", "min", "x"]:
+        failures.append(f"the header should be [help, gear, mini, min, x], "
                         f"got {visual}")
 
     # The bar (v2.6.0, it replaced mini mode) has no header: its last two
@@ -137,25 +138,28 @@ def main() -> int:
                             f"(button, window_mode), got {out}")
     menu.state["window_mode"] = False
 
-    # 5. The settings page: only the back (close) icon, no min.
+    # 5. The settings page: min and the window's close (#171) - Back is the
+    #    footer's, the "x" no longer duplicates it.
     menu.page = "settings"
     menu.settings_tab = "app"      # where the language and the theme live
     menu.layout(3840, 2160)
     icons = [i for i in menu.items if i.kind == "icon"]
     keys = [i.key for i in icons]
     print(f"settings header icons: {keys}")
-    if keys != ["close"]:
-        failures.append(f"the settings header should be [close], got {keys}")
+    if list(reversed(keys)) != ["min", "x"]:
+        failures.append(f"the settings header should be [min, x], got {keys}")
 
-    # 6. The back icon returns to the main page.
-    close_icon = next((i for i in icons if i.key == "close"), None)
+    # 6. The "x" is the program's close on every page, not a way back.
+    close_icon = next((i for i in icons if i.key == "x"), None)
     if close_icon is None:
-        failures.append("no close icon in the settings header")
+        failures.append("no x icon in the settings header")
     else:
         out = click(menu, close_icon)
-        print(f"close click -> {out}, page now {menu.page}")
-        if menu.page != "main":
-            failures.append("the close icon should return to the main page")
+        print(f"x click -> {out}, page now {menu.page}")
+        if out != [("button", "window_close")] or menu.page != "settings":
+            failures.append(f"the x should send the window's close, got {out} "
+                            f"on page {menu.page}")
+        menu.page = "main"
 
     # 7. Language and theme live on the SETTINGS page, not the main one
     #    (user rule 10.09: the main page is the main page - appearance
@@ -253,8 +257,8 @@ def main() -> int:
     menu.layout(3840, 2160)
     s_icons = [i.key for i in menu.items if i.kind == "icon"]
     print(f"settings page header icons: {s_icons}")
-    if s_icons != ["close"]:
-        failures.append(f"the settings page must keep the close icon, "
+    if list(reversed(s_icons)) != ["min", "x"]:
+        failures.append(f"the settings page header must be [min, x], "
                         f"got {s_icons}")
 
     print("=" * 60)
