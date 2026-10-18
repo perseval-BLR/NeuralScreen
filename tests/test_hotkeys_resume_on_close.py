@@ -197,13 +197,15 @@ def main() -> int:
     #    whatever the route did or did not emit, the assertion below saw a
     #    resumed controller (audit: WEAK). The routes that really do close the
     #    menu through a close action get that action from their own handler.
-    for label, key in (("collapse", "min"), ("back from settings", "close"),
+    # The settings header's "x" is the program's close since #171 (to the
+    # tray or quit), not a way back; Back is the footer's.
+    for label, key in (("collapse", "min"), ("the header's close", "x"),
                        ("footer back", "back")):
         st = _state()
         _capture_on(st)
         st.display.menu.page = "settings"
         st.display.menu.capturing = "framegen"
-        actions = st.display.menu._icon_click(key) if key in ("min", "close") \
+        actions = st.display.menu._icon_click(key) if key in ("min", "x") \
             else st.display.menu._action_click(key)
         for action in actions:
             commands.apply_menu_action(st, action)
