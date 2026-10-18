@@ -102,6 +102,10 @@ Scope and honesty notes:
   made meanwhile ran at once afterwards - the menu opened and closed twenty
   times. A press older than 1.5 s when it is read is dropped and logged; the
   tray's commands and a quit still run.
+* **With "Minimise to tray" on, the tray is home (#171).** The "—" in the
+  menu's header now goes to the tray as the taskbar minimise does, and a menu
+  opened from the tray no longer brings the taskbar button back: Num2, Esc or
+  "—" close it into the tray again.
 
 ## v2.5.0 - 2026-10-17 - Video under NR without stutter, process priority, a sharper camera with its own hotkey, FG up to 6x
 

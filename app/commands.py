@@ -924,6 +924,25 @@ def run_contained(st, what: str, fn, *args):
         return None
 
 
+def _tray_is_home(st) -> bool:
+    """With "Minimise to tray" on, the tray is where the program lives (#171):
+    a menu opened from it does not bring the taskbar button back, and any
+    close of the menu - the header's minimise, Esc, Num2 - leaves the program
+    in the tray. Only while there is a tray icon to come back from."""
+    tray = getattr(st, "tray", None)
+    cfg = getattr(st, "cfg", None) or {}
+    return (bool(cfg.get("tray_on_minimise", False)) and tray is not None
+            and tray.alive() and getattr(st, "taskbar", None) is not None)
+
+
+def _menu_closed_to_tray(st) -> None:
+    """After a close of the menu: back to the tray when it is home (#171)."""
+    if _tray_is_home(st) and not getattr(st, "in_tray", False):
+        st.taskbar.set_visible(False)
+        st.in_tray = True
+        print("[main] menu closed - back to the tray (Minimise to tray is on)")
+
+
 def _give_back_focus(st) -> None:
     """After a menu close: the window the user was in gets the keyboard back.
 
@@ -1513,6 +1532,7 @@ def apply_menu_action(st, action: tuple) -> None:
             st.display.set_menu_input(False)
             _give_back_focus(st)
             settings_io.save_menu_layout(st)
+            _menu_closed_to_tray(st)
             # The close button and Esc both land here, and neither used to say
             # so: the settings paths printed opened/closed, this one printed
             # nothing. A diagnostic package then read "21 opened against 0
@@ -1724,7 +1744,9 @@ def drain_commands(st) -> bool:
                 # Coming back from the tray restores the button first: the
                 # menu is about to be shown, and a menu with no button in the
                 # taskbar is the state #93 is complaining about.
-                if getattr(st, "in_tray", False):
+                # With "Minimise to tray" on, the tray is home and the
+                # button stays hidden while the menu is open (#171).
+                if getattr(st, "in_tray", False) and not _tray_is_home(st):
                     if getattr(st, "taskbar", None) is not None:
                         st.taskbar.set_visible(True)
                     st.in_tray = False
@@ -1753,6 +1775,7 @@ def drain_commands(st) -> bool:
                     st.display.set_menu_input(False)
                 if was_open and not opened:
                     _give_back_focus(st)
+                    _menu_closed_to_tray(st)
                 if opened:
                     st.menu_opened_at = time.monotonic()
                     if not was_open:
