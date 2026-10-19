@@ -1833,6 +1833,9 @@ def menu_payload(st) -> dict:
         "compatibility_score": compatibility_score,
         "gpu_ok": st.gpu_ok,
         "window_mode": st.window_hwnd is not None,
+        # #176: the processed window was made borderless by us.
+        "borderless": (st.window_hwnd is not None
+                       and st.window_hwnd in (getattr(st, "borderless_saved", None) or {})),
         "monitor_devicename": st.capture.devicename,
         "monitors": monitor_entries,
         "monitor": next(

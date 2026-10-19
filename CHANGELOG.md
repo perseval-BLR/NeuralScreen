@@ -41,6 +41,10 @@ Scope and honesty notes:
   HEVC, then H.264, the first that opens), AV1, HEVC or H.264. Premiere Pro
   does not import AV1, which Auto picks on RTX 40/50. A named codec that does
   not open falls back to H.264; H.264 records SDR even with HDR on.
+* **Borderless, full monitor (#176).** In window mode the Source block has a
+  button that takes the frame off the processed window and sizes it to its
+  monitor - for older games with no borderless mode. A second click, or
+  quitting NeuralScreen, puts back the frame, the size and the place.
 
 ## v2.6.0 - 2026-10-18 - A lighter panel, colour controls, window follow, an even frame cap, the FG runtime 310.9.16
 

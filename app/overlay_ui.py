@@ -428,6 +428,7 @@ class OverlayMenu:
             "convert_dir": "",
             "convert_codec": "auto",
             "record_codec": "auto",
+            "borderless": False,
             "convert_quality": "high",
             "convert_image_format": "keep",
             "convert_audio": True,
@@ -2262,6 +2263,17 @@ class OverlayMenu:
                                              "value": str(self.state.get("work_size")
                                                           or "")}))
                     cy += self._u(LABEL_H) + gap
+                    # #176: the captured window without its frame, over its
+                    # whole monitor - for games that have no borderless mode.
+                    borderless = bool(self.state.get("borderless"))
+                    items.append(Item("button", "borderless",
+                                      pygame.Rect(pad, cy, inner_w, act_h),
+                                      extra={"label": s.get(
+                                          "borderless_off" if borderless else "borderless_on",
+                                          "Restore the frame" if borderless
+                                          else "Borderless, full monitor"),
+                                             "filled": False}))
+                    cy += act_h + gap
                 # Captioned, not bare: it was bare when a section of its own
                 # named it (user, 20.09); in the "Source and comparison" block
                 # the window's row sits right above it, and a bare track read

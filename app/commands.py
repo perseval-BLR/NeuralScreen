@@ -32,6 +32,7 @@ import channels
 from badge import BadgeChannel
 from ui_protect import UiDetector
 import window_follow
+import borderless as borderless_mod
 import convert_jobs
 import dialogs
 import pipeline
@@ -741,6 +742,48 @@ def update_ui_protection(st) -> None:
     except Exception as exc:
         print(f"[main] the interface rectangles did not reach the worker ({exc})",
               file=sys.stderr)
+
+
+def toggle_borderless(st) -> None:
+    """The processed window without its frame over its monitor, or back (#176).
+
+    What was taken is kept per window and put back on the second click, and
+    for every window still borderless when NeuralScreen exits
+    (restore_borderless)."""
+    hwnd = getattr(st, "window_hwnd", None)
+    if not hwnd:
+        return
+    saved = getattr(st, "borderless_saved", None)
+    if saved is None:
+        saved = st.borderless_saved = {}
+    if hwnd in saved:
+        borderless_mod.restore(hwnd, saved.pop(hwnd))
+        print(f"[main] window 0x{hwnd:X}: frame restored")
+    else:
+        taken = borderless_mod.make_borderless(hwnd)
+        if taken is None:
+            print(f"[main] window 0x{hwnd:X} is gone - nothing to make borderless",
+                  file=sys.stderr)
+            return
+        saved[hwnd] = taken
+        print(f"[main] window 0x{hwnd:X}: borderless over its monitor "
+              f"(was {taken.rect}, style 0x{taken.style & 0xFFFFFFFF:08X})")
+    try:
+        st.display.menu.set_state({"borderless": hwnd in saved})
+    except AttributeError:
+        pass
+
+
+def restore_borderless(st) -> None:
+    """Every window still borderless gets its frame back (#176) - on exit."""
+    saved = getattr(st, "borderless_saved", None) or {}
+    for hwnd, taken in list(saved.items()):
+        try:
+            borderless_mod.restore(hwnd, taken)
+        except Exception as exc:  # noqa: BLE001 - the exit goes on
+            print(f"[main] window 0x{hwnd:X}: frame not restored ({exc})",
+                  file=sys.stderr)
+        saved.pop(hwnd, None)
 
 
 def update_window_follow(st, now: float | None = None) -> None:
@@ -1560,6 +1603,8 @@ def apply_menu_action(st, action: tuple) -> None:
                       f"open for {time.monotonic() - opened_at:.1f} s)")
             else:
                 print("[main] overlay menu closed (the close button)")
+        elif name == "borderless":
+            toggle_borderless(st)
         elif name == "window_close":
             # The header's "x" (#171): what a window's close does - to the
             # tray with "Close to tray" (and a tray icon to come back from),

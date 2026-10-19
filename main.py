@@ -505,6 +505,8 @@ class _Pipeline:
         #: The runtime in native\libraries\ failed the start-up check and the
         #: bundled one runs instead (#175).
         "byo_fallback",
+        #: Windows made borderless by us (#176): hwnd -> what was taken.
+        "borderless_saved",
         #: What passes 2..N use, when the user gave them their own set. None
         #: by default, which means "the main set for every pass".
         "nr_pass_params",
@@ -1717,6 +1719,8 @@ def main() -> int:
             set_idle_hook(None)
         except Exception:
             pass
+        # A game window we took the frame off gets it back (#176).
+        commands.restore_borderless(st)
         # A conversion may be running on its own worker. Stop it first and
         # wait a bounded moment: the runner reaps its worker on the way out,
         # and the job object in pipeline covers the case where it cannot.
