@@ -582,7 +582,16 @@ static bool InitDirectNr(const wchar_t *data_path)
         wchar_t candidate[MAX_PATH] = {};
         wcscpy_s(candidate, worker_dir);
         wcscat_s(candidate, L"libraries\\nvngx_dlssnr.dll");
-        if (GetFileAttributesW(candidate) != INVALID_FILE_ATTRIBUTES)
+        // NS_NR_NO_BYO=1: the client found that the BYO runtime does not run
+        // on this card (#175: the official 310.9.16 refuses the create on an
+        // RTX 3060 Ti) and asks for the bundled one instead.
+        char no_byo[4] = {};
+        const bool skip_byo = GetEnvironmentVariableA("NS_NR_NO_BYO", no_byo, sizeof(no_byo)) > 0
+                              && no_byo[0] == '1';
+        if (skip_byo && GetFileAttributesW(candidate) != INVALID_FILE_ATTRIBUTES)
+            Log("[pure] native\\libraries\\nvngx_dlssnr.dll skipped: it did not run on "
+                "this card - the bundled runtime");
+        if (!skip_byo && GetFileAttributesW(candidate) != INVALID_FILE_ATTRIBUTES)
         {
             if (!NsGateByoDll(candidate, "nvngx_dlssnr.dll"))
             {

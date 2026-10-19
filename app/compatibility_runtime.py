@@ -60,13 +60,18 @@ def _native_path(value: str) -> Path:
     return path if path.is_absolute() else NATIVE_DIR / path
 
 
+def _byo_skipped() -> bool:
+    """NS_NR_NO_BYO=1: the worker passes over native\\libraries\\ (#175)."""
+    return os.environ.get("NS_NR_NO_BYO", "") == "1"
+
+
 def runtime_path() -> Path:
     """The first runtime candidate used by the native worker's resolver."""
     configured = os.environ.get("NS_NR_DLL")
     if configured:
         return _native_path(configured)
     byo = NATIVE_DIR / "libraries" / "nvngx_dlssnr.dll"
-    return byo if byo.is_file() else NATIVE_DIR / "nvngx_dlssnr.dll"
+    return byo if byo.is_file() and not _byo_skipped() else NATIVE_DIR / "nvngx_dlssnr.dll"
 
 
 def _fingerprint(path: Path) -> dict[str, Any]:
@@ -104,7 +109,9 @@ def _runtime_route() -> dict[str, Any]:
     return {
         "probe_contract": PROBE_CONTRACT,
         "runtime_source": (
-            "configured" if configured else "byo-candidate" if byo.is_file()
+            "configured" if configured
+            else "bundled-byo-skipped" if byo.is_file() and _byo_skipped()
+            else "byo-candidate" if byo.is_file()
             else "bundled"
         ),
         # A BYO file can fail the native NVIDIA-signature/product gate.  The
@@ -443,8 +450,22 @@ def settings_snapshot(st) -> dict:
         return {}
 
 
+def _can_fall_back_from_byo() -> bool:
+    """A runtime from native\\libraries\\ is what failed, and the bundled one is
+    there to try instead (#175)."""
+    return (not os.environ.get("NS_NR_DLL") and not _byo_skipped()
+            and (NATIVE_DIR / "libraries" / "nvngx_dlssnr.dll").is_file()
+            and (NATIVE_DIR / "nvngx_dlssnr.dll").is_file())
+
+
 def startup_gate(st) -> bool:
-    """Block capture startup until PASS; Retry reruns without app restart."""
+    """Block capture startup until PASS; Retry reruns without app restart.
+
+    A runtime the user dropped into native\\libraries\\ that fails on this
+    card (#175: the official 310.9.16 refuses the create on an RTX 3060 Ti)
+    does not block the start while the bundled runtime is there: the
+    preflight runs again with the bundled one, and the user is told why
+    (st.byo_fallback)."""
     force = False
     while True:
         try:
@@ -457,6 +478,14 @@ def startup_gate(st) -> bool:
             print(f"[compat] preflight could not run: {type(exc).__name__}: {exc}")
         if result is not None and result.is_pass:
             return True
+        if _can_fall_back_from_byo():
+            print("[compat] the runtime in native\\libraries\\ failed here "
+                  f"({result.stage if result is not None else 'setup'}) - "
+                  "trying the bundled runtime")
+            os.environ["NS_NR_NO_BYO"] = "1"
+            st.byo_fallback = True
+            force = False
+            continue
 
         # In the user's language: this is the one message a user sees when
         # the program refuses to start, and it was Russian in every language.

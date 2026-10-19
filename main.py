@@ -502,6 +502,9 @@ class _Pipeline:
         "focus_skipped",
         "focus_failed",
         "focus_broken",
+        #: The runtime in native\libraries\ failed the start-up check and the
+        #: bundled one runs instead (#175).
+        "byo_fallback",
         #: What passes 2..N use, when the user gave them their own set. None
         #: by default, which means "the main set for every pass".
         "nr_pass_params",

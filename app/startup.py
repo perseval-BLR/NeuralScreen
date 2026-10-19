@@ -941,6 +941,13 @@ def bring_up(st) -> None:
     # The numpad sends different key codes with Num Lock off, so those
     # bindings do not misbehave - they are simply absent. Say so, or it
     # looks like the program ignores the keyboard.
+    if getattr(st, "byo_fallback", False):
+        # #175: the runtime in native\libraries\ did not run on this card,
+        # so the bundled one runs - say so, or the user believes theirs does.
+        st.display.alert(UI_STRINGS[st.lang].get(
+            "byo_fallback",
+            "The NR runtime in native\\libraries\\ does not run on this card - "
+            "using the bundled one"), duration=8.0)
     numpad = numlock_needed(st.hotkey_bindings)
     if numpad and not numlock_on():
         print(f"[main] Num Lock is off: the numpad hotkeys "

@@ -30,6 +30,14 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **A runtime in `native\libraries\` that does not run on this card no longer
+  blocks the start (#175).** The official NR runtime 310.9.16 refuses to create
+  the feature on an RTX 3060 Ti (0xBAD00002), and the start-up check stopped
+  the program with a dialog. It now tries the bundled runtime instead and, when
+  that passes, starts with it and says so in a notice.
+
 ## v2.6.0 - 2026-10-18 - A lighter panel, colour controls, window follow, an even frame cap, the FG runtime 310.9.16
 
 * **A lighter panel (redesign B).** The main page ran to 1356 px at 100% -
