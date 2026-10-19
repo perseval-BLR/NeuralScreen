@@ -37,6 +37,10 @@ Scope and honesty notes:
   the feature on an RTX 3060 Ti (0xBAD00002), and the start-up check stopped
   the program with a dialog. It now tries the bundled runtime instead and, when
   that passes, starts with it and says so in a notice.
+* **Recording codec (#174).** Settings -> Media: Auto (as before - AV1, then
+  HEVC, then H.264, the first that opens), AV1, HEVC or H.264. Premiere Pro
+  does not import AV1, which Auto picks on RTX 40/50. A named codec that does
+  not open falls back to H.264; H.264 records SDR even with HDR on.
 
 ## v2.6.0 - 2026-10-18 - A lighter panel, colour controls, window follow, an even frame cap, the FG runtime 310.9.16
 

@@ -662,7 +662,7 @@ _SETTINGS_KEYS = (
     # ours - which is the difference between two entirely different classes
     # of overlay bug.
     "worker_present", "capture_in_worker", "pixels_in_shm", "motion_on_gpu",
-    "fullscreen", "warmup", "split", "record_audio",
+    "fullscreen", "warmup", "split", "record_audio", "record_codec",
     "rec_indicator", "gpu_record", "open_menu_on_start",
     "screenshot_format", "screenshot_mode",
     # The conversion page's output choices: a report about a conversion

@@ -26,6 +26,7 @@
   "frame_limit_mode": "unlimited",
   "frame_limit_custom": 90,
   "record_audio": true,
+  "record_codec": "auto",
   "rec_indicator": true,
   "gpu_record": true,
   "recording_dir": "",

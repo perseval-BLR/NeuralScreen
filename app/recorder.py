@@ -149,8 +149,19 @@ class VideoRecorder:
     #: ended continues it; one that starts later follows a gap.
     AUDIO_JOIN_S = 0.005
 
+    @classmethod
+    def codec_chain(cls, codec: str = "auto") -> tuple:
+        """The NVENC encoders to try, in order (#174): every one for auto,
+        otherwise the one asked for and then H.264 - a recording in another
+        codec beats no recording."""
+        if codec not in ("av1", "hevc", "h264"):
+            return cls.CODEC_CHAIN
+        first = f"{codec}_nvenc"
+        return (first,) if first == "h264_nvenc" else (first, "h264_nvenc")
+
     def __init__(self, path: str, width: int, height: int, fps: float = 60.0,
-                 audio: bool = True):
+                 audio: bool = True, codec: str = "auto"):
+        self._codec_chain = self.codec_chain(codec)
         # ``path`` remains the requested public destination for compatibility
         # with commands.py. Bytes are written next to it under a .partial name
         # and only published after close + read-back verification succeeds.
@@ -260,7 +271,8 @@ class VideoRecorder:
         self.codec for the caller (and the tests).
         """
         rate = int(round(fps))
-        for name in self.CODEC_CHAIN:
+        chain = getattr(self, "_codec_chain", self.CODEC_CHAIN)
+        for name in chain:
             try:
                 with av.open("null", mode="w", format="null") as probe:
                     stream = probe.add_stream(name, rate=rate)
@@ -283,7 +295,7 @@ class VideoRecorder:
             return self._container.add_stream(name, rate=rate)
         raise RuntimeError(
             "no NVENC encoder available (tried "
-            + ", ".join(self.CODEC_CHAIN) + ")")
+            + ", ".join(chain) + ")")
 
     def _probe_aac_encoder(self) -> bool:
         """Open the exact AAC configuration before it can poison an MP4.

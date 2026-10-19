@@ -395,6 +395,9 @@ FRAME_LIMIT_CUSTOM_MAX = 240
 # holds the two copies together).
 CONVERT_DESTS = ("source", "folder")
 CONVERT_CODECS = ("auto", "av1", "hevc", "h264")
+#: The recording's video codec (#174): auto is AV1 -> HEVC -> H.264, the
+#: first that opens; a named one falls back to H.264 when it does not open.
+RECORD_CODECS = ("auto", "av1", "hevc", "h264")
 CONVERT_QUALITIES = ("high", "balanced", "small")
 CONVERT_IMAGE_FORMATS = ("keep", "png", "jpg")
 
@@ -684,7 +687,8 @@ def _validate_config(cfg: dict) -> dict:
     for key, allowed in (("convert_dest", CONVERT_DESTS),
                          ("convert_codec", CONVERT_CODECS),
                          ("convert_quality", CONVERT_QUALITIES),
-                         ("convert_image_format", CONVERT_IMAGE_FORMATS)):
+                         ("convert_image_format", CONVERT_IMAGE_FORMATS),
+                         ("record_codec", RECORD_CODECS)):
         value = str(cfg.get(key, allowed[0])).lower()
         cfg[key] = value if value in allowed else allowed[0]
     # On unless the config really says off: a video that comes back silent
@@ -1252,6 +1256,7 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         "convert_dest": _choice(cfg, "convert_dest", CONVERT_DESTS),
         "convert_dir": cfg.get("convert_dir") or "",
         "convert_codec": _choice(cfg, "convert_codec", CONVERT_CODECS),
+        "record_codec": _choice(cfg, "record_codec", RECORD_CODECS),
         "convert_quality": _choice(cfg, "convert_quality", CONVERT_QUALITIES),
         "convert_image_format": _choice(cfg, "convert_image_format",
                                         CONVERT_IMAGE_FORMATS),
@@ -1760,6 +1765,7 @@ def menu_payload(st) -> dict:
         # than standing empty while files land somewhere unnamed.
         "convert_dir": st.cfg.get("convert_dir") or str(BASE_DIR / "converted"),
         "convert_codec": _choice(st.cfg, "convert_codec", CONVERT_CODECS),
+        "record_codec": _choice(st.cfg, "record_codec", RECORD_CODECS),
         "convert_quality": _choice(st.cfg, "convert_quality",
                                    CONVERT_QUALITIES),
         "convert_image_format": _choice(st.cfg, "convert_image_format",

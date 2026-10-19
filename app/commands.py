@@ -65,6 +65,8 @@ _CONVERT_CHOICES = {
     "convert_codec": settings_io.CONVERT_CODECS,
     "convert_quality": settings_io.CONVERT_QUALITIES,
     "convert_image_format": settings_io.CONVERT_IMAGE_FORMATS,
+    # Not the conversion page's, but the same kind of choice (#174).
+    "record_codec": settings_io.RECORD_CODECS,
 }
 
 
@@ -330,6 +332,11 @@ def drain_save_dialog(st) -> None:
 #: there, so the old recorder's 30 fps compromise does not apply.
 GPU_RECORD_FPS = 60
 
+#: record_codec's names -> the worker's REC codec values (#174).
+REC_CODECS_BY_NAME = {"auto": protocol.REC_CODEC_AUTO, "h264": protocol.REC_CODEC_H264,
+                      "hevc": protocol.REC_CODEC_HEVC, "av1": protocol.REC_CODEC_AV1}
+REC_CODEC_AUTO = protocol.REC_CODEC_AUTO
+
 
 def start_recorder(st, path: str):
     """The recorder for a new recording: on the GPU when that is switched on
@@ -352,9 +359,16 @@ def start_recorder(st, path: str):
         # SDR when no 10-bit encoder opens). NS_GREC_HDR=0 keeps it SDR.
         hdr = (bool(st.cfg.get("hdr", False))
                and os.environ.get("NS_GREC_HDR", "1") != "0")
+        # The codec the user picked (#174: Premiere does not import AV1).
+        # H.264 has no 10-bit NVENC encoder, so it is an SDR recording.
+        codec = str(st.cfg.get("record_codec", "auto"))
+        if hdr and codec == "h264":
+            print("[main] recording in H.264: SDR (NVENC has no 10-bit H.264)")
+            hdr = False
         try:
             return GpuRecorder(worker, reader, path, fps=GPU_RECORD_FPS,
-                               audio=st.record_audio, hdr=hdr)
+                               audio=st.record_audio, hdr=hdr,
+                               codec=REC_CODECS_BY_NAME.get(codec, REC_CODEC_AUTO))
         except Exception as exc:
             print(f"[main] GPU recording did not start ({exc}) - "
                   f"recording on the CPU instead", file=sys.stderr)
@@ -363,7 +377,8 @@ def start_recorder(st, path: str):
     # 60 fps recording costs ~36% of the FPS (101 -> 65). Halving the frame
     # rate halves that cost; the picture quality per frame is identical.
     return VideoRecorder(path, st.width, st.height, fps=30,
-                         audio=st.record_audio)
+                         audio=st.record_audio,
+                         codec=str(st.cfg.get("record_codec", "auto")))
 
 
 def begin_recording_finalization(st, *, announce: bool = True) -> bool:

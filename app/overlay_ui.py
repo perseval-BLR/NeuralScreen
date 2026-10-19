@@ -100,6 +100,7 @@ _CONVERT_SEGMENTS = {
     "convert_codec": ("auto", "av1", "hevc", "h264"),
     "convert_quality": ("high", "balanced", "small"),
     "convert_image_format": ("keep", "png", "jpg"),
+    "record_codec": ("auto", "av1", "hevc", "h264"),
 }
 
 NEUTRAL_CHOICE = {
@@ -426,6 +427,7 @@ class OverlayMenu:
             "convert_dest": "source",
             "convert_dir": "",
             "convert_codec": "auto",
+            "record_codec": "auto",
             "convert_quality": "high",
             "convert_image_format": "keep",
             "convert_audio": True,
@@ -1763,6 +1765,13 @@ class OverlayMenu:
             toggle("gpu_record", s.get("gpu_record", "Record on the GPU"),
                    bool(self.state.get("gpu_record", True)),
                    hint=s.get("gpu_record_hint", ""))
+            # #174: auto picks the best encoder that opens (AV1 on RTX 40/50),
+            # which some editors (Premiere) do not import.
+            segmented("record_codec", s.get("record_codec", "Recording codec"),
+                      str(self.state.get("record_codec", "auto")),
+                      ["auto", "av1", "hevc", "h264"],
+                      labels=[s.get("convert_codec_auto", "Auto"),
+                              "AV1", "HEVC", "H.264"])
             toggle("spout", s.get("spout", "Spout2 output (OBS)"),
                    bool(self.state.get("spout")),
                    hint=s.get("spout_hint", ""))

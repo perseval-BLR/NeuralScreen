@@ -81,7 +81,9 @@ the card (`native/gpu_recorder.cpp`):
 - **The encoder thread** waits for the fence, converts RGBA to NV12 with the
   D3D11 video processor on the same adapter (matched by LUID, as the Spout
   bridge does) and hands the surface to a Media Foundation sink writer running
-  NVENC: AV1, then HEVC, then H.264 - the first one the driver opens. An SDR
+  NVENC: AV1, then HEVC, then H.264 - the first one the driver opens, unless
+  `record_codec` (Settings -> Media, #174) names one: then that one, and H.264
+  if it does not open; H.264 records SDR even with HDR on. An SDR
   file is tagged BT.709 studio range, which is what players assume for HD video.
 - **HDR10 when HDR is on.** An HDR session is recorded as the display gets it:
   10-bit, BT.2020 primaries and matrix, the PQ curve, tagged so that a player
