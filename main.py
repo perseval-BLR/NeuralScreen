@@ -1720,7 +1720,11 @@ def main() -> int:
         except Exception:
             pass
         # A game window we took the frame off gets it back (#176).
-        commands.restore_borderless(st)
+        try:
+            commands.restore_borderless(st)
+        except Exception as exc:
+            print(f"[main] the borderless windows were not restored: {exc}",
+                  file=sys.stderr)
         # A conversion may be running on its own worker. Stop it first and
         # wait a bounded moment: the runner reaps its worker on the way out,
         # and the job object in pipeline covers the case where it cannot.

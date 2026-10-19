@@ -22,7 +22,9 @@ class FakeRecorder:
     FINISH_TIMEOUT_S = 30.0
 
     def __init__(self, path: str, width: int = 8, height: int = 4,
-                 fps: float = 30.0, audio: bool = True):
+                 fps: float = 30.0, audio: bool = True, codec: str = "auto"):
+        # codec: the recording codec the user picked (#174).
+        self.codec = codec
         self.path = path
         self.partial_path = f"{path}.partial"
         self.width = width
