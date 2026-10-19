@@ -494,6 +494,8 @@ class _Pipeline:
         #: detector, and what was last sent to which worker.
         "ui_detector",
         "ui_rects_sent",
+        #: The protection failed once and is off for the session (#177).
+        "ui_protect_broken",
         #: Window mode following the focus (app/window_follow.py, #157): the
         #: follower, when it last looked, and the last window it logged as
         #: not followable.

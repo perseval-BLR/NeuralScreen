@@ -30,6 +30,14 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **Frame Generation with "Protect the interface in FG" no longer closes the
+  program (#177).** The protection read the shared gray frame as a picture one
+  row high and raised the moment FG came on; the frame is now read in its real
+  shape, and a failure in the protection turns it off for the session with one
+  notice instead of ending NeuralScreen.
+
 ## v2.6.1 - 2026-10-19 - A new NR runtime that fails no longer blocks the start, the recording codec, borderless windows
 
 * **A runtime in `native\libraries\` that does not run on this card no longer

@@ -232,7 +232,10 @@ class SharedFrameBuffer:
         """
         if self._gray_buf is None:
             return None
-        return self._gray_buf.copy()
+        # As (height, width): the section is flat, and the interface
+        # protection's detector read a flat copy as a picture one row high
+        # (#177: FG with the protection on ended the program).
+        return self._gray_buf.copy().reshape(self.gray_h, self.gray_w)
 
     def close_gray(self) -> None:
         if self._gray_buf is not None:

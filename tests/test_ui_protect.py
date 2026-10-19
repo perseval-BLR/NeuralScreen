@@ -17,6 +17,8 @@ Checked without a GPU:
    that has nothing to protect; the menu has the switch in the Network block.
 
 Fails before the change: there was no detector, no UIRC and no switch.
+#177: the real gray section is flat - read as it was, the detector raised as
+FG came on and the program ended; and a failure inside now stays inside.
 
 Run:  runtime\\python.exe tests\\test_ui_protect.py
 """
@@ -154,6 +156,42 @@ def main() -> int:
     commands.update_ui_protection(fresh)
     if fresh.worker.stdin.getvalue():
         failures.append("a fresh worker with nothing to protect was sent a UIRC")
+
+    # #177: the real shared gray section, not a hand-made 2-D array. Its
+    # buffer is flat; read as it was, the detector raised the moment FG came
+    # on and the program ended. And a failure inside does not reach the loop.
+    shm2 = protocol.SharedFrameBuffer(64, 64)
+    try:
+        shm2.open_gray(W, H)
+        shm2._gray_buf[:] = with_hud(moving_scene(0)).reshape(-1)
+        if shm2.read_gray().shape != (H, W):
+            failures.append(f"read_gray gave {shm2.read_gray().shape}, not {(H, W)}")
+        real = types.SimpleNamespace(cfg={"fg_ui_protect": True, "frame_generation": True},
+                                     worker=Worker(8), gray_active=True, shm=shm2, lang="en",
+                                     display=types.SimpleNamespace(alert=lambda *a, **k: None))
+        for t in range(3):
+            shm2._gray_buf[:] = with_hud(moving_scene(t)).reshape(-1)
+            commands.update_ui_protection(real)
+        if getattr(real, "ui_protect_broken", False):
+            failures.append("the detector failed on the real gray section")
+    finally:
+        shm2.close_gray()
+    alerts = []
+    broken = types.SimpleNamespace(
+        cfg={"fg_ui_protect": True, "frame_generation": True}, worker=Worker(9),
+        gray_active=True, lang="en", display=types.SimpleNamespace(alert=alerts.append),
+        shm=types.SimpleNamespace(read_gray=lambda: np.zeros(7, np.uint8)),
+        ui_detector=types.SimpleNamespace(update=lambda g: 1 / 0, reset=lambda: None))
+    import contextlib
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            commands.update_ui_protection(broken)
+            commands.update_ui_protection(broken)
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"a failing detector reached the loop: {exc!r}")
+    if len(alerts) != 1 or not getattr(broken, "ui_protect_broken", False):
+        failures.append(f"a failing detector alerted {len(alerts)} times and was not "
+                        f"turned off")
 
     import pygame
     pygame.init()

@@ -713,7 +713,21 @@ def update_ui_protection(st) -> None:
 
     While FG runs and the setting is on, the still-interface rectangles of the
     latest gray frame go to the worker - only when they change; otherwise an
-    empty list, once, so a worker never keeps protecting a stale place."""
+    empty list, once, so a worker never keeps protecting a stale place.
+
+    Called on every pass of the main loop: a failure in it is logged and
+    shown once and turns the protection off for the session (#177: a
+    ValueError here ended the program the moment FG came on)."""
+    if getattr(st, "ui_protect_broken", False):
+        return
+    if run_contained(st, "the interface protection",
+                     lambda: _update_ui_protection(st) or True) is not True:
+        st.ui_protect_broken = True
+        print("[main] interface protection: off for this session after the "
+              "failure above", file=sys.stderr)
+
+
+def _update_ui_protection(st) -> None:
     worker = getattr(st, "worker", None)
     if worker is None or worker.poll() is not None:
         return
