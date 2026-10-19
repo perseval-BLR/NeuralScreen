@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.6.1 - 2026-10-19 - A new NR runtime that fails no longer blocks the start, the recording codec, borderless windows
 
 * **A runtime in `native\libraries\` that does not run on this card no longer
   blocks the start (#175).** The official NR runtime 310.9.16 refuses to create
