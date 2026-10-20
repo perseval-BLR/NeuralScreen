@@ -13,7 +13,9 @@ Checked without a GPU:
 2. the Fine tuning block has the three-way switch, and a pick sends it;
 3. the command sets the config and NS_NR_PRESET (0 / 1 / 2) and restarts the
    worker once; picking the current value restarts nothing;
-4. the bundled runtime carries the hint's name (the parameter is real).
+4. the bundled runtime carries the hint's name (the parameter is real);
+5. #179: a runtime with one model (310.8) shows a line naming it instead of a
+   switch that changes nothing; the version is read from the DLL's resource.
 
 The worker's "[pure] NR runtime <version> ... preset hint" line is checked by
 test_lens.py, which runs the worker (GPU).
@@ -77,7 +79,32 @@ def main() -> int:
     menu.layout(1920, 1080)
     if any(i.key == "nr_preset" for i in menu.items):
         failures.append("the NR preset switch shows with its block closed")
+    # #179: a runtime with one model gets no switch - a line says what runs.
+    menu.folds = {"tune"}
+    menu.set_state({"nr_presets": False, "nr_runtime_version": "310.8.0.0"})
+    menu.layout(1920, 1080)
+    row = next((i for i in menu.items if i.key == "nr_preset"), None)
+    if row is None or row.kind != "info" or "310.8.0.0" not in str(row.extra.get("value")):
+        failures.append(f"with one model the preset row is {row and (row.kind, row.extra)}")
+    menu.set_state({"nr_presets": True})
+    menu.layout(1920, 1080)
+    if not any(i.kind == "segmented" and i.key == "nr_preset" for i in menu.items):
+        failures.append("with two models the switch is gone")
     pygame.quit()
+
+    # #179: the runtime's version, read from the DLL without loading it.
+    import nr_runtime
+    if not nr_runtime.has_presets((310, 9, 16, 0)) or nr_runtime.has_presets((310, 8, 0, 0))             or nr_runtime.has_presets(None):
+        failures.append("has_presets does not draw the line at 310.9.16")
+    dll = Path(BASE) / "native" / "nvngx_dlssnr.dll"
+    if dll.is_file():
+        version = nr_runtime.file_version(dll)
+        print(f"    bundled runtime: {version}")
+        if version is None or version[0] != 310:
+            failures.append(f"the bundled runtime's version read as {version}")
+    payload_keys = settings_io._nr_runtime_current()
+    if not (isinstance(payload_keys, tuple) and len(payload_keys) == 2):
+        failures.append(f"the payload's runtime check gave {payload_keys!r}")
 
     # 3. The command: config, environment, one restart.
     import commands

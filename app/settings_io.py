@@ -1023,6 +1023,15 @@ NR_PRESETS = ("default", "a", "b")
 NR_PRESET_HINTS = {"default": "0", "a": "1", "b": "2"}
 
 
+def _nr_runtime_current() -> tuple:
+    """(version text, has presets) of the runtime the worker will load (#179)."""
+    try:
+        import nr_runtime
+        return nr_runtime.current()
+    except Exception:
+        return "", True
+
+
 def nr_preset(cfg: dict) -> str:
     value = str(cfg.get("nr_preset", "default")).lower()
     return value if value in NR_PRESETS else "default"
@@ -1779,6 +1788,8 @@ def menu_payload(st) -> dict:
         "dim_on_rebuild": st.cfg.get("dim_on_rebuild", True) is not False,
         "window_follow": bool(st.cfg.get("window_follow", False)),
         "nr_preset": nr_preset(st.cfg),
+        # #179: the A / B switch only on a runtime that has two models.
+        **dict(zip(("nr_runtime_version", "nr_presets"), _nr_runtime_current())),
         "hotkeys_enabled": st.cfg.get("hotkeys_enabled", True) is not False,
         "recording_dir": st.cfg.get("recording_dir") or "",
         "screenshot_dir": st.cfg.get("screenshot_dir") or "",

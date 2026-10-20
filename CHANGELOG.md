@@ -30,6 +30,15 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **The NR preset switch shows only where it does something (#179).** The
+  bundled NR runtime (310.8) has one model and ignores the preset, so A and B
+  ran the same - and the switch said nothing about it. Fine tuning now reads
+  the runtime's version from its file: with 310.9.16 or newer in
+  `native\libraries\` the Auto / A / B switch is there, otherwise one line
+  says "one model (310.8.0.0)".
+
 ## v2.6.1 - 2026-10-19 - A new NR runtime that fails no longer blocks the start, the recording codec, borderless windows
 
 * **Frame Generation with "Protect the interface in FG" no longer closes the

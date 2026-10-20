@@ -466,6 +466,8 @@ class OverlayMenu:
             "dim_on_rebuild": True,
             "window_follow": False,
             "nr_preset": "default",
+            "nr_presets": True,
+            "nr_runtime_version": "",
             # The hotkeys master switch (#134). Listed HERE for the reason the
             # spout/hdr entries above spell out: a key missing from this dict
             # is dropped by set_state in silence, and the toggle would draw as
@@ -2187,10 +2189,21 @@ class OverlayMenu:
                           labels=[s["style_0"], s["style_1"], s["style_2"]])
                 # The runtime's model preset (310.9.16: B smaller and faster,
                 # A the previous model). A worker restart, like the backend.
-                segmented("nr_preset", s.get("nr_preset", "NR preset"),
-                          str(self.state.get("nr_preset", "default")),
-                          ["default", "a", "b"],
-                          labels=[s.get("nr_preset_default", "Auto"), "A", "B"])
+                # #179: on a runtime with one model (the bundled 310.8) the
+                # switch would change nothing - say what runs instead.
+                if self.state.get("nr_presets", True) is not False:
+                    segmented("nr_preset", s.get("nr_preset", "NR preset"),
+                              str(self.state.get("nr_preset", "default")),
+                              ["default", "a", "b"],
+                              labels=[s.get("nr_preset_default", "Auto"), "A", "B"])
+                elif show:
+                    version = str(self.state.get("nr_runtime_version") or "")
+                    items.append(Item("info", "nr_preset",
+                                      pygame.Rect(pad, cy, inner_w, self._u(LABEL_H)),
+                                      extra={"label": s.get("nr_preset", "NR preset"),
+                                             "value": s.get("nr_preset_one", "one model{v}").format(
+                                                 v=f" ({version})" if version else "")}))
+                    cy += self._u(LABEL_H) + gap
                 for key in PARAM_KEYS:
                     if key != "intensity":
                         param_slider(key)
