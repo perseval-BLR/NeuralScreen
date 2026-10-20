@@ -892,7 +892,9 @@ def bring_up(st) -> None:
     st.shot_dialog_open = False
     st.tray = TrayController(st.tray_commands,
                              labels=tray_labels(UI_STRINGS[st.lang]))
-    st.tray._set_state(nr=not st.paused, scale=st.work_scale)
+    # The same rule the start applies below (st.paused is set further down -
+    # reading it here raised AttributeError and ended every start).
+    st.tray._set_state(nr=nr_starts_on(st.cfg), scale=st.work_scale)
     st.tray.start()
     print("[main] tray icon started")
 
