@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.6.2 - 2026-10-20 - A smooth picture under an open panel, safer driver resets, NR remembered, the preset switch only where it works
 
 * **The NR preset switch shows only where it does something (#179).** The
   bundled NR runtime (310.8) has one model and ignores the preset, so A and B
