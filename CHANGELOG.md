@@ -44,6 +44,10 @@ Scope and honesty notes:
   the PC froze. It now waits until the driver answers before the restart, and
   on a card NVIDIA's runtime does not officially support (RTX 20-40) a second
   reset in one session leaves NR off - no automatic restart; Num1 turns it on.
+* **An open panel no longer stutters the picture under it (#166).** Its live
+  readings changed with every frame, and each change redrew the overlay layer,
+  which costs the compositor a frame of timing. They now change twice a second
+  while the panel is open.
 
 ## v2.6.1 - 2026-10-19 - A new NR runtime that fails no longer blocks the start, the recording codec, borderless windows
 

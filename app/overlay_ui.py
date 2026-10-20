@@ -18,6 +18,7 @@ factor the HUD uses (display.ui_scale_for).
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -535,6 +536,8 @@ class OverlayMenu:
         # be the single place where both the settings and what is going on are
         # visible.
         self.stats: dict = {}
+        #: When the shown readings last changed (#166, STATS_INTERVAL_S).
+        self._stats_at = float("-inf")
         self.items: list[Item] = []
         self._build_fonts()
         # The language list shows every language in its own script (Русский,
@@ -766,8 +769,20 @@ class OverlayMenu:
         """Hotkey captions: command -> "Num1". Sourced from the real bindings."""
         self.hotkeys = dict(mapping or {})
 
-    def set_stats(self, hud: dict) -> None:
+    #: How often the open panel's live readings change (#166): every change
+    #: re-flips the overlay layer and costs the compositor a frame of timing,
+    #: so a panel left on screen stuttered the picture under it.
+    STATS_INTERVAL_S = 0.5
+
+    def set_stats(self, hud: dict, now: float | None = None) -> None:
+        """The readings the panel shows. While the panel is open they change
+        at most every STATS_INTERVAL_S (2 Hz), not with every frame; closed,
+        they are taken as they come."""
+        now = time.monotonic() if now is None else float(now)
+        if self.visible and self.stats and now - self._stats_at < self.STATS_INTERVAL_S:
+            return
         self.stats = dict(hud or {})
+        self._stats_at = now
 
     def set_state(self, payload: dict) -> None:
         for k, v in payload.items():
