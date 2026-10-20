@@ -1976,6 +1976,12 @@ def drain_commands(st) -> bool:
                 print(f"[main] NR {'OFF' if st.paused else 'ON'}")
                 st.display.alert(UI_STRINGS[st.lang]["nr_off" if st.paused else "nr_on"])
                 st.tray._set_state(nr=not st.paused)
+                # #166: the next start comes up the way NR was left.
+                st.cfg["nr_on"] = not st.paused
+                try:
+                    settings_io.save_menu_layout(st)
+                except Exception as exc:
+                    print(f"[main] the NR state was not saved ({exc})", file=sys.stderr)
             elif cmd == "screenshot_menu":
                 request_screenshot(st)
             elif cmd == "framegen":

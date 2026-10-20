@@ -750,6 +750,11 @@ def open_capture(st) -> None:
     st.mon_origin = _apply_monitor_env(st.capture)
 
 
+def nr_starts_on(cfg: dict) -> bool:
+    """Whether NR is on at start (#166): as it was left, on by default."""
+    return cfg.get("nr_on", True) is not False
+
+
 def bring_up(st) -> None:
     """Make it exist: the worker, the overlay, the tray, the hotkeys.
 
@@ -887,7 +892,7 @@ def bring_up(st) -> None:
     st.shot_dialog_open = False
     st.tray = TrayController(st.tray_commands,
                              labels=tray_labels(UI_STRINGS[st.lang]))
-    st.tray._set_state(nr=True, scale=st.work_scale)
+    st.tray._set_state(nr=not st.paused, scale=st.work_scale)
     st.tray.start()
     print("[main] tray icon started")
 
@@ -976,7 +981,11 @@ def bring_up(st) -> None:
     # the GPU (NGX Upscaling).
     st.buf_full = np.empty((st.height, st.width, 4), dtype=np.uint8)
 
-    st.paused = False
+    # #166: NR starts the way it was left - Num1 / the NR tile save it
+    # (nr_on). Off, the first frame takes the ordinary NR OFF path.
+    st.paused = not nr_starts_on(st.cfg)
+    if st.paused:
+        print("[main] NR starts off, as it was left (nr_on is false)")
     # True only after NR OFF has closed the worker's capture/present channels
     # and the main loop has stopped producing frames.  It is distinct from
     # paused: recording, screenshots and Frame Generation temporarily keep a

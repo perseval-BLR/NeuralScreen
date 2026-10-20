@@ -990,7 +990,7 @@ _BOOL_KEYS = (
     "pixels_in_shm", "nr_small", "nr_direct", "frame_generation",
     "record_audio", "rec_indicator", "gpu_record", "convert_audio", "spout",
     "hdr", "open_menu_on_start", "hotkeys_enabled", "keep_speed_when_hidden",
-    "lens", "lens_bend", "fg_ui_protect", "dim_on_rebuild", "window_follow",
+    "lens", "lens_bend", "fg_ui_protect", "dim_on_rebuild", "window_follow", "nr_on",
 )
 
 # The fisheye lens (native/lens.inl): the game's horizontal field of view, in
@@ -1247,6 +1247,7 @@ def _menu_layout_payload(cfg: dict, params: dict, monitor: int, lang: str,
         "fg_ui_protect": bool(cfg.get("fg_ui_protect", False)),
         "dim_on_rebuild": cfg.get("dim_on_rebuild", True) is not False,
         "window_follow": bool(cfg.get("window_follow", False)),
+        "nr_on": cfg.get("nr_on", True) is not False,
         "nr_preset": nr_preset(cfg),
         # The hotkeys master switch (#134). Read with `is not False` so a
         # missing key means on (the shipped default) and only an explicit

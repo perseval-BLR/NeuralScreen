@@ -48,6 +48,9 @@ Scope and honesty notes:
   readings changed with every frame, and each change redrew the overlay layer,
   which costs the compositor a frame of timing. They now change twice a second
   while the panel is open.
+* **NR starts the way it was left (#166).** Num1 and the NR tile save the
+  state, and the next start comes up with NR on or off accordingly (Frame
+  Generation already did).
 
 ## v2.6.1 - 2026-10-19 - A new NR runtime that fails no longer blocks the start, the recording codec, borderless windows
 
