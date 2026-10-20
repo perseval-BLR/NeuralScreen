@@ -791,6 +791,9 @@ def bring_up(st) -> None:
     # short warm-up; the actual effect is still evaluated normally
     # afterwards.
     effective_warmup = st.warmup
+    # #181: the driver-reset rule reads this (pre-Blackwell runs NR through
+    # the architecture patch).
+    st.gpu_official = bool(gpu_info.get("official", True))
     if not gpu_info["official"] and st.warmup > 4:
         effective_warmup = 4
         print(f"[main] pre-Blackwell GPU: warmup {st.warmup} -> "

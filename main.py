@@ -140,6 +140,7 @@ import channels
 import commands
 import compatibility_runtime
 import foreign_hooks
+import gpu_recovery
 import power
 import startup
 import settings_io
@@ -347,6 +348,58 @@ def _hard_failure(logs: list[str]) -> bool:
     return False
 
 
+def _after_device_reset(st) -> bool:
+    """The worker died because the driver reset the GPU (#181). True when NR
+    stays off for the rest of the session; otherwise the driver has been
+    waited for and the caller restarts the worker as usual.
+
+    A restart within two seconds of a reset met a driver still recovering
+    (D3D12CreateDevice 0x887A0004), and on an RTX 3090 the whole PC froze on
+    a black screen three times. A pre-Blackwell card - NVIDIA's runtime runs
+    there only through the architecture patch - gets one restart after a
+    reset per session; the next reset leaves NR off, without the auto-revive.
+    """
+    st.device_resets = int(getattr(st, "device_resets", 0) or 0) + 1
+    official = bool(getattr(st, "gpu_official", True))
+    if gpu_recovery.stand_down_for_session(official, st.device_resets):
+        print(f"[main] the GPU driver reset the device again ({st.device_resets} resets "
+              f"this session) on a card NVIDIA's runtime does not officially support - "
+              f"NR stays off for this session; Num1 turns it back on", file=sys.stderr)
+        st.device_reset_lock = True
+        st.paused = True
+        st.worker_failed = True
+        st.consecutive_restarts = 0
+        st.work_frame = None
+        st.next_auto_revive = 0.0
+        for step in (lambda: shutdown_worker(st.worker, st.worker_stop),
+                     st.display.exit_switch_mode,
+                     lambda: st.display.set_visible(False),
+                     lambda: st.display.alert(UI_STRINGS[st.lang].get(
+                         "gpu_reset_off", "The GPU driver reset again under NR - NR is off "
+                         "for this session"), duration=10.0),
+                     lambda: st.tray._set_state(nr=False)):
+            try:
+                step()
+            except Exception:
+                pass
+        return True
+    print(f"[main] the GPU driver reset the device (reset {st.device_resets} this "
+          f"session) - waiting for it to recover before the restart")
+
+    def pump() -> None:
+        if st.display.is_switch_active():
+            st.display.draw_overlay(0.0)
+        else:
+            pygame.event.pump()
+    took = gpu_recovery.wait_for_driver(pump=pump)
+    if took is None:
+        print(f"[main] the driver did not answer within "
+              f"{gpu_recovery.RECOVERY_TIMEOUT_S:.0f} s - restarting anyway", file=sys.stderr)
+    else:
+        print(f"[main] the driver is back after {took:.1f} s")
+    return False
+
+
 def _stand_down(st, what: str, exc: BaseException) -> None:
     """A worker start inside the frame loop failed: NR goes OFF, the program stays.
 
@@ -504,6 +557,11 @@ class _Pipeline:
         "focus_skipped",
         "focus_failed",
         "focus_broken",
+        #: #181: whether NVIDIA's runtime officially supports this card, how
+        #: many driver resets this session, and the lock after too many.
+        "gpu_official",
+        "device_resets",
+        "device_reset_lock",
         #: The runtime in native\libraries\ failed the start-up check and the
         #: bundled one runs instead (#175).
         "byo_fallback",
@@ -858,6 +916,8 @@ def main() -> int:
             # fallback - the revive is a fresh process, not a feature
             # recreation).
             if st.worker_failed:
+                if getattr(st, "device_reset_lock", False):
+                    st.next_auto_revive = 0.0   # #181: off for the session
                 if st.next_auto_revive and time.monotonic() >= st.next_auto_revive:
                     st.next_auto_revive = 0.0
                     st.worker_failed = False
@@ -1351,6 +1411,10 @@ def main() -> int:
                 if st.reader is not recv_reader:
                     continue  # the worker was restarted by a command
             except (TimeoutError, EOFError, RuntimeError, OSError) as exc:
+                # #181: a driver reset is not an ordinary silent worker - wait
+                # for the driver, and on an unofficial card stop after one.
+                if gpu_recovery.device_was_reset(st.worker_logs) and _after_device_reset(st):
+                    continue
                 st.consecutive_restarts += 1
                 if st.consecutive_restarts >= MAX_CONSECUTIVE_RESTARTS:
                     print(f"[main] worker silent/dying {st.consecutive_restarts} times in a row - NR OFF")

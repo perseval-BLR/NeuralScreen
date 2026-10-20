@@ -38,6 +38,12 @@ Scope and honesty notes:
   the runtime's version from its file: with 310.9.16 or newer in
   `native\libraries\` the Auto / A / B switch is there, otherwise one line
   says "one model (310.8.0.0)".
+* **After a GPU driver reset, NeuralScreen waits for the driver (#181).** On an
+  RTX 3090 the driver reset the GPU under NR, and NeuralScreen restarted the
+  worker within two seconds while the driver was still recovering; three times
+  the PC froze. It now waits until the driver answers before the restart, and
+  on a card NVIDIA's runtime does not officially support (RTX 20-40) a second
+  reset in one session leaves NR off - no automatic restart; Num1 turns it on.
 
 ## v2.6.1 - 2026-10-19 - A new NR runtime that fails no longer blocks the start, the recording codec, borderless windows
 
