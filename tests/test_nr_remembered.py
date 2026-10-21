@@ -10,7 +10,9 @@ Checked:
 1. the start's decision: on by default, off only when nr_on is false;
 2. Num1 (the "toggle" command) flips NR, saves nr_on and asks for the config
    to be written, both ways;
-3. nr_on is a validated boolean and is written with the rest of the layout.
+3. nr_on is a validated boolean and is written with the rest of the layout;
+4. with NR off at start the panel opens at once - it waited for a second
+   frame that never comes, and the program looked minimised.
 
 Fails before the change: NR always started on and nothing was saved.
 
@@ -77,6 +79,15 @@ def main() -> int:
             failures.append(f"the saved layout carries nr_on={payload.get('nr_on')}")
     except Exception as exc:  # noqa: BLE001
         failures.append(f"the layout payload could not be built: {exc!r}")
+
+    # #166: with NR off at start no frame arrives, and the panel waited for
+    # the second one - the program looked as if it had started minimised.
+    import main as app
+    got = [app.startup_menu_due(p, f) for p, f in ((False, 0), (False, 1), (False, 2),
+                                                  (True, 0))]
+    if got != [False, False, True, True]:
+        failures.append(f"the start's panel opens at {got} (expected only after two "
+                        f"frames, or at once with NR off)")
 
     for f in failures:
         print("  FAIL:", f)

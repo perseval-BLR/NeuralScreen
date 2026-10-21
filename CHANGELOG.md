@@ -30,6 +30,13 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **With NR left off, the panel still opens at start (#166).** "Open the panel
+  at start" waited for the second shown frame, and with NR off no frame comes -
+  the program looked as if it had started minimised. With NR off it opens at
+  once.
+
 ## v2.6.2 - 2026-10-20 - A smooth picture under an open panel, safer driver resets, NR remembered, the preset switch only where it works
 
 * **The NR preset switch shows only where it does something (#179).** The

@@ -348,6 +348,31 @@ def _hard_failure(logs: list[str]) -> bool:
     return False
 
 
+def _open_startup_menu(st) -> None:
+    """The panel at start (open_menu_on_start), or the started notice."""
+    if st.startup_menu:
+        st.display.menu.set_state(settings_io.menu_payload(st))
+        st.display.menu.visible = True
+        st.display.set_menu_opaque(True)
+        st.display.apply_menu_mode_input()
+        # With NR off the layer may be hidden (presentation suspended): the
+        # same recovery the Num2 open does, so the panel is really on screen.
+        if not st.display.is_visible():
+            st.display.reveal()
+        st.display.set_visible(True)
+        print("[main] menu opened at startup")
+    else:
+        st.display.alert(UI_STRINGS[st.lang]["started"], 3.5)
+
+
+def startup_menu_due(paused: bool, frame_index: int) -> bool:
+    """When the start's panel opens: after the second shown frame - an open
+    menu over a window that is not filled yet flashes black - or at once
+    when NR starts off (#166): no frame will come, and waiting for one left
+    the program looking as if it had started minimised."""
+    return bool(paused) or frame_index >= 2
+
+
 def _after_device_reset(st) -> bool:
     """The worker died because the driver reset the GPU (#181). True when NR
     stays off for the rest of the session; otherwise the driver has been
@@ -799,6 +824,10 @@ def main() -> int:
         guide = None  # Num1 before the first NR frame must not raise NameError
         worker_scene = False  # the same, for the status line's scene score
         startup_pending = True  # open the menu once the picture is alive
+        if startup_menu_due(st.paused, 0):
+            # NR starts off (#166): no frame will arrive to open it.
+            startup_pending = False
+            _open_startup_menu(st)
         nr_rate = FrameRateMeter(FPS_LOG_INTERVAL)
         frame_pacer = FramePacer()
         last_log = time.monotonic()
@@ -1686,18 +1715,9 @@ def main() -> int:
             })
 
             st.frame_index += 1
-            if startup_pending and st.frame_index >= 2:
-                # Wait for the first displayed frame: an open menu over a
-                # window that is not filled yet flashes black.
+            if startup_pending and startup_menu_due(st.paused, st.frame_index):
                 startup_pending = False
-                if st.startup_menu:
-                    st.display.menu.set_state(settings_io.menu_payload(st))
-                    st.display.menu.visible = True
-                    st.display.set_menu_opaque(True)
-                    st.display.apply_menu_mode_input()
-                    print("[main] menu opened at startup")
-                else:
-                    st.display.alert(UI_STRINGS[st.lang]["started"], 3.5)
+                _open_startup_menu(st)
             # The NR cascade has to be told to EVERY worker, not just the
             # first. The stream header has no field for a pass count (that
             # slot is frame_count), so a worker always starts at one pass and
