@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.6.3 - 2026-10-21 - The panel opens at start with NR left off
 
 * **With NR left off, the panel still opens at start (#166).** "Open the panel
   at start" waited for the second shown frame, and with NR off no frame comes -
