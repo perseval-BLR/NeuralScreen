@@ -1,0 +1,32 @@
+name: native compile check
+
+# Compiles the native worker (nvngx.dll) with the same script a developer runs
+# by hand. This is a build check only: nothing is released or published, and
+# the Frame Generation paths need an NVIDIA GPU to RUN - a green job means
+# "it compiles and links", not "it works".
+on:
+  push:
+    paths: ["native/**", ".github/workflows/native-compile-check.yml"]
+  pull_request:
+    paths: ["native/**"]
+  workflow_dispatch:
+
+jobs:
+  host:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the worker (native\build-host.bat)
+        shell: cmd
+        run: call native\build-host.bat
+      - name: Result
+        shell: cmd
+        run: dir native\nvngx.dll native\nvngx.dll_ns-forwarder.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worker-build-check
+          path: |
+            native/nvngx.dll
+            native/nvngx.dll_ns-forwarder.dll
+          if-no-files-found: warn
+          retention-days: 3

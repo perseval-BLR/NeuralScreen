@@ -1300,6 +1300,7 @@ def main() -> int:
                            split=st.split_pos,
                            frame_generation=bool(st.cfg.get("frame_generation", False)),
                            frame_multiplier=int(st.cfg.get("frame_multiplier", 2)),
+                           fg_fsr=(getattr(st, "fg_backend", "dlss") == "fsr"),
                            prepared=bool(st.gray_active) and not worker_scene,
                            early_reply=EARLY_REPLY, worker_scene=worker_scene)
                 _perf("send", t0)

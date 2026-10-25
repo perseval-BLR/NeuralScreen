@@ -4,9 +4,16 @@ Off by default. Enable Frame Generation in the processing menu and select
 an output multiplier from 2x to 4x. Requires `native/nvngx_dlssg.dll`, supplied
 separately from the source repository.
 
-The current backend is DLSS Frame Generation. v1.13 does not contain an FSR FG
-fallback for RTX 20/30; that is a separate research candidate rather than a
-compatibility promise.
+Two backends, chosen by the GPU (`fg_backend` config key: `auto`, `fsr`, `dlss`):
+
+- RTX 40/50 (Ada, Blackwell): DLSS Frame Generation, as before.
+- RTX 20/30 (Turing, Ampere): FSR Frame Generation from the AMD FSR SDK 2.3.0
+  (frame generation 3.1.x provider). It runs on any DX12 GPU, makes one
+  generated frame per real one (2x, whatever multiplier is picked) and needs
+  `amd_fidelityfx_loader_dx12.dll` and `amd_fidelityfx_framegeneration_dx12.dll`
+  (from the SDK's `Kits/FidelityFX/signedbin`) next to the worker in `native/`.
+  FSR 4 frame generation is the ML variant for RDNA 4 and cannot run on NVIDIA
+  cards; 3.1.x is the newest FSR generation available for RTX 20/30.
 
 Generated frames follow neural rendering. A separate presenter
 paces bounded frame slots and drops outdated generated frames. It still shares

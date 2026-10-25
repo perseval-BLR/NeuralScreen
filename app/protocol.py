@@ -507,6 +507,10 @@ FRAME_FLAG_WORKER_SCENE = 0x4000
 # flag), and an older worker that reads two bits only falls back below.
 FG_MULTIPLIER_MAX = 6
 FRAME_FLAG_FG_MULT_HIGH = 0x8000
+# Frame Generation runs on the FSR backend (RTX 20/30, which have no DLSS-G).
+# FSR interpolates one frame between two real ones, so the worker runs it at
+# 2x whatever multiplier is asked for. Only meaningful with 0x800 set.
+FRAME_FLAG_FG_FSR = 0x40
 
 # MOTS: the motion field arrives at the optical-flow resolution (~320x180) and
 # the worker upscales it to the work resolution on the GPU. The CPU is spared
@@ -699,7 +703,7 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
                split: float = 0.0,
                frame_generation: bool | None = None, frame_multiplier: int = 2,
                prepared: bool = False, early_reply: bool = False,
-               worker_scene: bool = False) -> None:
+               worker_scene: bool = False, fg_fsr: bool = False) -> None:
     """Send a frame to the worker.
 
     With shared memory agreed, only the 24-byte header with the
@@ -730,6 +734,8 @@ def send_frame(worker: subprocess.Popen, index: int, rgba: np.ndarray,
         flags |= 0x800 | (0x100 if frame_generation else 0)
         step = min(FG_MULTIPLIER_MAX, max(2, int(frame_multiplier))) - 2
         flags |= (step & 3) << 9 | (FRAME_FLAG_FG_MULT_HIGH if step & 4 else 0)
+        if fg_fsr:
+            flags |= FRAME_FLAG_FG_FSR
     if split > 0.0:
         # The wipe position rides in the high 16 bits of the same flags field:
         # there is no dedicated field in the header, and widening it for a

@@ -108,6 +108,10 @@ static unsigned g_fg_count_limit = kFgMaxGenerated;
 // Set when a refusal was answered by stepping the multiplier down: that frame
 // is a retry, not a failure. FgPresent reads and clears it.
 static bool g_fg_retry = false;
+// Frame Generation runs on the FSR backend (RTX 20/30: no DLSS-G on those
+// cards). Set from the frame header (flag 0x40) by ConfigureFgFrame; that
+// backend generates one frame per real one, so the multiplier is held at 2x.
+static bool g_fg_fsr = false;
 
 // Report-only: what the runtime says its own ceiling is, through
 // DLSSG.MultiFrameCountMax (5 = 6x, 3 = 4x, 1 = 2x only). It is advisory and never
@@ -169,10 +173,13 @@ static void StopFgPresentation()
     g_fg.history = false;
 }
 
+#include "frame_generation_fsr.inl"
+
 static void CloseFgResources()
 {
     StopFgPresentation();
     if (g_submission_failed) return;
+    if (g_fsr.context) FsrDestroy();
     if (g_fg.feature) { g_fg.release(g_fg.feature); g_fg.feature = nullptr; }
     if (g_fg.depth.tex) { g_fg.depth.tex->Release(); g_fg.depth.tex = nullptr; }
     if (g_fg.depth.upload) { g_fg.depth.upload->Release(); g_fg.depth.upload = nullptr; }
@@ -435,9 +442,15 @@ static void FgPresenter()
 static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
 {
     const UINT w = v.upscale ? v.full_w : v.w, height = v.upscale ? v.full_h : v.hgt;
-    if (g_fg.feature && g_fg.w == w && g_fg.height == height && g_fg.mw == v.w &&
+    if ((g_fg_fsr ? g_fsr.ready : g_fg.feature != nullptr) && g_fg.w == w && g_fg.height == height && g_fg.mw == v.w &&
         g_fg.mh == v.hgt && g_fg.format == format && g_fg.thread.joinable()) return true;
     CloseFgResources();
+    if (g_fg_fsr)
+    {
+        if (!FsrCreate(v, w, height, format)) return false;
+    }
+    else
+    {
     if (!g_fg.module)
     {
         // The BYO library folder next to the worker, then the worker's own
@@ -547,6 +560,7 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
         g_fg_retry = FgStepDown(result);
         return false;
     }
+    } // DLSS-G backend
     if (!CreateVideoTex(g_fg.depth, v.w, v.hgt, DXGI_FORMAT_R32_FLOAT, v.w * 4)) return false;
     std::vector<float> depth(static_cast<size_t>(v.w) * v.hgt, 0.5f);
     if (!FillUpload(g_fg.depth, reinterpret_cast<BYTE *>(depth.data()), v.w * 4, v.hgt) || !BeginCommands()) return false;
@@ -628,7 +642,8 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
         }
     }
     g_fg.thread = std::thread(FgPresenter);
-    Log("[fg] %ux enabled at %ux%u, format=%u; flat depth and estimated motion (experimental)", g_fg_count + 1, w, height, format);
+    Log("[fg] %ux enabled at %ux%u, format=%u, backend %s; flat depth and estimated motion (experimental)",
+        g_fg_count + 1, w, height, format, g_fg_fsr ? "FSR" : "DLSS-G");
     return true;
 }
 
@@ -756,6 +771,30 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
     const bool interpolate = g_fg.history && g_fg_source_fresh && !g_fg_reset && interval < 0.1;
     g_fg.last_slot = now;
     if (g_fg_source_fresh) { g_fg.last = now; g_fg.last_source = g_fg_source_seconds; }
+    bool allow_interpolation = true;
+    bool profile_fg = false;
+    if (g_fg_fsr)
+    {
+        if (!BeginCommands()) { g_fg.failed = true; CloseFgResources(); return false; }
+        profile_fg = ProfileGpuBegin(PS_FG);
+        auto pre = Transition(color, state, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        if (state != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) h.list->ResourceBarrier(1, &pre);
+        auto out_pre = Transition(g_fg.output[0].get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        h.list->ResourceBarrier(1, &out_pre);
+        // The same rule as the DLSS-G path: a frame that cannot be
+        // interpolated (no history, a reset) goes in as a reset.
+        if (!FsrEvaluate(v, color, interpolate, interval))
+        {
+            // FsrEvaluate has abandoned the open command list.
+            g_fg.failed = true; CloseFgResources(); return false;
+        }
+        auto out_post = Transition(g_fg.output[0].get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        h.list->ResourceBarrier(1, &out_post);
+        auto post = Transition(color, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, state);
+        if (state != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) h.list->ResourceBarrier(1, &post);
+    }
+    else
+    {
     auto p = g_fg.params;
     p->Reset();
     NVSDK_NGX_DLSSG_Opt_Eval_Params opt = {};
@@ -774,8 +813,7 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
     NVSDK_NGX_D3D12_DLSSG_Eval_Params ep = {};
     ep.pBackbuffer = color; ep.pMVecs = v.mv.tex; ep.pDepth = g_fg.depth.tex;
     if (!BeginCommands()) { g_fg.failed = true; CloseFgResources(); return false; }
-    const bool profile_fg = ProfileGpuBegin(PS_FG);
-    bool allow_interpolation = true;
+    profile_fg = ProfileGpuBegin(PS_FG);
     p->Set(NVSDK_NGX_DLSSG_Parameter_BackbufferFrameID, static_cast<unsigned long long>(g_fg.sequence + 1));
     opt.multiFrameCount = g_fg_count;
     for (unsigned index = 0; index < g_fg_count; ++index)
@@ -823,6 +861,7 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
             g_fg.failed = true; CloseFgResources(); return false;
         }
     }
+    } // DLSS-G backend
     if (profile_fg) ProfileGpuEnd(PS_FG);
     FgSlot *slot = nullptr;
     {
@@ -908,7 +947,8 @@ static bool FgPresent(VideoState &v, ID3D12Resource *color, D3D12_RESOURCE_STATE
     g_fg_present_fence = fg_fence;
     BYTE *disabled = nullptr;
     D3D12_RANGE read = {0, g_fg_count * 4}, written = {0, 0};
-    if (SUCCEEDED(g_fg.disable_readback->Map(0, &read, reinterpret_cast<void **>(&disabled))))
+    if (g_fg_fsr) {} // nothing writes the DLSS-G disable flags on this backend
+    else if (SUCCEEDED(g_fg.disable_readback->Map(0, &read, reinterpret_cast<void **>(&disabled))))
     {
         for (unsigned i = 0; i < g_fg_count; ++i)
             allow_interpolation = allow_interpolation && disabled[i * 4] == 0;
@@ -938,14 +978,18 @@ static void ConfigureFgFrame(uint32_t flags)
     const int enabled = (flags & 0x100) != 0;
     // The multiplier minus two in bits 9-10, its third bit in bit 15 (#163).
     const unsigned step = ((flags >> 9) & 3u) | ((flags & 0x8000u) ? 4u : 0u);
-    const unsigned requested = std::min(kFgMaxGenerated, step + 1u);
+    // Bit 6 (0x40): the FSR backend (RTX 20/30). It makes one frame per real
+    // one, so whatever multiplier was picked, it runs at 2x.
+    const bool fsr = (flags & 0x40) != 0;
+    const unsigned requested = fsr ? 1u : std::min(kFgMaxGenerated, step + 1u);
     // A step the runtime already refused is not offered again in this FG
     // session: the request is clamped to the last one that worked. Switching
     // FG off and on arms the user's choice again, so a newer stock provider
     // (BYO folder) or a driver update can lift the ceiling without a restart.
     const unsigned count = std::min(requested, g_fg_count_limit);
-    if (g_fg_ui_enabled == enabled && g_fg_count == count) return;
+    if (g_fg_ui_enabled == enabled && g_fg_count == count && g_fg_fsr == fsr) return;
     CloseFgResources();
+    g_fg_fsr = fsr;
     // A fresh switch-on is a fresh attempt: the ceiling goes back to the DLSS 4.5
     // maximum and the user's own choice is asked for again. A step this card
     // refused earlier is worth exactly one retry after a provider or driver
@@ -955,6 +999,7 @@ static void ConfigureFgFrame(uint32_t flags)
     g_fg_ui_enabled = enabled;
     g_fg_count = count;
     g_fg.failed = false;
-    Log("[fg] UI: %s, %ux%s", enabled ? "on" : "off", count + 1,
-        count < requested ? " (capped by the runtime ceiling)" : "");
+    Log("[fg] UI: %s, %ux%s%s", enabled ? "on" : "off", count + 1,
+        count < requested ? " (capped by the runtime ceiling)" : "",
+        fsr ? " (FSR backend)" : "");
 }

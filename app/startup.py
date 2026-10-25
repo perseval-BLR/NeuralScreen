@@ -38,7 +38,7 @@ from capture import (ScreenCapture, list_adapters, list_monitors,
                      monitor_origin, monitor_work_size,
                      resolve_output_idx)
 from display import Display
-from gpuinfo import describe as gpu_describe, probe as gpu_probe
+from gpuinfo import describe as gpu_describe, probe as gpu_probe, fg_backend as gpu_fg_backend
 from guides import TemporalGuideGenerator
 from hotkeys import (HotkeyController, build_bindings,
                      describe as describe_hotkeys, numlock_needed,
@@ -781,6 +781,10 @@ def bring_up(st) -> None:
     # knows whether feature 18 was created.
     gpu_info = gpu_probe(_working_card_name(st.cfg))
     st.gpu_text = gpu_describe(gpu_info)
+    # Which Frame Generation backend this card gets: DLSS-G on RTX 40/50, the
+    # FSR interpolation on RTX 20/30 (config key fg_backend overrides).
+    st.fg_backend = gpu_fg_backend(gpu_info, st.cfg.get("fg_backend", "auto"))
+    print(f"[main] Frame Generation backend: {st.fg_backend}")
     st.gpu_ok: bool | None = None
     st.gpu_alerted = False          # the "cannot run the pass" alert, once per verdict
     st.fg_alerted = False           # the "FG could not start" alert, re-armed by the switch

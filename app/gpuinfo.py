@@ -37,6 +37,27 @@ ARCH_NAMES = {
 }
 ARCH_BLACKWELL = 0x1A0
 
+# DLSS Frame Generation needs Ada (RTX 40) or newer. Turing (RTX 20) and
+# Ampere (RTX 30) have no DLSS-G, so they run FSR Frame Generation instead -
+# the interpolation from the AMD FSR SDK, which runs on any DX12 GPU. (FSR 4
+# frame generation is the ML variant for RDNA 4 only; FSR 3.1.x is the newest
+# generation that exists for NVIDIA hardware.)
+FSR_FG_ARCH_GROUPS = (0x160, 0x170)
+FG_BACKENDS = ("auto", "fsr", "dlss")
+
+
+def fg_backend(info: dict, choice: str | None = "auto") -> str:
+    """\"fsr\" or \"dlss\": the frame generation backend for this card.
+
+    ``choice`` is the ``fg_backend`` config key. \"auto\" (and anything that is
+    not a known value) picks by architecture; an unknown architecture keeps
+    DLSS-G, which is what every earlier version did.
+    """
+    if choice in ("fsr", "dlss"):
+        return choice
+    group = int((info or {}).get("arch_group", 0) or 0)
+    return "fsr" if group in FSR_FG_ARCH_GROUPS else "dlss"
+
 
 class _ArchInfo(ctypes.Structure):
     _fields_ = [("version", ctypes.c_uint32),
