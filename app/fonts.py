@@ -18,9 +18,15 @@ next to the program wins over the system ones, so a shipped face (IBM
 Plex, say) replaces Segoe without touching this module: drop the files in
 under the names listed below.
 
-CJK is the exception that stays family-based: Chinese, Japanese and
-Korean have no glyphs in the Latin faces (tofu boxes), and the system
-fonts that do carry them differ per script.
+CJK needs fonts of its own: Chinese, Japanese and Korean have no glyphs in
+the Latin faces (tofu boxes), and the system fonts that do carry them differ
+per script. They are looked up by file too (#186). By family name, SysFont
+found them on an English Windows and not on a Chinese one, where the font
+registry carries other names - and SysFont does not fail then: it hands
+back pygame's default face, which has no CJK at all, so the whole Chinese
+interface was boxes. On an English Windows it also resolved "microsoftyahei"
+to msyhl.ttc, the Light weight. A face is taken only when it really draws
+the script; the family name stays as the last resort.
 """
 from __future__ import annotations
 
@@ -47,6 +53,18 @@ FONT_DIRS = (BASE_DIR / "fonts",
 # Gothic hangul, YaHei simplified Chinese.
 CJK_FONTS = {"zh": "microsoftyahei", "ja": "yugothic", "ko": "malgungothic"}
 
+# The same scripts by file, regular and bold, each with the fonts Windows
+# ships as fallbacks after the first choice.
+CJK_FILES = {
+    "zh": (("msyh.ttc", "simhei.ttf", "simsun.ttc"),
+           ("msyhbd.ttc", "msyh.ttc", "simhei.ttf")),
+    "ja": (("YuGothM.ttc", "YuGothR.ttc", "meiryo.ttc", "msgothic.ttc"),
+           ("YuGothB.ttc", "meiryob.ttc", "YuGothM.ttc", "msgothic.ttc")),
+    "ko": (("malgun.ttf", "gulim.ttc"), ("malgunbd.ttf", "malgun.ttf", "gulim.ttc")),
+}
+# What a face must draw to count as covering the script.
+CJK_SAMPLES = {"zh": "中文设置", "ja": "日本語の設定", "ko": "한국어 설정"}
+
 _cache: dict = {}
 
 
@@ -72,14 +90,56 @@ def load(size: int, mono: bool = False, bold: bool = False,
     return font
 
 
+def covers(path, text: str) -> bool:
+    """Whether the font file at `path` has a glyph for every character.
+
+    Through pygame.freetype: pygame.font measures a missing character as
+    the box it draws, so only freetype can tell "no glyph" from a glyph.
+    """
+    try:
+        import pygame.freetype as ft
+        if not ft.get_init():
+            ft.init()
+        face = ft.Font(str(path), 16)
+        return all(m is not None for m in face.get_metrics(text))
+    except Exception:
+        return False
+
+
+def cjk(lang: str, size: int, bold: bool = False):
+    """A face that draws `lang`'s script (zh/ja/ko), or None (#186).
+
+    By file first, in the shipped folder and then the system one; the
+    family name only after that, through match_font, which answers an
+    unknown name with None - SysFont answers it with pygame's default
+    face, and that is how the boxes got in.
+    """
+    if lang not in CJK_FILES:
+        return None
+    sample = CJK_SAMPLES[lang]
+    candidates = [directory / name for directory in FONT_DIRS
+                  for name in CJK_FILES[lang][1 if bold else 0]]
+    try:
+        by_name = pygame.font.match_font(CJK_FONTS[lang], bold=bold)
+    except Exception:
+        by_name = None
+    if by_name:
+        candidates.append(Path(by_name))
+    for path in candidates:
+        if not path.exists() or not covers(path, sample):
+            continue
+        try:
+            return pygame.font.Font(str(path), size)
+        except Exception:
+            continue
+    return None
+
+
 def _build(size: int, mono: bool, bold: bool, lang: str):
     if lang in CJK_FONTS:
-        # The CJK families are only reachable by name - there is no stable
-        # file name for them across Windows versions.
-        try:
-            return pygame.font.SysFont(CJK_FONTS[lang], size, bold=bold)
-        except Exception:
-            pass
+        font = cjk(lang, size, bold=bold)
+        if font is not None:
+            return font
     faces = ((MONO_BOLD_FACES if bold else MONO_FACES) if mono
              else (UI_BOLD_FACES if bold else UI_FACES))
     path = _find(faces)

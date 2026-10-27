@@ -546,15 +546,15 @@ class OverlayMenu:
         # loaded once for those labels, chosen by the script: YaHei for
         # Chinese, Yu Gothic for Japanese (kanji/kana), Malgun Gothic for
         # Korean (hangul) (user: Asian names show as boxes).
+        # By file, through fonts.cjk (#186): by family name a Chinese Windows
+        # gave back pygame's default face, which draws CJK as boxes.
         self._cjk_fonts = {}
         try:
-            import pygame.font as _pf
-            for _name in ("microsoftyahei", "yugothic", "malgungothic"):
-                try:
-                    self._cjk_fonts[_name] = _pf.SysFont(
-                        _name, self._u(FONT_SIZE))
-                except Exception:
-                    pass
+            import fonts as _fonts
+            for _lang, _name in _fonts.CJK_FONTS.items():
+                _face = _fonts.cjk(_lang, self._u(FONT_SIZE))
+                if _face is not None:
+                    self._cjk_fonts[_name] = _face
         except Exception:
             self._cjk_fonts = {}
         self.panel_rect = pygame.Rect(0, 0, 0, 0)

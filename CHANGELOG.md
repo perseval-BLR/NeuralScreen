@@ -30,6 +30,15 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **Chinese, Japanese and Korean show as text, not boxes (#186).** The CJK
+  faces were looked up by family name, and on a Windows whose font registry
+  carries other names pygame quietly handed back its default face, which has
+  no CJK glyphs - the whole interface was boxes. They are now found by file
+  (YaHei, Yu Gothic, Malgun Gothic and the fonts Windows ships after them),
+  and a face is used only when it really has the script's glyphs.
+
 ## v2.6.3 - 2026-10-21 - The panel opens at start with NR left off
 
 * **With NR left off, the panel still opens at start (#166).** "Open the panel
