@@ -4535,6 +4535,15 @@ static bool                    g_capture_rotate180 = false;
 static bool                    g_no_colour_retried = false;
 static bool                    g_dda_active = false;   // DDA1 with w>0 has been acked
 static bool                    g_capture_visual_changed = false;
+// The capture brought a frame, and its picture is the one before (#183).
+// Chromium, Photos, Photoshop - anything that presents through a swap chain -
+// can present the same picture again and again; the capture hands every one
+// over as a new frame, so a still picture in them never counted as still and
+// the network ran on every frame. Told by the 320x180 luminance map the flow
+// and the scene score already read: byte for byte the previous one = the same
+// picture. Only when that map runs (g_gray_mapped); without it, as before.
+static bool                    g_capture_identical = false;
+static std::vector<BYTE>       g_gray_previous;
 // When the source produced the picture the last grab returned, in seconds on
 // the QPC clock (DDA LastPresentTime, WGC SystemRelativeTime); 0 = unknown.
 // Frame Generation spaces its frames by this, not by when the loop got there.
@@ -5698,7 +5707,15 @@ static bool SwizzleCaptureIntoColor(VideoState &v)
     ProfileGpuEnd(PS_SWIZZLE);
     const UINT64 fence = EndCommands();
     if (!ProfileWait(PS_SWIZZLE, fence, 10000)) { Log("[cap] swizzle fence timeout"); return false; }
-    if (gray && CopyGrayOut()) UpdateSceneScore();
+    g_capture_identical = false;
+    if (gray && CopyGrayOut())
+    {
+        const size_t n = static_cast<size_t>(g_gray_w) * g_gray_h;
+        g_capture_identical = g_gray_previous.size() == n &&
+                              memcmp(g_gray_previous.data(), g_gray_map, n) == 0;
+        g_gray_previous.assign(g_gray_map, g_gray_map + n);
+        UpdateSceneScore();
+    }
     // else best effort: guides go without a fresh frame
     g_capture_gray_ok = g_gray_mapped;
     if (g_submission_failed) return false;
@@ -7312,6 +7329,7 @@ static uint32_t g_still_flags = 0;
 static unsigned g_ph_fresh_evaluated;
 static unsigned g_ph_processed;
 static unsigned g_ph_idle;
+static unsigned g_ph_identical;     // captured frames whose picture was the one before (#183)
 static UINT64 g_ph_tick;
 
 // The profiler is turned on by the NS_PHASE=1 environment variable. Off by
@@ -7437,12 +7455,12 @@ static void PhaseReport(bool bypass)
     g_ps_outstanding_max = g_ps_allocator_waits = 0;
     g_ps_allocator_wait_sum = g_ps_allocator_wait_max = 0.0;
     Log("[phase] activity %.2fs: requests=%u fresh-source=%u evaluated=%u "
-        "fresh-enhanced=%u (%.1f/s) processed=%u idle=%u",
+        "fresh-enhanced=%u (%.1f/s) processed=%u idle=%u identical=%u",
         seconds, g_ph_requests, g_ph_fresh_sources, g_ph_evaluated,
         g_ph_fresh_evaluated, g_ph_fresh_evaluated / seconds,
-        g_ph_processed, g_ph_idle);
+        g_ph_processed, g_ph_idle, g_ph_identical);
     g_ph_requests = g_ph_fresh_sources = g_ph_evaluated = 0;
-    g_ph_fresh_evaluated = g_ph_processed = g_ph_idle = 0;
+    g_ph_fresh_evaluated = g_ph_processed = g_ph_idle = g_ph_identical = 0;
     Log("[phase] present by bucket, ms: <5=%u 5-12=%u 12-20=%u 20-28=%u 28-40=%u 40+=%u",
         g_ph_bins[0], g_ph_bins[1], g_ph_bins[2], g_ph_bins[3], g_ph_bins[4], g_ph_bins[5]);
     for (int b = 0; b < 6; ++b) g_ph_bins[b] = 0;
@@ -8229,7 +8247,11 @@ static int RunVideo()
                         got ? "and it answered" : "still nothing");
                 }
             }
-            source_fresh = got && g_capture_visual_changed;
+            // A frame the capture handed over with the picture it had before
+            // is not new (#183): the still-picture hold has to see it as the
+            // still it is.
+            if (phase_on && got && g_capture_visual_changed && g_capture_identical) ++g_ph_identical;
+            source_fresh = got && g_capture_visual_changed && !g_capture_identical;
             g_fg_source_fresh = source_fresh;
             g_fg_source_seconds = source_fresh ? g_capture_source_seconds : 0.0;
             // The scene cut, when the client leaves it here. Only a frame that

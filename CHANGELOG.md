@@ -46,6 +46,17 @@ Scope and honesty notes:
   folder, a doubled extension, an archive or an extracted folder in
   `native\libraries\` - and says at start and in Fine tuning which file it
   found and where it has to go.
+* **A still picture in a browser, Photos or Photoshop no longer keeps the
+  GPU busy (#183).** NR stops on a picture that does not change - but
+  "does not change" meant the capture delivered no new frame, and programs
+  that draw through a swap chain present the same picture again and again;
+  every present was a new frame, so the network ran on all of them. The
+  worker now compares each captured frame's luminance map with the one
+  before, and the same picture counts as still. Measured on a window
+  presenting one picture on every vsync: evaluated on 681 of 681 frames
+  before, on none of 866 now; a changing picture is evaluated on every
+  frame as before. With `NS_PHASE=1` the log counts such frames
+  (`identical=`).
 
 ## v2.6.3 - 2026-10-21 - The panel opens at start with NR left off
 
