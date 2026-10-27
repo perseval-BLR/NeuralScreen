@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.6.4 - 2026-10-27 - Still pictures in browsers and Photos stay idle, CJK text instead of boxes, a misplaced NR runtime is named
 
 * **Chinese, Japanese and Korean show as text, not boxes (#186).** The CJK
   faces were looked up by family name, and on a Windows whose font registry
