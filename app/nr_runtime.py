@@ -63,6 +63,47 @@ def has_presets(version: tuple | None) -> bool:
     return version is not None and tuple(version[:3]) >= PRESETS_SINCE
 
 
+#: Where the worker looks for a user's runtime, relative to the program folder.
+BYO_RELATIVE = Path("native") / "libraries" / "nvngx_dlssnr.dll"
+
+
+def misplaced(base: Path) -> list[str]:
+    """NR runtimes a user put where the worker does not look (#182, #185).
+
+    The worker takes exactly native\\libraries\\nvngx_dlssnr.dll and says
+    nothing when it is not there, so a runtime one folder off, or under
+    another name, ran the bundled 310.8 with no word about why - twice from
+    the same user. Looked for: any file with "dlssnr" in its name in
+    native\\libraries\\ (and one folder below it - an extracted archive),
+    in a libraries\\ folder next to the program, and in the program folder
+    itself; plus a second DLL beside the bundled one in native\\. Empty
+    when the runtime is where it belongs. Paths relative to `base`.
+    """
+    base = Path(base)
+    if (base / BYO_RELATIVE).is_file():
+        return []
+    found = []
+
+    def look(folder: Path, depth: int = 0) -> None:
+        try:
+            entries = sorted(folder.iterdir())
+        except OSError:
+            return
+        for entry in entries:
+            if entry.is_file() and "dlssnr" in entry.name.lower():
+                if entry == base / "native" / "nvngx_dlssnr.dll":
+                    continue                    # the bundled runtime
+                found.append(str(entry.relative_to(base)))
+            elif entry.is_dir() and depth > 0:
+                look(entry, depth - 1)
+
+    look(base / "native" / "libraries", depth=1)
+    look(base / "libraries", depth=1)
+    look(base)
+    look(base / "native")
+    return found
+
+
 def current() -> tuple[str, bool]:
     """The runtime the worker will load: its version as text ("" when
     unknown) and whether it has presets."""

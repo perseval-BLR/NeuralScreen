@@ -958,6 +958,21 @@ def bring_up(st) -> None:
             "byo_fallback",
             "The NR runtime in native\\libraries\\ does not run on this card - "
             "using the bundled one"), duration=8.0)
+    # #185: a runtime put one folder off, or under another name, ran the
+    # bundled one without a word - the worker only looks at one exact path.
+    try:
+        import nr_runtime
+        stray = [] if os.environ.get("NS_NR_DLL") else nr_runtime.misplaced(BASE_DIR)
+    except Exception:
+        stray = []
+    if stray:
+        print(f"[main] an NR runtime is not where NeuralScreen looks: {', '.join(stray)} - "
+              f"it has to be native\\libraries\\nvngx_dlssnr.dll; the bundled runtime runs",
+              file=sys.stderr)
+        st.display.alert(UI_STRINGS[st.lang].get(
+            "nr_misplaced",
+            "{name} is not used: it must be native\\libraries\\nvngx_dlssnr.dll").format(
+                name=stray[0]), duration=10.0)
     numpad = numlock_needed(st.hotkey_bindings)
     if numpad and not numlock_on():
         print(f"[main] Num Lock is off: the numpad hotkeys "

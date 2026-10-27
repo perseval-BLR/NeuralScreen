@@ -469,6 +469,7 @@ class OverlayMenu:
             "nr_preset": "default",
             "nr_presets": True,
             "nr_runtime_version": "",
+            "nr_runtime_misplaced": "",     # #185: a runtime where the worker does not look
             # The hotkeys master switch (#134). Listed HERE for the reason the
             # spout/hdr entries above spell out: a key missing from this dict
             # is dropped by set_state in silence, and the toggle would draw as
@@ -2219,6 +2220,18 @@ class OverlayMenu:
                                              "value": s.get("nr_preset_one", "one model{v}").format(
                                                  v=f" ({version})" if version else "")}))
                     cy += self._u(LABEL_H) + gap
+                    # #185: a runtime the user put one folder off, or under
+                    # another name - say which, and where it has to go.
+                    stray = str(self.state.get("nr_runtime_misplaced") or "")
+                    if stray:
+                        note = s.get("nr_misplaced",
+                                     "{name} is not used: it must be "
+                                     "native\\libraries\\nvngx_dlssnr.dll").format(name=stray)
+                        note_h = self._note_height(note, inner_w)
+                        items.append(Item("note", "nr_misplaced",
+                                          pygame.Rect(pad, cy, inner_w, note_h),
+                                          extra={"text": note}))
+                        cy += note_h + gap
                 for key in PARAM_KEYS:
                     if key != "intensity":
                         param_slider(key)

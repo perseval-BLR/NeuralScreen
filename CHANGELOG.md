@@ -38,6 +38,14 @@ Scope and honesty notes:
   no CJK glyphs - the whole interface was boxes. They are now found by file
   (YaHei, Yu Gothic, Malgun Gothic and the fonts Windows ships after them),
   and a face is used only when it really has the script's glyphs.
+* **An NR runtime in the wrong place is named (#182, #185).** NeuralScreen
+  takes a runtime only from `native\libraries\nvngx_dlssnr.dll` and said
+  nothing when it was not there, so a DLL one folder off, or under another
+  name, ran the bundled 310.8 without a word. It now looks for the usual
+  slips - a `libraries` folder next to the program, the DLL in the program
+  folder, a doubled extension, an archive or an extracted folder in
+  `native\libraries\` - and says at start and in Fine tuning which file it
+  found and where it has to go.
 
 ## v2.6.3 - 2026-10-21 - The panel opens at start with NR left off
 

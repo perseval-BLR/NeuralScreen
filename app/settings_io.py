@@ -1032,6 +1032,18 @@ def _nr_runtime_current() -> tuple:
         return "", True
 
 
+def _nr_runtime_misplaced() -> str:
+    """The first NR runtime lying where the worker does not look, or "" (#185)."""
+    try:
+        if os.environ.get("NS_NR_DLL"):
+            return ""
+        import nr_runtime
+        stray = nr_runtime.misplaced(BASE_DIR)
+        return stray[0] if stray else ""
+    except Exception:
+        return ""
+
+
 def nr_preset(cfg: dict) -> str:
     value = str(cfg.get("nr_preset", "default")).lower()
     return value if value in NR_PRESETS else "default"
@@ -1791,6 +1803,7 @@ def menu_payload(st) -> dict:
         "nr_preset": nr_preset(st.cfg),
         # #179: the A / B switch only on a runtime that has two models.
         **dict(zip(("nr_runtime_version", "nr_presets"), _nr_runtime_current())),
+        "nr_runtime_misplaced": _nr_runtime_misplaced(),
         "hotkeys_enabled": st.cfg.get("hotkeys_enabled", True) is not False,
         "recording_dir": st.cfg.get("recording_dir") or "",
         "screenshot_dir": st.cfg.get("screenshot_dir") or "",
