@@ -11,10 +11,13 @@ Checked without a GPU:
 1. the frame header carries the Lite bit only with FG explicitly set and Lite
    on; the multiplier bits are unchanged by it;
 2. the step choice: table cases, the user's step as the ceiling, at least x2;
-3. the hold: a short dip does not move the step, a lasting one does; a lower
-   ceiling applies at once; a near-still source keeps the step;
+3. the hold: x2 until the first reading has held, then one change; a short dip
+   does not move the step, a lasting one does; a rate read noisily around a
+   boundary keeps the step; a lower ceiling applies at once;
+   a near-still source keeps the step;
 4. main's per-frame choice: the user's step with the switch off, the matched
-   one with it on, read against the monitor's refresh rate;
+   one with it on, read against the monitor's refresh rate - from the worker's
+   new-picture marks when there are any (the processed-frame rate overcounts);
 5. both switches: off by default, in the Network block of the panel, a press
    flips and saves them, the payloads carry them, every language has the text.
 
@@ -87,17 +90,34 @@ def main() -> int:
             if got != want:
                 failures.append(f"{source} fps on {hz} Hz, up to x{ceiling}: x{got}, not x{want}")
         # 3. The hold.
-        c = fg_auto.Chooser(hold_s=2.0)
-        steps = [c.update(0.0, 30, 144, 6)]
-        steps.append(c.update(0.5, 60, 144, 6))      # a dip starts
-        steps.append(c.update(1.5, 30, 144, 6))      # and ends: no change
-        steps.append(c.update(2.0, 60, 144, 6))      # a lasting change starts
-        steps.append(c.update(3.0, 60, 144, 6))
-        steps.append(c.update(4.1, 60, 144, 6))      # held 2.1 s: taken
-        steps.append(c.update(4.2, 60, 144, 3))      # ceiling lowered below: at once
-        steps.append(c.update(4.3, 2, 144, 6))       # near-still source: kept
-        if steps != [4, 4, 4, 4, 4, 2, 2, 2]:
+        c = fg_auto.Chooser(hold_s=2.0, first_hold_s=2.0)
+        steps = [c.update(0.0, 30, 144, 6)]          # not held yet: the cheapest step
+        steps.append(c.update(2.1, 30, 144, 6))      # held 2.1 s: taken
+        steps.append(c.update(2.5, 60, 144, 6))      # a dip starts
+        steps.append(c.update(3.5, 30, 144, 6))      # and ends: no change
+        steps.append(c.update(4.0, 60, 144, 6))      # a lasting change starts
+        steps.append(c.update(5.0, 60, 144, 6))
+        steps.append(c.update(6.1, 60, 144, 6))      # held 2.1 s: taken
+        steps.append(c.update(6.2, 60, 144, 3))      # ceiling lowered below: at once
+        steps.append(c.update(6.3, 2, 144, 6))       # near-still source: kept
+        if steps != [2, 4, 4, 4, 4, 4, 2, 2, 2]:
             failures.append(f"the hold gave {steps}")
+        # A noisy reading around a boundary: 36 fps read as 39 keeps x4 (156 of
+        # 144 Hz is inside the keep margin), a lasting 45 brings x3.
+        c3 = fg_auto.Chooser(hold_s=2.0, first_hold_s=2.0)
+        c3.update(0.0, 36, 144, 6)
+        c3.update(2.1, 36, 144, 6)
+        noisy = [c3.update(t, 39, 144, 6) for t in (3.0, 4.0, 5.5)]
+        drop = [c3.update(t, 45, 144, 6) for t in (6.0, 7.0, 8.1)]
+        if c3.current is None or noisy != [4, 4, 4] or drop != [4, 4, 3]:
+            failures.append(f"near a boundary: noisy {noisy}, lasting {drop}")
+        c2 = fg_auto.Chooser(hold_s=2.0, first_hold_s=2.0)
+        if c2.update(0.0, 0.0, 144, 6) != 2 or c2.current is not None:
+            failures.append("with no reading yet it does not run the cheapest step")
+        c4 = fg_auto.Chooser()          # the shipped holds: the first choice waits longer
+        first = [c4.update(t, 36, 144, 6) for t in (0.0, 2.5, 4.1)]
+        if first != [2, 2, 4]:
+            failures.append(f"the first choice of a run: {first}")
 
         # 4. main's per-frame choice.
         import main as app
@@ -111,11 +131,20 @@ def main() -> int:
             with contextlib.redirect_stdout(io.StringIO()):
                 plain = app.fg_multiplier(st, 30.0, 10.0)
                 st.cfg["fg_match_display"] = True
-                matched = app.fg_multiplier(st, 30.0, 10.0)
+                app.fg_multiplier(st, 30.0, 10.0)
+                matched = app.fg_multiplier(st, 30.0, 14.1)
+                # The worker's new-picture marks win over the processed-frame
+                # rate: 36 fps marked, 40 fps processed -> x4, not x3.
+                st.reader = types.SimpleNamespace(source_rate=lambda window=2.0: 36.0)
+                st.fg_chooser.reset()
+                app.fg_multiplier(st, 40.0, 13.0)
+                marked = app.fg_multiplier(st, 40.0, 17.1)
+                st.reader = None
                 st.cfg["frame_generation"] = False
                 fg_off = app.fg_multiplier(st, 30.0, 10.5)
-            if (plain, matched, fg_off) != (6, 4, 6):
-                failures.append(f"main's choice: off {plain}, matched {matched}, FG off {fg_off}")
+            if (plain, matched, marked, fg_off) != (6, 4, 4, 6):
+                failures.append(f"main's choice: off {plain}, matched {matched}, "
+                                f"from the marks {marked}, FG off {fg_off}")
         finally:
             fg_auto.refresh_hz = real
 

@@ -36,14 +36,19 @@ Scope and honesty notes:
   Frame Generation for its preset C (`DLSSG.LiteCandidateBlendingEnabled`,
   in the bundled 310.9.16 runtime): cheaper generated frames - NVIDIA quotes
   10% less FG cost at x2 and 36% less at x6 on RTX 40/50. A change recreates
-  FG, like a new multiplier.
+  FG, like a new multiplier. Bench, RTX 5070 Ti, 4K: FG's GPU time per real
+  frame 1.99 -> 1.14 ms at x2, 4.45 -> 1.88 ms at x4, 6.93 -> 2.73 ms at x6.
 * **FG matched to the display (new, off by default).** Network -> "FG
   matched to the display" picks the largest multiplier, up to the one you
   chose, whose output still fits the screen's refresh rate: a 30 fps video
   on 144 Hz runs x4, a 60 fps game x2, a 24 fps film x6. A new step is taken
   only after it has held for two seconds - a step change recreates FG, and a
   source wobbling at a boundary must not flip it back and forth. The FG row
-  says which step runs.
+  says which step runs. The source's rate is the worker's own count of new
+  pictures (a processed-frame count read a 36 fps source as 37-40); a step
+  goes up only when it fits the refresh rate and comes down only when the
+  output runs 10% over it. Bench, 143.9 Hz: a 36 fps source settles on x4
+  within ten seconds and stays there, a 72 fps one stays on x2.
 
 ## v2.6.4 - 2026-10-27 - Still pictures in browsers and Photos stay idle, CJK text instead of boxes, a misplaced NR runtime is named
 

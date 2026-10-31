@@ -1929,6 +1929,10 @@ static constexpr uint32_t FRAME_FLAG_PREPARED = 0x1000u;
 static constexpr uint32_t FRAME_MAGIC = 0x314D5246u; // "FRM1"
 static constexpr uint32_t OUT_MAGIC   = 0x3154554Fu; // "OUT1"
 static constexpr uint32_t OUT_STATUS_OK = 0x1u;
+// The frame brought a new source picture (source_fresh): the client counts
+// these for the source's own rate - FG matched to the display divides the
+// refresh rate by it. Processed frames overcount it (36 fps read as 37-40).
+static constexpr uint32_t OUT_STATUS_FRESH = 0x2u;
 // FRAME_FLAG_WORKER_SCENE frames: this reply carries the worker's scene
 // score in bits 16-31 (x65535), and SCENE_CUT says the frame was reset on it.
 static constexpr uint32_t OUT_STATUS_SCENE = 0x4u;
@@ -8252,6 +8256,7 @@ static int RunVideo()
             // still it is.
             if (phase_on && got && g_capture_visual_changed && g_capture_identical) ++g_ph_identical;
             source_fresh = got && g_capture_visual_changed && !g_capture_identical;
+            if (source_fresh) g_frame_status |= OUT_STATUS_FRESH;
             g_fg_source_fresh = source_fresh;
             g_fg_source_seconds = source_fresh ? g_capture_source_seconds : 0.0;
             // The scene cut, when the client leaves it here. Only a frame that
@@ -8262,7 +8267,9 @@ static int RunVideo()
                 const bool cut = g_scene_cut;
                 if (cut) fh.reset = 1;
                 const float clamped = (std::min)(1.0f, (std::max)(0.0f, g_scene_score));
-                g_frame_status = OUT_STATUS_SCENE | (cut ? OUT_STATUS_SCENE_CUT : 0u) |
+                // ORed, not assigned: OUT_STATUS_FRESH is already set above, and
+                // assigning here wiped it on every scored frame.
+                g_frame_status |= OUT_STATUS_SCENE | (cut ? OUT_STATUS_SCENE_CUT : 0u) |
                     (static_cast<uint32_t>(clamped * 65535.0f + 0.5f) << 16);
             }
             g_scene_fresh = false;

@@ -394,9 +394,16 @@ def fg_multiplier(st, source_fps: float, now: float) -> int:
             hwnd = None
         st.fg_refresh = fg_auto.refresh_hz(hwnd) or float(getattr(st, "fg_refresh", 0.0) or 0.0)
         st.fg_refresh_at = now
+    # The source's own rate - replies the worker marked as a new picture - and
+    # the processed-frame rate only when there is none yet: it overcounts (a
+    # 36 fps source read 37-40, enough to pick x3 instead of x4).
+    reader = getattr(st, "reader", None)
+    if reader is not None and hasattr(reader, "source_rate"):
+        # Zero until the marks cover the window: the chooser keeps x2 then.
+        source_fps = reader.source_rate(4.0)
     before = st.fg_chooser.current
     step = st.fg_chooser.update(now, source_fps, float(st.fg_refresh or 0.0), picked)
-    if step != before:
+    if step != before and st.fg_chooser.current is not None:
         print(f"[main] FG matched to the display: x{step} "
               f"(source {source_fps:.1f} fps, {st.fg_refresh:.0f} Hz, up to x{picked})")
     return step

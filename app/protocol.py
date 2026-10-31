@@ -443,6 +443,8 @@ OUT_MAGIC = 0x3154554F    # 'OUT1'
 OUT_STATUS_OK = 0x1
 # A FRAME_FLAG_WORKER_SCENE frame's reply: the worker's scene score rides in
 # bits 16-31 (x65535), and SCENE_CUT says the frame was reset on it.
+#: The frame brought a new source picture (the worker's source_fresh).
+OUT_STATUS_FRESH = 0x2
 OUT_STATUS_SCENE = 0x4
 OUT_STATUS_SCENE_CUT = 0x8
 
@@ -1038,6 +1040,9 @@ class WorkerReader:
         self.last_ngx_result = 0
         self.last_scene: float | None = None
         self.last_scene_cut = False
+        #: When replies marked OUT_STATUS_FRESH arrived (the last few seconds):
+        #: the source's own frame rate, for FG matched to the display.
+        self.fresh_times: collections.deque = collections.deque(maxlen=1024)
         # The pixels arrive through it once the OUTS channel is agreed.
         self._shm = shm
         self._queue: queue.Queue = queue.Queue()
@@ -1161,6 +1166,8 @@ class WorkerReader:
                     scene = ((status >> 16) / 65535.0
                              if status & OUT_STATUS_SCENE else None)
                     scene_cut = bool(status & OUT_STATUS_SCENE_CUT)
+                    if status & OUT_STATUS_FRESH:
+                        self.fresh_times.append(time.perf_counter())
                     # The NGX result travels with every frame; the loop reads it
                     # to tell "the pass ran" from "the pass did not run". It is
                     # NOT an error channel on its own: 0 means "no evaluation
@@ -1369,6 +1376,16 @@ class WorkerReader:
                                     keep_frames=False)
         if not ok:
             raise RuntimeError(f"RNSZ rejected by the worker: ngx=0x{ngx_result:08X}")
+
+    def source_rate(self, window: float = 2.0) -> float:
+        """New source pictures per second over the last `window` seconds (0 = unknown)."""
+        now = time.perf_counter()
+        recent = [t for t in list(self.fresh_times) if now - t <= window]
+        # Not before the marks cover most of the window: the first second of
+        # a start reads 47 for a 36 fps source (bench 31.10).
+        if len(recent) < 3 or recent[-1] - recent[0] < 0.75 * window:
+            return 0.0
+        return (len(recent) - 1) / max(1e-3, recent[-1] - recent[0])
 
     def recv(self, index: int, timeout: float):
         """Wait for frame index; timeout > 0 guards against an NGX hang.

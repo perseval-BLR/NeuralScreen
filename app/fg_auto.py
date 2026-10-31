@@ -19,9 +19,19 @@ from ctypes import wintypes
 
 #: How long a new choice has to hold before it is taken, in seconds.
 HOLD_S = 2.0
+#: The first choice of a run holds longer: the program's own start (the panel,
+#: the "NR on" notice) changes the desktop and reads as a faster source for a
+#: few seconds - 42.7 for a 36 fps source (bench 31.10).
+FIRST_HOLD_S = 4.0
 #: Output may run this far over the refresh rate and still count as fitting:
 #: 59.94 fps x2 on a 119.88 Hz screen is the case it is there for.
 FIT_MARGIN = 1.03
+#: The step in force is kept while its output stays within this much over the
+#: refresh rate: a step goes up only when it fits (FIT_MARGIN) and comes down
+#: only past this, so a rate read noisily around a boundary does not flip it -
+#: the whole desktop's new pictures, which is what fullscreen mode counts, read
+#: 33-42 a second for a 36 fps source in the first seconds (bench 31.10).
+KEEP_MARGIN = 1.10
 #: Below this source rate the measurement is not worth acting on (a still
 #: picture held, a paused video): the current step stays.
 MIN_SOURCE_FPS = 5.0
@@ -45,33 +55,37 @@ def best_multiplier(source_fps: float, refresh_hz: float, ceiling: int, floor: i
 class Chooser:
     """Holds the step in force and moves it only after a new choice has held."""
 
-    def __init__(self, hold_s: float = HOLD_S) -> None:
+    def __init__(self, hold_s: float = HOLD_S, first_hold_s: float = FIRST_HOLD_S) -> None:
         self.hold_s = float(hold_s)
+        self.first_hold_s = float(first_hold_s)
         self.current: int | None = None
         self._pending: int | None = None
         self._since = 0.0
 
     def update(self, now: float, source_fps: float, refresh_hz: float, ceiling: int) -> int:
         ceiling = max(2, int(ceiling))
-        if self.current is None:
-            self.current = best_multiplier(source_fps, refresh_hz, ceiling)
-            return self.current
-        if self.current > ceiling:
+        if self.current is not None and self.current > ceiling:
             # The user lowered the ceiling: that is an instruction, not a reading.
             self.current = ceiling
             self._pending = None
             return self.current
         if source_fps < MIN_SOURCE_FPS:
             self._pending = None
-            return self.current
+            return self.current if self.current is not None else 2
         want = best_multiplier(source_fps, refresh_hz, ceiling)
+        if (self.current is not None and want < self.current
+                and source_fps * self.current <= refresh_hz * KEEP_MARGIN):
+            want = self.current
         if want == self.current:
             self._pending = None
         elif want != self._pending:
             self._pending, self._since = want, now
-        elif now - self._since >= self.hold_s:
+        elif now - self._since >= (self.hold_s if self.current is not None else self.first_hold_s):
             self.current, self._pending = want, None
-        return self.current
+        # Until a reading has held, the cheapest step: the first measured rates
+        # of a start are noisy, and every change recreates FG - one change from
+        # x2 to the held step, instead of three on the way there (bench 31.10).
+        return self.current if self.current is not None else 2
 
     def reset(self) -> None:
         self.current = None
