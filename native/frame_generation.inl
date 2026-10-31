@@ -96,6 +96,12 @@ static struct FgState {
 
 static int g_fg_ui_enabled = -1;
 static unsigned g_fg_count = 1;
+// FG "Lite" - DLSS-G preset C (DLSSG.LiteCandidateBlendingEnabled, in the
+// 310.9.16 runtime): cheaper generated frames, NVIDIA quotes -10% at 2x and
+// -36% at 6x on RTX 40/50. A create-time parameter, so a change recreates FG
+// the way a new multiplier does. Bit 0x40 of the frame header, off unless set.
+static bool g_fg_lite = false;
+static constexpr uint32_t FRAME_FLAG_FG_LITE = 0x40u;
 // What we actually ask the runtime for, 0-based: 1 = 2x, 3 = 4x, 5 = 6x.
 //
 // It starts at the DLSS 4.5 ceiling and drops only when a create or evaluation
@@ -526,6 +532,9 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
     p->Set(NVSDK_NGX_DLSSG_Parameter_InternalWidth, v.w);
     p->Set(NVSDK_NGX_DLSSG_Parameter_InternalHeight, v.hgt);
     p->Set(NVSDK_NGX_DLSSG_Parameter_DynamicResolution, 0u);
+    // Set either way: a runtime without the key ignores it, and "0" keeps a
+    // recreated feature from inheriting the last session's choice.
+    p->Set("DLSSG.LiteCandidateBlendingEnabled", g_fg_lite ? 1u : 0u);
     if (!BeginCommands()) return false;
     const auto result = FgCreateGuarded(g_fg.create, h.list, p, &g_fg.feature);
     if (g_fg_fault != 0)
@@ -628,7 +637,8 @@ static bool EnsureFg(VideoState &v, DXGI_FORMAT format)
         }
     }
     g_fg.thread = std::thread(FgPresenter);
-    Log("[fg] %ux enabled at %ux%u, format=%u; flat depth and estimated motion (experimental)", g_fg_count + 1, w, height, format);
+    Log("[fg] %ux enabled at %ux%u, format=%u%s; flat depth and estimated motion (experimental)",
+        g_fg_count + 1, w, height, format, g_fg_lite ? ", lite (preset C)" : "");
     return true;
 }
 
@@ -944,7 +954,8 @@ static void ConfigureFgFrame(uint32_t flags)
     // FG off and on arms the user's choice again, so a newer stock provider
     // (BYO folder) or a driver update can lift the ceiling without a restart.
     const unsigned count = std::min(requested, g_fg_count_limit);
-    if (g_fg_ui_enabled == enabled && g_fg_count == count) return;
+    const bool lite = (flags & FRAME_FLAG_FG_LITE) != 0;
+    if (g_fg_ui_enabled == enabled && g_fg_count == count && g_fg_lite == lite) return;
     CloseFgResources();
     // A fresh switch-on is a fresh attempt: the ceiling goes back to the DLSS 4.5
     // maximum and the user's own choice is asked for again. A step this card
@@ -954,7 +965,9 @@ static void ConfigureFgFrame(uint32_t flags)
     g_fg_retry = false;
     g_fg_ui_enabled = enabled;
     g_fg_count = count;
+    g_fg_lite = lite;
     g_fg.failed = false;
-    Log("[fg] UI: %s, %ux%s", enabled ? "on" : "off", count + 1,
+    Log("[fg] UI: %s, %ux%s%s", enabled ? "on" : "off", count + 1,
+        lite ? ", lite" : "",
         count < requested ? " (capped by the runtime ceiling)" : "");
 }

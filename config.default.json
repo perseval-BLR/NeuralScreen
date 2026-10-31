@@ -68,6 +68,8 @@
   "tray_on_close": false,
   "keep_speed_when_hidden": true,
   "fg_ui_protect": false,
+  "fg_lite": false,
+  "fg_match_display": false,
   "dim_on_rebuild": true,
   "window_follow": false,
   "nr_on": true,

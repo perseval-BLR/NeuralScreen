@@ -30,6 +30,21 @@ Scope and honesty notes:
 
 ---
 
+## Unreleased
+
+* **FG Lite (new, off by default).** Network -> "FG Lite" asks DLSS
+  Frame Generation for its preset C (`DLSSG.LiteCandidateBlendingEnabled`,
+  in the bundled 310.9.16 runtime): cheaper generated frames - NVIDIA quotes
+  10% less FG cost at x2 and 36% less at x6 on RTX 40/50. A change recreates
+  FG, like a new multiplier.
+* **FG matched to the display (new, off by default).** Network -> "FG
+  matched to the display" picks the largest multiplier, up to the one you
+  chose, whose output still fits the screen's refresh rate: a 30 fps video
+  on 144 Hz runs x4, a 60 fps game x2, a 24 fps film x6. A new step is taken
+  only after it has held for two seconds - a step change recreates FG, and a
+  source wobbling at a boundary must not flip it back and forth. The FG row
+  says which step runs.
+
 ## v2.6.4 - 2026-10-27 - Still pictures in browsers and Photos stay idle, CJK text instead of boxes, a misplaced NR runtime is named
 
 * **Chinese, Japanese and Korean show as text, not boxes (#186).** The CJK

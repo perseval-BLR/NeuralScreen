@@ -69,18 +69,12 @@ def paint(menu):
     menu.draw(surf)
 
 
-def click(menu, item):
-    """Click the CONTROL's own zone, not the row (user rule 16.09).
-
-    A toggle/slider/choice row spans the panel width and only the control
-    inside it reacts - the switch pill, the slider track, the select
-    field, the hotkey field. item.extra["hit"] is that zone; the tests
-    click it so they exercise the same target a user does.
-    """
+def into_view(menu, item):
+    """The item scrolled into the panel's view, as a user would scroll to it:
+    with every block open the page is taller than the screen. Returns the
+    same item after the relayout."""
     view = getattr(menu, "_viewport", None)
     if menu._max_scroll > 0 and view is not None and not view.contains(item.rect):
-        # Scrolled to it first, as a user would: with every block open the
-        # page is taller than the screen. The same item after the relayout.
         top, bottom = view.top + 6, view.bottom - 6
         shift = (item.rect.top - top if item.rect.top < top
                  else item.rect.bottom - bottom)
@@ -89,6 +83,18 @@ def click(menu, item):
         paint(menu)
         item = next(i for i in menu.items if i.kind == item.kind and i.key == item.key
                     and i.extra.get("label") == item.extra.get("label"))
+    return item
+
+
+def click(menu, item):
+    """Click the CONTROL's own zone, not the row (user rule 16.09).
+
+    A toggle/slider/choice row spans the panel width and only the control
+    inside it reacts - the switch pill, the slider track, the select
+    field, the hotkey field. item.extra["hit"] is that zone; the tests
+    click it so they exercise the same target a user does.
+    """
+    item = into_view(menu, item)
     zone = item.extra.get("hit") or item.rect
     if item.extra.get("hit", True) is None:
         raise AssertionError(
@@ -484,6 +490,7 @@ def main() -> int:
         if sl is None:
             failures.append(f"no {key} slider on the main page")
             continue
+        sl = into_view(menu, sl)
         track = sl.extra.get("track")
         if track is None:
             failures.append(f"the {key} slider has no track")

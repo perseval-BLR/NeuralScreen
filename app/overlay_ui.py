@@ -464,6 +464,8 @@ class OverlayMenu:
             # would draw as off while the opt-out was still in force.
             "keep_speed_when_hidden": True,
             "fg_ui_protect": False,
+            "fg_lite": False,
+            "fg_match_display": False,
             "dim_on_rebuild": True,
             "window_follow": False,
             "nr_preset": "default",
@@ -2086,7 +2088,11 @@ class OverlayMenu:
             # 40-series card that steps down is never stranded behind the tile.
             live = self.state.get("frame_multiplier_active")
             fg_hint = ""
-            if fg and isinstance(live, int) and live != multiplier:
+            if fg and self.state.get("fg_match_display") and isinstance(live, int):
+                # The step follows the display; the picked one is the ceiling.
+                fg_hint = s.get("fg_matched", "matched to the display: x{live} (up to x{want})").format(
+                    live=live, want=multiplier)
+            elif fg and isinstance(live, int) and live != multiplier:
                 fg_hint = s.get(
                     "fg_capped",
                     "the runtime caps this card at x{live} - FG runs there, "
@@ -2150,6 +2156,14 @@ class OverlayMenu:
                 toggle("fg_ui_protect", s.get("fg_ui_protect", "Protect the interface in FG"),
                        bool(self.state.get("fg_ui_protect", False)),
                        hint=s.get("fg_ui_protect_hint", ""))
+                # DLSS-G preset C and the display-matched multiplier (scan
+                # 27.10): both off by default until measured on the bench.
+                toggle("fg_lite", s.get("fg_lite", "FG Lite"),
+                       bool(self.state.get("fg_lite", False)),
+                       hint=s.get("fg_lite_hint", ""))
+                toggle("fg_match_display", s.get("fg_match_display", "FG matched to the display"),
+                       bool(self.state.get("fg_match_display", False)),
+                       hint=s.get("fg_match_display_hint", ""))
                 # The hint says what the cap counts: source frames, which is
                 # why a 60 cap and a 170 fps FG reading are true together (#109).
                 choice("frame_limit_mode", s.get("frame_limit", "Frame limit"),

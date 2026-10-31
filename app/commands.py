@@ -1171,6 +1171,16 @@ def apply_menu_action(st, action: tuple) -> None:
         st.display.menu.set_state({"fg_ui_protect": st.cfg["fg_ui_protect"]})
         print(f"[main] FG interface protection: "
               f"{'on' if st.cfg['fg_ui_protect'] else 'off'}")
+    elif kind == "toggle" and action[1] in ("fg_lite", "fg_match_display"):
+        # FG Lite (DLSS-G preset C) and the multiplier matched to the display:
+        # both ride in every frame header (main.py), so the next frame applies
+        # them - the worker recreates FG for a Lite change, as for a new step.
+        key = action[1]
+        st.cfg[key] = not bool(st.cfg.get(key, False))
+        st.display.menu.set_state({key: st.cfg[key]})
+        settings_io.save_menu_layout(st)
+        print(f"[main] FG {'lite' if key == 'fg_lite' else 'matched to the display'}: "
+              f"{'on' if st.cfg[key] else 'off'}")
     elif kind == "toggle" and action[1] == "keep_speed_when_hidden":
         # #137: the background-speed opt-out. Applied at once rather than at
         # the next frame loop tick, so the switch and the two processes never

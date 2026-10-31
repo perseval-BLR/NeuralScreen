@@ -140,6 +140,7 @@ import channels
 import commands
 import compatibility_runtime
 import foreign_hooks
+import fg_auto
 import gpu_recovery
 import power
 import startup
@@ -373,6 +374,34 @@ def startup_menu_due(paused: bool, frame_index: int) -> bool:
     return bool(paused) or frame_index >= 2
 
 
+def fg_multiplier(st, source_fps: float, now: float) -> int:
+    """The FG step to ask for this frame.
+
+    The user's pick, or - with "matched to the display" on - the largest step
+    up to it whose output fits the screen's refresh rate (fg_auto).
+    """
+    picked = int(st.cfg.get("frame_multiplier", 2))
+    if not (st.cfg.get("frame_generation") and st.cfg.get("fg_match_display")):
+        if getattr(st, "fg_chooser", None) is not None:
+            st.fg_chooser.reset()
+        return picked
+    if getattr(st, "fg_chooser", None) is None:
+        st.fg_chooser = fg_auto.Chooser()
+    if now - float(getattr(st, "fg_refresh_at", 0.0) or 0.0) > 5.0:
+        try:
+            hwnd = st.display.get_hwnd()
+        except Exception:
+            hwnd = None
+        st.fg_refresh = fg_auto.refresh_hz(hwnd) or float(getattr(st, "fg_refresh", 0.0) or 0.0)
+        st.fg_refresh_at = now
+    before = st.fg_chooser.current
+    step = st.fg_chooser.update(now, source_fps, float(st.fg_refresh or 0.0), picked)
+    if step != before:
+        print(f"[main] FG matched to the display: x{step} "
+              f"(source {source_fps:.1f} fps, {st.fg_refresh:.0f} Hz, up to x{picked})")
+    return step
+
+
 def _after_device_reset(st) -> bool:
     """The worker died because the driver reset the GPU (#181). True when NR
     stays off for the rest of the session; otherwise the driver has been
@@ -592,6 +621,11 @@ class _Pipeline:
         "byo_fallback",
         #: Windows made borderless by us (#176): hwnd -> what was taken.
         "borderless_saved",
+        #: FG matched to the display: the step chooser, the refresh rate and
+        #: when it was last read (the overlay can move to another monitor).
+        "fg_chooser",
+        "fg_refresh",
+        "fg_refresh_at",
         #: What passes 2..N use, when the user gave them their own set. None
         #: by default, which means "the main set for every pass".
         "nr_pass_params",
@@ -1299,7 +1333,8 @@ def main() -> int:
                            bypass=bypass,
                            split=st.split_pos,
                            frame_generation=bool(st.cfg.get("frame_generation", False)),
-                           frame_multiplier=int(st.cfg.get("frame_multiplier", 2)),
+                           frame_multiplier=fg_multiplier(st, last_fps, t0),
+                           fg_lite=bool(st.cfg.get("fg_lite", False)),
                            prepared=bool(st.gray_active) and not worker_scene,
                            early_reply=EARLY_REPLY, worker_scene=worker_scene)
                 _perf("send", t0)
