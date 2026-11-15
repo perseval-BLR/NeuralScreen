@@ -76,11 +76,20 @@ def run(code, *, hardware: bool, bypass: bool, fg: bool = False,
          dda_mode=True, split_pos=0, lang='en', guide_fails=0)
     status = SimpleNamespace(failed=False, worker=worker, update=lambda *a: hardware)
     send = Mock()
+    # The loop asks fg_multiplier for the step this frame (main.py) - the
+    # display-matched multiplier. The block under test owns only the send, so
+    # the chooser is a stub here, and the test checks that its answer is what
+    # the frame actually carries.
+    fg_mult = Mock(return_value=2)
     namespace = dict(st=st, bypass=bypass, motion_status=status, time=time, sys=sys,
                      check_worker=Mock(), prepare_capture=capture, send_frame=send,
+                     fg_multiplier=fg_mult, last_fps=60.0,
                      _perf=Mock(), EARLY_REPLY=True, WORKER_SCENE=worker_scene)
     exec(code, namespace)
     assert send.call_count == 1, 'one frame, one send'
+    assert fg_mult.call_count == 1, 'the loop did not ask for the FG step'
+    assert send.call_args.kwargs['frame_multiplier'] == 2, \
+        'the FG step the chooser returned is not the one sent'
     # The loop asks for the answer as soon as the frame is queued; the
     # worker decides where that is safe (FRAME_FLAG_EARLY_REPLY).
     assert send.call_args.kwargs['early_reply'] is True
