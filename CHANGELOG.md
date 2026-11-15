@@ -50,6 +50,26 @@ Scope and honesty notes:
   output runs 10% over it. Bench, 143.9 Hz: a 36 fps source settles on x4
   within ten seconds and stays there, a 72 fps one stays on x2.
 
+* **The log says whether NR was on (#194).** The `[env] switches:` line read
+  a config key nothing writes any more, so it printed "NR on" in every
+  session - a reporter's package said `nr_on: false` in its settings and
+  "NR on" in its header, three lines above "NR starts off, as it was left".
+  It reads the real switch now.
+* **The panel can open the folder the packages land in (#196).** Settings ->
+  Program has "Open diagnostic package folder" under Create diagnostic
+  package: the folder is created (a fresh install has none until the first
+  package) and shown in Explorer, and a refused shell is an alert, not a
+  crash.
+* **Skin structure names its own off (#193).** Its "off" is -1.0 and 0.0 is a
+  real middle value, but the row read "0.00" either way: a reporter set it to
+  zero and reported the filter still working. The left end now reads "Off"
+  in the interface language.
+* **Two settings a report cannot do without (#194, #193).** `fg_lite` and
+  `fg_match_display` travel in the diagnostic package; without them a
+  package cannot say whether FG was running a cheaper preset or following
+  the refresh rate, which is what makes a 180 fps cap and a 290 fps reading
+  the same session.
+
 ## v2.6.4 - 2026-10-27 - Still pictures in browsers and Photos stay idle, CJK text instead of boxes, a misplaced NR runtime is named
 
 * **Chinese, Japanese and Korean show as text, not boxes (#186).** The CJK
