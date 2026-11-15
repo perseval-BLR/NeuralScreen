@@ -650,6 +650,11 @@ _SETTINGS_KEYS = (
     # hidden. A report that says "it is slow when minimised" is unanswerable
     # without knowing this switch and what the read-back said.
     "keep_speed_when_hidden", "fg_ui_protect", "dim_on_rebuild",
+    # FG Lite asks the runtime for a cheaper generated frame (preset C), and
+    # "matched to the display" lets the step follow the refresh rate. Both
+    # change what a report's FPS reading MEANS - 180 source frames can be 1080
+    # shown - so a package that omits them cannot be read at all.
+    "fg_lite", "fg_match_display",
     "window_follow", "nr_preset", "nr_on",
     "hotkeys_enabled",
     "menu_scale", "menu_scale_auto",
