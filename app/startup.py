@@ -484,7 +484,7 @@ def _log_environment(cfg: dict) -> None:
         # through - and the log's own "[fg] UI: on" only marks the change.
         try:
             print("[env] switches: "
-                  f"NR {'on' if not cfg.get('_paused', False) else 'off'} | "
+                  f"NR {'on' if cfg.get('nr_on') else 'off'} | "
                   f"FG {'on' if cfg.get('frame_generation') else 'off'}"
                   f" x{int(cfg.get('frame_multiplier', 2))} | "
                   f"motion {cfg.get('motion_backend', 'cpu')} | "

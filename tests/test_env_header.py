@@ -47,6 +47,29 @@ def main() -> int:
     if "Num Lock:" not in text:
         failures.append("the Num Lock line is missing")
 
+    # 1b. The switches line says what NR was set to. It read `_paused`, a key
+    #     nothing writes any more, so `not cfg.get('_paused', False)` was
+    #     always true and every session logged "NR on" - including the one in
+    #     a reporter's package (issue #194) whose settings said nr_on: false
+    #     while the next line said "NR starts off, as it was left".
+    for nr_on, want in ((False, "NR off"), (True, "NR on")):
+        buf = io.StringIO()
+        sys.stdout = buf
+        try:
+            ns_main._log_environment({"lang": "en", "nr_on": nr_on,
+                                      "frame_generation": False,
+                                      "frame_multiplier": 2,
+                                      "motion_backend": "nvofa"})
+        finally:
+            sys.stdout = real_stdout
+        line = next((l for l in buf.getvalue().splitlines()
+                     if "[env] switches:" in l), "")
+        print(line.strip())
+        if want not in line:
+            failures.append(f"with nr_on={nr_on} the switches line is "
+                            f"{line.strip()!r}, expected {want!r} - a package "
+                            f"cannot say whether NR was on")
+
     # 2. A broken probe must not crash the caller: the probes after it still
     #    run. Two things were wrong with the old check (audit: WEAK):
     #    - it looked for "NeuralScreen", and that banner is printed BEFORE any
