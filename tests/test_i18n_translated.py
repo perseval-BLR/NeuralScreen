@@ -36,6 +36,7 @@ TERMS = {
     "nr_short", "fg_short", "fg_on", "fg_off",  # NR / FG indicators
     "motion_nvofa",     # the backend's own name
     "boost",            # the feature's name
+    "fg_lite",          # the feature's name (DLSS-G preset C)
     "about_windows",    # "Windows"
     "frame_generation",  # "DLSS Frame Generation"
 }
