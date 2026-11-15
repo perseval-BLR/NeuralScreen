@@ -2129,8 +2129,18 @@ class OverlayMenu:
             def param_slider(key: str) -> None:
                 lo, hi = ranges.get(key) or PARAM_FALLBACK
                 val = float(params.get(key, 0.0))
+                value_text = f"{val:.2f}"
+                if key == "skin_structure" and val < 0.0:
+                    # Its "off" is -1, not 0 (settings_io.PARAM_RANGE: 0.0 is
+                    # a real middle value). A cell reading "0.00" over a filter
+                    # that is still working is exactly what issue #193 reported,
+                    # so the left end says what it is. No hint line here: on a
+                    # 4K work area with every fold open the page is already at
+                    # its limit, and one more line pushed the source segment
+                    # off the screen (test_ui_buttons).
+                    value_text = s.get("tile_off", "Off")
                 slider(key, float(lo), float(hi), val, s[key],
-                       value_text=f"{val:.2f}", mark=defaults.get(key))
+                       value_text=value_text, mark=defaults.get(key))
 
             param_slider("intensity")
 
