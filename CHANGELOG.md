@@ -30,7 +30,7 @@ Scope and honesty notes:
 
 ---
 
-## Unreleased
+## v2.6.5 - 2026-11-15 - FG Lite, a multiplier that follows the display, and a package that can explain itself
 
 * **FG Lite (new, off by default).** Network -> "FG Lite" asks DLSS
   Frame Generation for its preset C (`DLSSG.LiteCandidateBlendingEnabled`,
