@@ -674,6 +674,28 @@ def create_diagnostics(st) -> None:
     threading.Thread(target=_run, name="diagnostic-bundle", daemon=True).start()
 
 
+def open_support_folder(st) -> None:
+    """Show the folder the diagnostic packages are written to (#196).
+
+    The packages land in ``support-bundles/`` under the program's own folder,
+    which a user could only find by hunting for the shortcut's location. The
+    folder is created first: on a fresh install it does not exist until the
+    first package is built.
+    """
+    try:
+        from compatibility_runtime import SUPPORT_DIR
+        SUPPORT_DIR.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(SUPPORT_DIR))  # noqa: S606 - a folder in Explorer
+        print(f"[main] diagnostic package folder: {SUPPORT_DIR}")
+    except Exception as exc:
+        print(f"[main] could not open the diagnostic package folder: {exc}",
+              file=sys.stderr)
+        st.display.alert(UI_STRINGS[st.lang].get(
+            "diagnostics_open_failed",
+            "Could not open the folder with diagnostic packages"),
+            duration=6.0)
+
+
 def _window_action_hwnd(value) -> int:
     """Read HWND from the action identity, never from a displayed title."""
     if isinstance(value, int) and not isinstance(value, bool):
@@ -1708,6 +1730,8 @@ def apply_menu_action(st, action: tuple) -> None:
             convert_row_action(st, name)
         elif name == "diagnostics":
             create_diagnostics(st)
+        elif name == "diagnostics_open":
+            open_support_folder(st)
         elif name == "github":
             # The hotkeys, profiles and requirements are described
             # only in the README - there was no way to learn about

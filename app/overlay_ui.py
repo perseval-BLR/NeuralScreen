@@ -2038,6 +2038,16 @@ class OverlayMenu:
                                           "Create diagnostic package"),
                                              "filled": False}))
                     cy += act_h + self._u(6)
+                    # Next to it, the other half of the same errand (#196): a
+                    # reporter had to find the program's folder by hand to
+                    # attach the package somewhere.
+                    items.append(Item("button", "diagnostics_open",
+                                      pygame.Rect(pad, cy, inner_w, act_h),
+                                      extra={"label": s.get(
+                                          "diagnostics_open",
+                                          "Open diagnostic package folder"),
+                                             "filled": False}))
+                    cy += act_h + self._u(6)
                 if show and about:
                     cy += self._u(6)
             if channel:

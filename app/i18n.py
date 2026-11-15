@@ -2647,6 +2647,31 @@ STRINGS["uk"].update({"fg_lite": 'FG Lite', "fg_lite_hint": 'дешевші зг
 STRINGS["zh"].update({"fg_lite": 'FG Lite', "fg_lite_hint": '更省资源的生成帧（DLSS-G 预设 C）', "fg_match_display": 'FG 匹配显示器', "fg_match_display_hint": '填满刷新率的倍数，不超过所选倍数', "fg_matched": '匹配显示器：x{live}（最多 x{want}）'})
 STRINGS["ja"].update({"fg_lite": 'FG Lite', "fg_lite_hint": '負荷の軽い生成フレーム（DLSS-G プリセット C）', "fg_match_display": 'FG をディスプレイに合わせる', "fg_match_display_hint": 'リフレッシュレートを満たす倍率（選択した倍率まで）', "fg_matched": 'ディスプレイに合わせて x{live}（最大 x{want}）'})
 STRINGS["ko"].update({"fg_lite": 'FG Lite', "fg_lite_hint": '더 가벼운 생성 프레임 (DLSS-G 프리셋 C)', "fg_match_display": 'FG를 디스플레이에 맞춤', "fg_match_display_hint": '주사율을 채우는 배율, 선택한 배율까지', "fg_matched": '디스플레이에 맞춤: x{live} (최대 x{want})'})
+# The second half of the diagnostic-package errand (#196).
+STRINGS["en"].update({"diagnostics_open": "Open diagnostic package folder",
+                      "diagnostics_open_failed": "Could not open the folder with diagnostic packages"})
+STRINGS["ru"].update({"diagnostics_open": "Открыть папку с диагностическими пакетами",
+                      "diagnostics_open_failed": "Не удалось открыть папку с диагностическими пакетами"})
+STRINGS["fr"].update({"diagnostics_open": "Ouvrir le dossier des paquets de diagnostic",
+                      "diagnostics_open_failed": "Impossible d'ouvrir le dossier des paquets de diagnostic"})
+STRINGS["de"].update({"diagnostics_open": "Ordner der Diagnosepakete öffnen",
+                      "diagnostics_open_failed": "Der Ordner der Diagnosepakete ließ sich nicht öffnen"})
+STRINGS["es"].update({"diagnostics_open": "Abrir la carpeta de paquetes de diagnóstico",
+                      "diagnostics_open_failed": "No se pudo abrir la carpeta de paquetes de diagnóstico"})
+STRINGS["it"].update({"diagnostics_open": "Apri la cartella dei pacchetti diagnostici",
+                      "diagnostics_open_failed": "Impossibile aprire la cartella dei pacchetti diagnostici"})
+STRINGS["pt"].update({"diagnostics_open": "Abrir a pasta dos pacotes de diagnóstico",
+                      "diagnostics_open_failed": "Não foi possível abrir a pasta dos pacotes de diagnóstico"})
+STRINGS["pl"].update({"diagnostics_open": "Otwórz folder pakietów diagnostycznych",
+                      "diagnostics_open_failed": "Nie udało się otworzyć folderu pakietów diagnostycznych"})
+STRINGS["uk"].update({"diagnostics_open": "Відкрити теку з діагностичними пакетами",
+                      "diagnostics_open_failed": "Не вдалося відкрити теку з діагностичними пакетами"})
+STRINGS["zh"].update({"diagnostics_open": "打开诊断包文件夹",
+                      "diagnostics_open_failed": "无法打开诊断包文件夹"})
+STRINGS["ja"].update({"diagnostics_open": "診断パッケージのフォルダーを開く",
+                      "diagnostics_open_failed": "診断パッケージのフォルダーを開けませんでした"})
+STRINGS["ko"].update({"diagnostics_open": "진단 패키지 폴더 열기",
+                      "diagnostics_open_failed": "진단 패키지 폴더를 열 수 없습니다"})
 # Redesign B (v2.6.0): the state tiles and the fold-out headers.
 STRINGS["en"].update({"tile_on": "On", "tile_off": "Off", "fold_net": "Network", "fold_tune": "Fine tuning", "fold_source": "Source and comparison"})
 STRINGS["ru"].update({"tile_on": "Вкл", "tile_off": "Выкл", "fold_net": "Сеть", "fold_tune": "Тонкая настройка", "fold_source": "Источник и сравнение"})
